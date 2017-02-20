@@ -13,15 +13,10 @@ maven_jar(
 )
 
 maven_jar(
-    name = 'guava',
-    id = 'com.google.guava:guava:19.0',
-    hash = 'sha1: d971ce6b87a6dc5b122b8557da5659c544028853',
-)
-
-maven_jar(
     name = 'logback-classic',
     id = 'ch.qos.logback:logback-classic:1.1.3',
     hash = 'sha1: 245ace75b7a18931f103a79e74d53c66f1f90a9e',
+    test_only = True,  # Only used in one test.
     deps = [
         ':logback-core',
         ':slf4j-api',
@@ -32,12 +27,14 @@ maven_jar(
     name = 'logback-core',
     id = 'ch.qos.logback:logback-core:1.1.3',
     hash = 'sha1: 53732a6ab1f058ad76808646519801e30cc4a780',
+    test_only = True,
 )
 
 maven_jar(
     name = 'slf4j-api',
     id = 'org.slf4j:slf4j-api:1.7.10',
     hash = 'sha1: 0ff5ea6b9f644c97ef1de83eb75e7cc304103549',
+    test_only = True,
 )
 
 maven_jar(

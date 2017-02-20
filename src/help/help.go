@@ -30,8 +30,7 @@ Or see the website (https://please.build) for more information.
 const topicsHelpMessage = `
 The following help topics are available:
 
-%s
-`
+%s`
 
 var allHelpFiles = []string{"rule_defs.json", "config.json", "misc.json"}
 
@@ -53,6 +52,15 @@ func Help(topic string) bool {
 		fmt.Printf("\nMaybe have a look on the website? https://please.build\n")
 	}
 	return false
+}
+
+// HelpTopics prints the list of help topics beginning with the given prefix.
+func HelpTopics(prefix string) {
+	for _, topic := range allTopics() {
+		if strings.HasPrefix(topic, prefix) {
+			fmt.Println(topic)
+		}
+	}
 }
 
 func help(topic string) string {

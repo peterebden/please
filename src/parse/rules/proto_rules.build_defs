@@ -69,8 +69,6 @@ def proto_library(name, srcs, plugins=None, deps=None, visibility=None, labels=N
         'go': find_outs('go', '.pb.go'),
         'cc': find_outs('cc', '.pb.cc'),
         'cc_hdrs': find_outs('cc', '.pb.h'),
-        'grpc_py': find_outs('py', '_pb2.py'),
-        'grpc_go': find_outs('go', '.pb.go'),
         'grpc_cc': find_outs('cc', '.pb.cc') + find_outs('cc', '.grpc.pb.cc'),
         'grpc_cc_hdrs': find_outs('cc', '.pb.h') + find_outs('cc', '.grpc.pb.h'),
         'js': find_outs('js', '_pb.js'),
@@ -110,7 +108,7 @@ def proto_library(name, srcs, plugins=None, deps=None, visibility=None, labels=N
             # Go doesn't come by default, so add it here.
             lang_plugins.append('--plugin=protoc-gen-go=' + _plugin(CONFIG.PROTOC_GO_PLUGIN, lang_tools))
 
-        language_out_arguments = 'import_style=commonjs:' if language == 'js' else ''
+        language_out_arguments = 'import_style=commonjs,binary:' if language == 'js' else ''
 
         cmd = ' '.join([
             _plugin(CONFIG.PROTOC_TOOL, lang_tools),
@@ -142,7 +140,7 @@ def proto_library(name, srcs, plugins=None, deps=None, visibility=None, labels=N
         build_rule(
             name = gen_name,
             srcs = srcs,
-            outs = outs.get(grpc_language),
+            outs = outs.get(grpc_language, outs.get(language)),
             cmd = cmd,
             deps = deps,
             tools = lang_tools + deps_by_lang.get(language, []),
@@ -210,11 +208,14 @@ def proto_library(name, srcs, plugins=None, deps=None, visibility=None, labels=N
             provides['go_src'] = ':_%s#go_src' % name
 
         elif language == 'js':
-            export_file(
+            filegroup(
                 name = lang_name,
-                src = gen_dep,
+                srcs = [gen_dep],
+                deps = [CONFIG.PROTO_JS_DEP] + deps,
                 visibility = visibility,
                 test_only = test_only,
+                requires = ['js'],
+                output_is_complete = False,
             )
 
     # This simply collects the sources, it's used for other proto_library rules to depend on.

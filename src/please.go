@@ -196,8 +196,10 @@ var opts struct {
 			} `positional-args:"true" required:"true"`
 		} `command:"print" description:"Prints a representation of a single target"`
 		Completions struct {
-			Cmd  string `long:"cmd" description:"Command to complete for" default:"build"`
-			Args struct {
+			Cmd        string `long:"cmd" description:"Command to complete for" default:"build"`
+			BashScript bool   `long:"bash_script" description:"Prints the Bash completion script"`
+			ZshScript  bool   `long:"zsh_script" description:"Prints the zsh completion script"`
+			Args       struct {
 				Fragments []string `positional-arg-name:"fragment" description:"Initial fragment to attempt to complete"`
 			} `positional-args:"true"`
 		} `command:"completions" description:"Prints possible completions for a string."`
@@ -397,6 +399,15 @@ var buildFunctions = map[string]func() bool{
 		if len(fragments) == 1 && fragments[0] == "-" {
 			fragments = utils.ReadAllStdin()
 		}
+		if opts.Query.Completions.Cmd == "help" {
+			// Special-case completing help topics rather than build targets.
+			if len(fragments) == 0 {
+				help.HelpTopics("")
+			} else {
+				help.HelpTopics(fragments[0])
+			}
+			return true
+		}
 		if len(fragments) == 0 || len(fragments) == 1 && strings.Trim(fragments[0], "/ ") == "" {
 			os.Exit(0) // Don't do anything for empty completion, it's normally too slow.
 		}
@@ -527,6 +538,7 @@ func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput,
 	shouldRun := !opts.Run.Args.Target.IsEmpty()
 	success := output.MonitorState(state, config.Please.NumThreads, !prettyOutput, opts.BuildFlags.KeepGoing, shouldBuild, shouldTest, shouldRun, opts.OutputFlags.TraceFile)
 	metrics.Stop()
+	build.StopWorkers()
 	if c != nil {
 		c.Shutdown()
 	}
@@ -652,6 +664,9 @@ func main() {
 		if !buildFunctions[command]() {
 			os.Exit(1)
 		}
+		os.Exit(0)
+	} else if opts.Query.Completions.BashScript || opts.Query.Completions.ZshScript {
+		utils.PrintCompletionScript(opts.Query.Completions.ZshScript)
 		os.Exit(0)
 	}
 	if opts.BuildFlags.RepoRoot == "" {

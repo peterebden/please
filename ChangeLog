@@ -1,3 +1,59 @@
+Version 7.4.8
+-------------
+
+    * Support for Go 1.8 (specifically the changes to testing.MainStart).
+
+
+Version 7.4.7
+-------------
+
+    * Fixed long-standing subtle issue with packaging Guava in junit_runner.
+
+
+Version 7.4.6
+-------------
+
+    * Fix outs for js grpc_library rules.
+
+
+Version 7.4.5
+-------------
+
+    * Add missing option to JS protos to generate serialisation code.
+
+
+Version 7.4.4
+-------------
+
+    * Fix deadlock in metrics code.
+
+
+Version 7.4.3
+-------------
+
+    * Suppress logging messages from worker processes as they die.
+
+
+Version 7.4.2
+-------------
+
+    * Ensure that worker processes are killed at the end of a build.
+
+
+Version 7.4.1
+-------------
+
+    * Fixed proto JS rules to correctly pick up transitive dependencies.
+
+
+Version 7.4.0
+-------------
+
+    * Fixed please_pex for Python 3.6
+    * Fixed go_test rules in the repo root.
+    * Added proto.jsdep config option that gets used when building JS protos (#176)
+
+
 Version 7.3.0
 -------------
 
