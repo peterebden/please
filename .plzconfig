@@ -27,7 +27,7 @@ keep = //package:all
 keep = //tools
 
 [go]
-testtool = //tools/please_go_test
+gotool = //tools/please_go_tool
 
 [cpp]
 defaultnamespace = thought_machine

@@ -1,6 +1,10 @@
 go_library(
     name = 'gotool',
-    srcs = ['compile.go'],
+    srcs = [
+        'compile.go',
+        'find_cover_vars.go',
+        'write_test_main.go',
+    ],
     deps = ['//third_party/go:logging'],
 )
 
@@ -26,7 +30,7 @@ go_test(
         ':test_excluded_archive',
     ],
     deps = [
-        ':buildgo',
+        ':gotool',
         '//third_party/go:testify',
     ],
 )
@@ -44,7 +48,7 @@ go_test(
     srcs = ['write_test_main_test.go'],
     data = glob(['test_data/*.go']),
     deps = [
-        ':buildgo',
+        ':gotool',
         '//third_party/go:testify',
     ],
 )

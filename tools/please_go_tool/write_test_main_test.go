@@ -1,4 +1,4 @@
-package buildgo
+package gotool
 
 import (
 	"go/parser"

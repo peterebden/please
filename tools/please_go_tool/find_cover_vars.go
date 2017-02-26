@@ -1,6 +1,4 @@
-// Package buildgo contains utilities used by plz_go_test.
-// It's split up mostly for ease of testing.
-package buildgo
+package gotool
 
 import (
 	"io/ioutil"
@@ -11,8 +9,6 @@ import (
 
 	"gopkg.in/op/go-logging.v1"
 )
-
-var log = logging.MustGetLogger("buildgo")
 
 // A CoverVar is just a combination of package path and variable name
 // for one of the templated-in coverage variables.

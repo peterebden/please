@@ -30,6 +30,12 @@ var opts struct {
 	} `command:"compile" description:"Compiles a Go library."`
 
 	Test struct {
+		Exclude []string `short:"x" long:"exclude" default:"third_party/go" description:"Directories to exclude from search"`
+		Output  string   `short:"o" long:"output" env:"OUT" description:"Output filename" required:"true"`
+		Package string   `short:"p" long:"package" description:"Package containing this test" env:"PKG"`
+		Args    struct {
+			Go string `positional-arg-name:"go" description:"Location of go command" required:"true"`
+		} `positional-args:"true" required:"true"`
 	} `command:"test" description:"Templates a test main file."`
 }
 
@@ -58,15 +64,13 @@ func main() {
 		if err := syscall.Exec(opts.Compile.Args.Go, args, os.Environ()); err != nil {
 			log.Fatalf("Failed to exec %s: %s", opts.Compile.Args.Go, err)
 		}
-	}
-	/*
-		coverVars, err := buildgo.FindCoverVars(opts.Dir, opts.Exclude)
+	} else if parser.Active.Name == "test" {
+		coverVars, err := gotool.FindCoverVars(opts.TmpDir, opts.Test.Exclude)
 		if err != nil {
 			log.Fatalf("Error scanning for coverage: %s", err)
 		}
-		if err = buildgo.WriteTestMain(opts.Package, buildgo.IsVersion18(opts.Args.Go), opts.Args.Sources, opts.Output, coverVars); err != nil {
+		if err = gotool.WriteTestMain(opts.Test.Package, gotool.IsVersion18(opts.Test.Args.Go), opts.Sources, opts.Test.Output, coverVars); err != nil {
 			log.Fatalf("Error writing test main: %s", err)
 		}
-	*/
-
+	}
 }
