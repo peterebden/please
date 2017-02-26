@@ -592,7 +592,7 @@ def _collect_rule_outs(name, output):
 def _go_library_cmds(complete=True, all_srcs=False):
     """Returns the commands to run for building a Go library."""
     # Invokes the Go compiler.
-    compile_cmd = '$TOOLS --' + (' -complete' if complete else '')
+    compile_cmd = '$TOOLS -g %s --%s' % (CONFIG.GOPATH, ' -complete' if complete else '')
     if all_srcs:
         compile_cmd = 'export SRCS="$PKG_DIR/*.go"; ' + compile_cmd
     return {

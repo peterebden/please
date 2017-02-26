@@ -1,3 +1,26 @@
+# We have a big circular dependency problem here: If we need this tool to compile
+# any Go code, and it itself is written in Go, how do we compile it?
+# Answer: bootstrap it manually with go.
+package(go_tool = ':bootstrap_gotool')
+
+genrule(
+    name = 'bootstrap_gotool',
+    srcs = glob(['*.go'], excludes = ['*_test.go']),
+    outs = ['bootstrap_gotool'],
+    cmd = ' && '.join([
+        'export GOPATH=$TMP_DIR:$TMP_DIR/third_party/go',
+        'mv tools/please_go_tool/please_go_tool.go src',
+        'mv tools src',
+        'ln -s $TMP_DIR/src/tools/please_go_tool $TMP_DIR/src/tools/please_go_tool/gotool',
+        'GOBIN=$TMP_DIR go install src/please_go_tool.go',
+        'mv please_go_tool bootstrap_gotool',
+    ]),
+    requires = ['go_src'],
+    deps = [
+        '//third_party/go:logging',
+    ],
+)
+
 go_library(
     name = 'gotool',
     srcs = [
@@ -13,7 +36,6 @@ go_binary(
     srcs = ['please_go_tool.go'],
     deps = [
         ':gotool',
-        '//src/cli',
         '//third_party/go:logging',
     ],
     visibility = ['PUBLIC'],

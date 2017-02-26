@@ -6,8 +6,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-
-	"gopkg.in/op/go-logging.v1"
 )
 
 // A CoverVar is just a combination of package path and variable name
