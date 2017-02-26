@@ -102,7 +102,7 @@ func initializeInterpreter(state *core.BuildState) {
 	}
 	setConfigValue("PLZ_VERSION", config.Please.Version.String())
 	setConfigValue("GO_VERSION", config.Go.GoVersion)
-	setConfigValue("GO_TEST_TOOL", config.Go.TestTool)
+	setConfigValue("GO_TOOL", config.Go.GoTool)
 	setConfigValue("GOPATH", config.Go.GoPath)
 	setConfigValue("CGO_CC_TOOL", config.Go.CgoCCTool)
 	setConfigValue("PIP_TOOL", config.Python.PipTool)

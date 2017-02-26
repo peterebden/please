@@ -68,7 +68,7 @@ func ReadConfigFiles(filenames []string) (*Configuration, error) {
 
 	// Default values for these guys depend on config.Please.Location.
 	defaultPath(&config.Cache.DirCacheCleaner, config.Please.Location, "cache_cleaner")
-	defaultPath(&config.Go.TestTool, config.Please.Location, "please_go_test")
+	defaultPath(&config.Go.GoTool, config.Please.Location, "please_go_tool")
 	defaultPath(&config.Python.PexTool, config.Please.Location, "please_pex")
 	defaultPath(&config.Java.JavacWorker, config.Please.Location, "javac_worker")
 	defaultPath(&config.Java.JarCatTool, config.Please.Location, "jarcat")
@@ -238,7 +238,7 @@ type Configuration struct {
 	Go struct {
 		GoVersion string `help:"String identifying the version of the Go compiler.\nThis is only now really important for anyone targeting versions of Go earlier than 1.5 since some of the tool names have changed (6g and 6l became compile and link in Go 1.5).\nWe're pretty sure that targeting Go 1.4 works; we're not sure about 1.3 (never tried) but 1.2 certainly doesn't since some of the flags to go tool pack are different. We assume nobody is terribly bothered about this..."`
 		GoRoot    string `help:"If set, will set the GOROOT environment variable appropriately during build actions."`
-		TestTool  string `help:"Sets the location of the please_go_test tool that is used to template the test main for go_test rules."`
+		GoTool    string `help:"Sets the location of the please_go_tool tool that is used to help various parts of Go compilation (for example, templating test main files)."`
 		GoPath    string `help:"If set, will set the GOPATH environment variable appropriately during build actions."`
 		CgoCCTool string `help:"Sets the location of CC while building cgo_library and cgo_test rules. Defaults to gcc"`
 	} `help:"Please has built-in support for compiling Go, and of course is written in Go itself.\nSee the config subfields or the Go rules themselves for more information.\n\nNote that Please is a bit more flexible than Go about directory layout - for example, it is possible to have multiple packages in a directory, but it's not a good idea to push this too far since Go's directory layout is inextricably linked with its import paths."`

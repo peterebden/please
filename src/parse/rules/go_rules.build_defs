@@ -62,7 +62,7 @@ def go_library(name, srcs, out=None, deps=None, visibility=None, test_only=False
         requires=['go', 'go_src'] if _all_srcs else ['go'],
         provides={'go': ':' + name, 'go_src': ':_%s#srcs' % name},
         test_only=test_only,
-        tools=_GO_TOOL,
+        tools=[CONFIG.GO_TOOL, 'go'],
         needs_transitive_deps=_needs_transitive_deps,
     )
 
@@ -336,21 +336,20 @@ def go_test(name, srcs, data=None, deps=None, visibility=None, flags='', contain
             test_only = True,
             deps = deps,
         )
-    go_test_tool, tools = _tool_path(CONFIG.GO_TEST_TOOL, _GO_TOOL)
     build_rule(
         name='_%s#main' % name,
         srcs=srcs,
         outs=[name + '_main.go'],
         deps=deps,
         cmd={
-            'dbg': '$TOOLS -o $OUT $SRCS',
-            'opt': '$TOOLS -o $OUT $SRCS',
-            'cover': '$TOOLS -d . -o $OUT $SRCS ',
+            'dbg': '$TOOLS -cover',
+            'opt': '$TOOLS -cover',
+            'cover': '$TOOLS -cover -d .',
         },
         needs_transitive_deps=True,  # Need all .a files to template coverage variables
         requires=['go'],
         test_only=True,
-        tools=tools,
+        tools=[CONFIG.GO_TOOL, 'go'],
         post_build=_replace_test_package,
     )
     deps.append(lib_rule)
@@ -592,17 +591,14 @@ def _collect_rule_outs(name, output):
 
 def _go_library_cmds(complete=True, all_srcs=False):
     """Returns the commands to run for building a Go library."""
-    go_compile_tool = 'compile' if CONFIG.GO_VERSION >= "1.5" else '6g'
     # Invokes the Go compiler.
-    complete_flag = '-complete ' if complete else ''
-    compile_cmd = 'go tool %s -trimpath $TMP_DIR %s%s -pack -o $OUT ' % (go_compile_tool, complete_flag, _GOPATH)
-    # Annotates files for coverage
-    cover_cmd = 'for SRC in $SRCS; do mv -f $SRC _tmp.go; BN=$(basename $SRC); go tool cover -mode=set -var=GoCover_${BN//./_} _tmp.go > $SRC; done'
-    srcs = 'export SRCS="$PKG_DIR/*.go"; ' if all_srcs else ''
+    compile_cmd = '$TOOLS --' + (' -complete' if complete else '')
+    if all_srcs:
+        compile_cmd = 'export SRCS="$PKG_DIR/*.go"; ' + compile_cmd
     return {
-        'dbg': '%s%s -N -l $SRCS' % (srcs, compile_cmd),
-        'opt': '%s%s $SRCS' % (srcs, compile_cmd),
-        'cover': '%s%s && %s $SRCS' % (srcs, cover_cmd, compile_cmd),
+        'dbg': compile_cmd + ' -N -l',
+        'opt': compile_cmd,
+        'cover': compile_cmd + ' -cover',
     }
 
 
