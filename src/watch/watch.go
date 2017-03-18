@@ -15,6 +15,7 @@ import (
 	"github.com/streamrail/concurrent-map"
 	"gopkg.in/op/go-logging.v1"
 
+	"build"
 	"core"
 )
 
@@ -79,8 +80,13 @@ func runBuild(state *core.BuildState, command string, labels []core.BuildLabel) 
 	for _, label := range labels {
 		cmd.Args = append(cmd.Args, label.String())
 	}
+	m, fds := build.GetFDs()
+	for k, v := range m {
+		cmd.Args = append(cmd.Args, "--worker_fd", k+":"+v)
+	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.ExtraFiles = fds
 	log.Notice("Running %s %s...", binary, command)
 	if err := cmd.Run(); err != nil {
 		// Only log the error if it's not a straightforward non-zero exit; the user will presumably

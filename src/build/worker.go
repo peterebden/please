@@ -32,6 +32,7 @@ type workerServer struct {
 	responseMutex sync.Mutex
 	process       *exec.Cmd
 	closing       bool
+	owned         bool
 }
 
 // workerMap contains all the remote workers we've started so far.
@@ -113,6 +114,7 @@ func getOrStartWorker(worker string) (*workerServer, error) {
 		requests:  make(chan *pb.BuildRequest),
 		responses: map[string]chan *pb.BuildResponse{},
 		process:   cmd,
+		owned:     true,
 	}
 	go w.sendRequests(stdin)
 	go w.readResponses(stdout)
@@ -199,12 +201,14 @@ func (l *stderrLogger) Write(msg []byte) (int, error) {
 // StopWorkers stops any running worker processes.
 func StopWorkers() {
 	for name, worker := range workerMap {
-		log.Debug("Killing build worker %s", name)
-		worker.closing = true // suppress any error messages from worker
-		if l, ok := worker.process.Stderr.(*stderrLogger); ok {
-			l.suppress = true // Make sure we don't print anything as they die.
+		if worker.owned {
+			log.Debug("Killing build worker %s", name)
+			worker.closing = true // suppress any error messages from worker
+			if l, ok := worker.process.Stderr.(*stderrLogger); ok {
+				l.suppress = true // Make sure we don't print anything as they die.
+			}
+			worker.process.Process.Kill()
 		}
-		worker.process.Process.Kill()
 	}
 }
 
@@ -217,4 +221,40 @@ func handleSignals() {
 	log.Notice("Got signal %s", s)
 	StopWorkers()
 	os.Exit(1)
+}
+
+// GetFDs retrieves a set of file descriptors for all the currently open workers.
+// The exact format of the return value is a little opaque, it is expected to be serialised
+// somehow and passed back to SetFDs later.
+func GetFDs() (map[string]string, []*os.File) {
+	m := make(map[string]string, len(workerMap))
+	s := make([]*os.File, 0, 2*len(workerMap))
+	for k, v := range workerMap {
+		if !v.closing && v.process != nil {
+			stdin := v.process.Stdin.(*os.File)
+			stdout := v.process.Stdout.(*os.File)
+			m[k] = fmt.Sprintf("%d;%d", stdin.Fd(), stdout.Fd())
+			s = append(s, stdin, stdout)
+		}
+	}
+	return m, s
+}
+
+// SetFDs constructs a set of worker processes from a previously returned set of file descriptors.
+func SetFDs(m map[string]string) {
+	for k, v := range m {
+		w := &workerServer{
+			requests:  make(chan *pb.BuildRequest),
+			responses: map[string]chan *pb.BuildResponse{},
+			owned:     false,
+		}
+		var stdin, stdout uintptr
+		if _, err := fmt.Sscanf(v, "%d;%d", &stdin, &stdout); err != nil {
+			log.Fatalf("Bad argument to SetFDs: %s", v)
+		}
+		go w.sendRequests(os.NewFile(stdin, k+"_stdin"))
+		go w.readResponses(os.NewFile(stdout, k+"_stdout"))
+		workerMap[k] = w
+	}
+	log.Info("Inherited %d worker file descriptors", len(m))
 }

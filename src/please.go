@@ -70,9 +70,10 @@ var opts struct {
 		KeepWorkdirs       bool `long:"keep_workdirs" description:"Don't clean directories in plz-out/tmp after successfully building targets."`
 	} `group:"Options that enable / disable certain features"`
 
-	Profile          string `long:"profile" hidden:"true" description:"Write profiling output to this file"`
-	ParsePackageOnly bool   `description:"Parses a single package only. All that's necessary for some commands." no-flag:"true"`
-	NoCacheCleaner   bool   `description:"Don't start a cleaning process for the directory cache" no-flag:"true"`
+	Profile          string            `long:"profile" hidden:"true" description:"Write profiling output to this file"`
+	ParsePackageOnly bool              `description:"Parses a single package only. All that's necessary for some commands." no-flag:"true"`
+	NoCacheCleaner   bool              `description:"Don't start a cleaning process for the directory cache" no-flag:"true"`
+	WorkerFDs        map[string]string `long:"worker_fd" hidden:"true" description:"File descriptors for persistent workers"`
 
 	Build struct {
 		Prepare    bool     `long:"prepare" description:"Prepare build directory for these targets but don't build them."`
@@ -521,6 +522,7 @@ func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput,
 	state.ShowAllOutput = opts.OutputFlags.ShowAllOutput
 	state.SetIncludeAndExclude(opts.BuildFlags.Include, opts.BuildFlags.Exclude)
 	metrics.InitFromConfig(config)
+	build.SetFDs(opts.WorkerFDs)
 	// Acquire the lock before we start building
 	if (shouldBuild || shouldTest) && !opts.FeatureFlags.NoLock {
 		core.AcquireRepoLock()
