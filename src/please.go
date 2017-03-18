@@ -316,7 +316,7 @@ var buildFunctions = map[string]func() bool{
 		return false
 	},
 	"watch": func() bool {
-		success, state := runBuild(opts.Watch.Args.Targets, false, false)
+		success, state := runBuild(opts.Watch.Args.Targets, true, false)
 		if success {
 			watch.Watch(state, state.ExpandOriginalTargets())
 		}
