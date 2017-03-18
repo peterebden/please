@@ -10,10 +10,13 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"os/signal"
 	"path"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/google/shlex"
@@ -113,6 +116,12 @@ func getOrStartWorker(worker string) (*workerServer, error) {
 	}
 	go w.sendRequests(stdin)
 	go w.readResponses(stdout)
+	// If we're creating the first worker, register a cleanup handler for signals.
+	// When we exit cleanly we try to kill subprocesses ourselves, but we obviously
+	// might not and hence this is useful.
+	if len(workerMap) == 0 {
+		go handleSignals()
+	}
 	workerMap[worker] = w
 	return w, nil
 }
@@ -197,4 +206,15 @@ func StopWorkers() {
 		}
 		worker.process.Process.Kill()
 	}
+}
+
+// handleSignals traps various signals and on receiving one cleans up any worker processes.
+func handleSignals() {
+	log.Debug("registering to handle signals")
+	c := make(chan os.Signal, 10)
+	signal.Notify(c, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGABRT, syscall.SIGTERM)
+	s := <-c
+	log.Notice("Got signal %s", s)
+	StopWorkers()
+	os.Exit(1)
 }

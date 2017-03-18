@@ -549,7 +549,10 @@ func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput,
 	shouldRun := !opts.Run.Args.Target.IsEmpty()
 	success := output.MonitorState(state, config.Please.NumThreads, !prettyOutput, opts.BuildFlags.KeepGoing, shouldBuild, shouldTest, shouldRun, opts.Build.ShowStatus, opts.OutputFlags.TraceFile)
 	metrics.Stop()
-	build.StopWorkers()
+	// If we're watching targets, don't kill the workers, we will pass them to subprocesses.
+	if len(opts.Watch.Args.Targets) == 0 {
+		build.StopWorkers()
+	}
 	if c != nil {
 		c.Shutdown()
 	}
