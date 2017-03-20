@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/google/shlex"
@@ -252,9 +253,11 @@ func SetFDs(m map[string]string) {
 		if _, err := fmt.Sscanf(v, "%d;%d", &stdin, &stdout); err != nil {
 			log.Fatalf("Bad argument to SetFDs: %s", v)
 		}
+		log.Warning("Inherited fds %d and %d", stdin, stdout)
 		go w.sendRequests(os.NewFile(stdin, k+"_stdin"))
 		go w.readResponses(os.NewFile(stdout, k+"_stdout"))
 		workerMap[k] = w
 	}
-	log.Info("Inherited %d worker file descriptors", len(m))
+	log.Warning("Inherited %d worker file descriptors", len(m))
+	time.Sleep(200 * time.Minute)
 }
