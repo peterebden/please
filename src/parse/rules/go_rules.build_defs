@@ -54,7 +54,7 @@ def go_library(name, srcs, out=None, deps=None, visibility=None, test_only=False
     build_rule(
         name=name,
         srcs=srcs,
-        deps=deps + [':_%s#srcs' % name],
+        deps=_go_stdlib_dep(deps + [':_%s#srcs' % name]),
         outs=[out or name + '.a'],
         cmd=_go_library_cmds(complete=complete, all_srcs=_all_srcs),
         visibility=visibility,
@@ -464,7 +464,7 @@ def go_get(name, get=None, outs=None, deps=None, exported_deps=None, visibility=
         if not binary:
             post_build = _extra_outs(get)
     cmd = [
-        'export GOPATH=$TMP_DIR:$TMP_DIR/$PKG',
+        'export GOPATH=' + CONFIG.GOPATH,
         'rm -rf pkg src',
         'go get -d ' + get,
     ]
@@ -488,7 +488,7 @@ def go_get(name, get=None, outs=None, deps=None, exported_deps=None, visibility=
         name=name,
         srcs=[patch] if patch else [],
         outs=outs,
-        deps=deps,
+        deps=_go_stdlib_dep(deps),
         exported_deps=exported_deps,
         tools=_GO_TOOL,
         visibility=visibility,
@@ -512,6 +512,7 @@ def go_yacc(name, src, out=None, visibility=None, labels=None):
       visibility (list): Visibility specification.
       labels (list): Labels for this rule.
     """
+    log.warning('go_yacc is deprecated since the yacc tool is removed from go 1.8')
     build_rule(
         name = name,
         srcs = [src],
@@ -522,6 +523,38 @@ def go_yacc(name, src, out=None, visibility=None, labels=None):
         visibility = visibility,
         labels = labels,
         requires = ['go'],
+    )
+
+
+def go_standard_library(name, visibility=None, deps=None):
+    """Defines a rule that rebuilds the Go standard library for other architectures.
+
+    This is mostly needed for cross-compiling since Go only ships with a compiled
+    form of its stdlib for the host architecture.
+
+    Typically Please will define one of these rules for you. It is rare that a user
+    would need to invoke it themselves.
+
+    Args:
+      name (str): Name of the rule.
+      visibility (list): Visibility declaration.
+      deps (list): Dependencies.
+    """
+    cmd = ' '.join([
+        'eval `$TOOL env`;',
+        # Minor optimisation: don't do anything if we can use system stdlib.
+        'if [ "$GOOS" != "$GOHOSTOS" ] || [ "$GOARCH" != "$GOHOSTARCH" ]; then',
+        '$TOOL install --pkgdir $TMP_DIR/pkg/$ARCH `cd ${GOROOT}/src && $TOOL list ... | grep -v cmd/` && echo pkg/$ARCH;',
+        'fi',
+    ])
+    build_rule(
+        name = name,
+        cmd = cmd,
+        tools = _GO_TOOL,
+        building_description = 'Cross-compiling stdlib...',
+        visibility = visibility,
+        deps = deps,
+        post_build = _collect_rule_outs,
     )
 
 
@@ -596,7 +629,7 @@ def _collect_files(name, tag, dep, outs, extension):
 
 def _collect_rule_outs(name, output):
     for line in output:
-        if line != '_cgo_main.c':
+        if line and line != '_cgo_main.c':
             add_out(name, line)
 
 
@@ -643,3 +676,9 @@ def _collect_linker_flags(static):
         for k, v in cmds.items():
             set_command(name, k, v)
     return collect_linker_flags
+
+
+def _go_stdlib_dep(deps):
+    """Returns the given list of deps, annotated with the system-wide stdlib dep."""
+    deps = deps or []
+    return deps + ['//_system/go:stdlib']

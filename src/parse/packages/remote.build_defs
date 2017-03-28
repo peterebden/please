@@ -1,0 +1,5 @@
+"""This is the package that we generate remote subinclude() rules in.
+
+There aren't any actual rules here now, they are generated dynamically
+at runtime, but having this file here causes the package to be created.
+"""

@@ -41,9 +41,15 @@ import "C"
 
 var log = logging.MustGetLogger("parse")
 
-const subincludePackage = "_remote"
+// systemPackage is the package name that we generate system-provided rules under.
+// Typically most of those rules will be in a subpackage to this.
+const systemPackage = "_system"
 
-// Communicated back from PyPy to indicate that a parse has been deferred because
+// subincludePackage is the package name that we generate rules into for processing
+// remote subinclude() downloads, and downloading PyPy distributions and so forth.
+const subincludePackage = systemPackage + "/remote"
+
+// pyDeferParse is communicated back from PyPy to indicate that a parse has been deferred because
 // we need to wait for another target to build.
 const pyDeferParse = "_DEFER_"
 
@@ -143,13 +149,24 @@ func initializeInterpreter(config *core.Configuration) {
 
 	// Load all the builtin rules
 	log.Debug("Loading builtin build rules...")
-	dir, _ := AssetDir("")
-	sort.Strings(dir)
-	for _, filename := range dir {
+	for _, filename := range assetDir("rules") {
 		loadBuiltinRules(filename)
 	}
-	loadSubincludePackage()
+	log.Debug("Loading builtin packages...")
+	for _, filename := range assetDir("packages") {
+		loadBuiltinPackage(filename)
+	}
 	log.Debug("Interpreter ready")
+}
+
+// assetDir returns all the embedded assets in the given directory, in deterministic order.
+func assetDir(dirname string) []string {
+	dir, _ := AssetDir(dirname)
+	sort.Strings(dir)
+	for i, d := range dir {
+		dir[i] = path.Join(dirname, d)
+	}
+	return dir
 }
 
 // pythonBool returns the representation of a bool we're going to send to Python.
@@ -240,13 +257,19 @@ func loadAsset(path string) *C.char {
 	return C.CString(string(data))
 }
 
-func loadSubincludePackage() {
-	pkg := core.NewPackage(subincludePackage)
-	// Set up a builtin package for remote subincludes.
+// loadBuiltinPackage loads a built-in package. These are typically things like the package for
+// remote subinclude() downloads and singleton system rules.
+func loadBuiltinPackage(filename string) {
+	pkgName := path.Base(strings.TrimSuffix(filename, path.Ext(filename)))
+	pkg := core.NewPackage(path.Join(systemPackage, pkgName))
 	cPackageName := C.CString(pkg.Name)
-	C.ParseCode(nil, cPackageName, sizep(pkg))
+	data := loadAsset(filename)
+	defer C.free(unsafe.Pointer(data))
+	if msg := C.ParseCode(data, cPackageName, sizep(pkg)); msg != nil {
+		log.Fatalf("Error parsing builtin package %s: %s", filename, C.GoString(msg))
+	}
 	C.free(unsafe.Pointer(cPackageName))
-	core.State.Graph.AddPackage(pkg)
+	addTargetsToGraph(core.State, pkg)
 }
 
 // sizet converts a build target to a C.size_t.
@@ -286,6 +309,13 @@ func parsePackageFile(state *core.BuildState, filename string, pkg *core.Package
 	}
 	log.Debug("Parsed package file %s in %0.3f seconds", filename, time.Since(start).Seconds())
 	return ret == pyDeferParse
+}
+
+// parseSystemPackage is analogous to parsePackageFile but only for system packages.
+// We typically only end up in here if the user specifies a system target on the command line.
+func parseSystemPackage(state *core.BuildState, packageName string) *core.Package {
+	initializeOnce.Do(func() { initializeInterpreter(state.Config) })
+	return state.Graph.Package(packageName)
 }
 
 // IsValidTargetName returns true if the given name is valid in a package.

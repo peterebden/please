@@ -9,6 +9,7 @@ package parse
 import (
 	"fmt"
 	"path"
+	"strings"
 	"sync"
 
 	"core"
@@ -177,6 +178,10 @@ func getDependingTarget(packageName string) core.BuildLabel {
 // It's assumed that the caller used firstToParse to ascertain that they only call this once per package.
 func parsePackage(state *core.BuildState, label, dependor core.BuildLabel) *core.Package {
 	packageName := label.PackageName
+	if strings.HasPrefix(packageName, systemPackage) {
+		// System packages don't have associated BUILD files. It is annoying if we can't handle those targets though.
+		return parseSystemPackage(state, packageName)
+	}
 	pkg := core.NewPackage(packageName)
 	if pkg.Filename = buildFileName(state, packageName); pkg.Filename == "" {
 		exists := core.PathExists(packageName)
@@ -194,7 +199,12 @@ func parsePackage(state *core.BuildState, label, dependor core.BuildLabel) *core
 	if parsePackageFile(state, pkg.Filename, pkg) {
 		return nil // Indicates deferral
 	}
+	addTargetsToGraph(state, pkg)
+	return pkg
+}
 
+// addTargetsToGraph adds all the targets in a newly parsed package to the build graph.
+func addTargetsToGraph(state *core.BuildState, pkg *core.Package) {
 	for _, target := range pkg.Targets {
 		state.Graph.AddTarget(target)
 		for _, out := range target.DeclaredOutputs() {
@@ -213,7 +223,6 @@ func parsePackage(state *core.BuildState, label, dependor core.BuildLabel) *core
 		}
 	}
 	state.Graph.AddPackage(pkg) // Calling this means nobody else will add entries to pendingTargets for this package.
-	return pkg
 }
 
 func buildFileName(state *core.BuildState, pkgName string) string {

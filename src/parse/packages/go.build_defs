@@ -1,0 +1,10 @@
+"""Contains system-level singleton packages for Go rules.
+
+The main reason for this is cross-compiling the Go stdlib, which is not
+especially hard to do, but we need to do it once for all Go rules.
+"""
+
+go_standard_library(
+    name = 'stdlib',
+    visibility = ['PUBLIC'],
+)

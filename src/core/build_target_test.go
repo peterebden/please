@@ -179,6 +179,20 @@ func TestProvideFor(t *testing.T) {
 	assert.Equal(t, []BuildLabel{target2.Label}, target2.ProvideFor(target4))
 }
 
+func TestProvideForArch(t *testing.T) {
+	// When one target provides another one, it should always provide the matching arch.
+	// This is non-trivial because the provides declaration in the BUILD file doesn't include arch.
+	graph := NewGraph()
+	toArch := func(target *BuildTarget) *BuildTarget { return target.toArch(graph, "test_x86") }
+	target1 := toArch(makeTarget("//src/core:target1", "PUBLIC"))
+	target2 := makeTarget("//src/core:target2", "PUBLIC", target1)
+	target2.Provides = map[string]BuildLabel{"whatevs": NewBuildLabel("src/core", "target1")}
+	target2 = toArch(target2)
+	target3 := toArch(makeTarget("//src/core:target3", "PUBLIC", target2))
+	target3.Requires = append(target3.Requires, "whatevs")
+	assert.Equal(t, []BuildLabel{target1.Label}, target2.ProvideFor(target3))
+}
+
 func TestAddProvide(t *testing.T) {
 	target1 := makeTarget("//src/core:target1", "PUBLIC")
 	target2 := makeTarget("//src/core:target2", "PUBLIC", target1)

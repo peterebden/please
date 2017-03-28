@@ -39,7 +39,6 @@ var config *core.Configuration
 var opts struct {
 	BuildFlags struct {
 		Config     string            `short:"c" long:"config" description:"Build config to use. Defaults to opt."`
-		Arch       string            `short:"a" long:"arch" description:"Architecture to compile for. Defaults to the system Please is compiled for."`
 		RepoRoot   string            `short:"r" long:"repo_root" description:"Root of repository to build."`
 		KeepGoing  bool              `short:"k" long:"keep_going" description:"Don't stop on first failed target."`
 		NumThreads int               `short:"n" long:"num_threads" description:"Number of concurrent build operations. Default is number of CPUs + 2."`
@@ -76,12 +75,14 @@ var opts struct {
 
 	Build struct {
 		Prepare bool     `long:"prepare" description:"Prepare build directory for these targets but don't build them."`
+		Arch    string   `short:"a" long:"arch" description:"Architecture to compile for. Defaults to the system Please is compiled for."`
 		Args    struct { // Inner nesting is necessary to make positional-args work :(
 			Targets []core.BuildLabel `positional-arg-name:"targets" description:"Targets to build"`
 		} `positional-args:"true" required:"true"`
 	} `command:"build" description:"Builds one or more targets"`
 
 	Rebuild struct {
+		Arch string `short:"a" long:"arch" description:"Architecture to compile for. Defaults to the system Please is compiled for."`
 		Args struct {
 			Targets []core.BuildLabel `positional-arg-name:"targets" required:"true" description:"Targets to rebuild"`
 		} `positional-args:"true" required:"true"`
@@ -232,6 +233,14 @@ var opts struct {
 			} `positional-args:"true"`
 		} `command:"whatoutputs" description:"Prints out target(s) responsible for outputting provided file(s)"`
 	} `command:"query" description:"Queries information about the build graph"`
+}
+
+// arch returns any architecture the user set at the command line.
+func arch() string {
+	if opts.Rebuild.Arch != "" {
+		return opts.Rebuild.Arch
+	}
+	return opts.Build.Arch
 }
 
 // Definitions of what we do for each command.
@@ -495,7 +504,7 @@ func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput,
 		c = cache.NewCache(config)
 	}
 	state := core.NewBuildState(config.Please.NumThreads, c, opts.OutputFlags.Verbosity, config)
-	state.Arch = opts.BuildFlags.Arch
+	state.Arch = arch()
 	state.VerifyHashes = !opts.FeatureFlags.NoHashVerification
 	state.NumTestRuns = opts.Test.NumRuns + opts.Cover.NumRuns            // Only one of these can be passed.
 	state.TestArgs = append(opts.Test.Args.Args, opts.Cover.Args.Args...) // Similarly here.
@@ -565,11 +574,11 @@ func findOriginalTask(state *core.BuildState, target core.BuildLabel) {
 			state.AddOriginalTarget(core.BuildLabel{
 				PackageName: pkg,
 				Name:        "all",
-				Arch:        opts.BuildFlags.Arch,
+				Arch:        arch(),
 			})
 		}
 	} else {
-		target.Arch = opts.BuildFlags.Arch
+		target.Arch = arch()
 		state.AddOriginalTarget(target)
 	}
 }

@@ -59,7 +59,7 @@ def arg_checks(node):
 
 def process(filename):
     checks = dict(read_functions(filename))
-    with open(filename) as f, open(os.path.basename(filename), 'w') as f2:
+    with open(filename) as f, open(os.path.join("rules", os.path.basename(filename)), 'w') as f2:
         for i, line in enumerate(f):
             if i in checks:
                 f2.write('\n'.join(indent * ' ' + check for check in checks[i]) + '\n\n')

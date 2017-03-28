@@ -19,9 +19,6 @@ _please_builtins = imp.new_module('_please_builtins')
 _please_globals = _please_builtins.__dict__
 _keepalive_functions = set()
 _build_code_cache = {}
-_c_subinclude_package_name = None
-_subinclude_package_name = None
-_subinclude_package = None
 
 # List of everything we keep in the builtins module. This is a pretty agricultural way
 # of restricting what build files can do - no doubt there'd be clever ways of working
@@ -54,6 +51,12 @@ else:
 _DEFER_PARSE = '_DEFER_'
 _FFI_DEFER_PARSE = ffi_from_string(_DEFER_PARSE)
 
+# We have to know where the subinclude package is.
+# This must correspond to the other usages of this (in interpreter.go etc).
+_subinclude_package_name = '_system/remote'
+_c_subinclude_package_name = ffi_from_string(_subinclude_package_name)
+_subinclude_package = None
+
 
 @ffi.def_extern('ParseFile')
 def parse_file(c_filename, c_package_name, c_package):
@@ -71,20 +74,18 @@ def parse_file(c_filename, c_package_name, c_package):
 
 @ffi.def_extern('ParseCode')
 def parse_code(c_code, c_filename, c_package):
-    if c_package != 0:
-        global _subinclude_package, _subinclude_package_name, _c_subinclude_package_name
-        _subinclude_package_name = ffi_to_string(c_filename)
-        _c_subinclude_package_name = c_filename
-        _subinclude_package = c_package
-        return ffi.NULL
     try:
         filename = ffi_to_string(c_filename)
+        if filename == _subinclude_package_name:
+            # Save the actual subinclude package object for later.
+            global _subinclude_package
+            _subinclude_package = c_package
         code = ffi_to_string(c_code)
         # Note we don't go through _parse_build_code - there's no need to perform the ast
         # walk on code that we control internally. This conceptually means that we *could*
         # import in those files, but we will not do that because it would be sheer peasantry.
-        code = _compile(code, filename, 'exec')
-        exec(code, _please_globals)
+        compiled = _compile(code, filename, 'exec')
+        exec(compiled, _get_globals(c_package, c_filename) if c_package else _please_globals)
         return ffi.NULL
     except Exception as err:
         return ffi_from_string(str(err))

@@ -189,7 +189,6 @@ func (state *BuildState) IsOriginalTarget(label BuildLabel) bool {
 
 // isOriginalTarget implementsIsOriginalTarget, optionally allowing disabling matching :all labels.
 func (state *BuildState) isOriginalTarget(label BuildLabel, exact bool) bool {
-	label = label.noArch() // Command-line labels can't have architectures specified.
 	for _, original := range state.OriginalTargets {
 		if original == label || (!exact && original.IsAllTargets() && original.PackageName == label.PackageName) {
 			return true

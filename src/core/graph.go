@@ -232,6 +232,7 @@ func (graph *BuildGraph) cloneTargetForArch(target *BuildTarget, arch string) *B
 	if present {
 		return t
 	}
+	log.Debug("Cloning %s -> %s [%s]", target.Label, target.Label, arch)
 	graph.targets[archLabel] = target // Sentinel, so we don't recurse into here incorrectly.
 	t = target.toArch(graph, arch)
 	graph.targets[t.Label] = t
@@ -240,7 +241,22 @@ func (graph *BuildGraph) cloneTargetForArch(target *BuildTarget, arch string) *B
 	existingRevdeps := graph.revDeps[target.Label]
 	newRevdeps := make([]*BuildTarget, len(existingRevdeps))
 	for i, r := range existingRevdeps {
-		newRevdeps[i] = graph.cloneTargetForArch(r, arch)
+		if info := r.dependencyInfo(target.Label); info != nil && info.tool {
+			newRevdeps[i] = r // Tools still use the host configuration
+		} else {
+			newRevdeps[i] = graph.cloneTargetForArch(r, arch)
+			if info := newRevdeps[i].dependencyInfo(target.Label); info != nil && info.resolved {
+				for _, dep := range newRevdeps[i].dependencies {
+					for j, d := range dep.deps {
+						if d == target {
+							dep.deps[j] = t
+						}
+					}
+				}
+			} else {
+				graph.linkDependencies(newRevdeps[i], t)
+			}
+		}
 	}
 	graph.revDeps[t.Label] = newRevdeps
 
@@ -255,9 +271,13 @@ func (graph *BuildGraph) cloneTargetForArch(target *BuildTarget, arch string) *B
 			} else {
 				graph.addPendingRevDep(t.Label, dep.declared, nil)
 			}
+		} else if !dep.resolved {
+			graph.addPendingRevDep(t.Label, dep.declared.toArch(arch), nil)
 		} else {
 			for j, d := range dep.deps {
-				dep.deps[j] = graph.cloneTargetForArch(d, arch)
+				d2 := graph.cloneTargetForArch(d, arch)
+				dep.deps[j] = d2
+				graph.revDeps[d2.Label] = append(graph.revDeps[d2.Label], t)
 			}
 		}
 	}

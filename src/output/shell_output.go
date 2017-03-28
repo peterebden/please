@@ -273,7 +273,9 @@ func printTempDirs(state *core.BuildState, duration float64) {
 		target := state.Graph.TargetOrDie(label)
 		cmd := build.ReplaceSequences(target, target.GetCommand())
 		env := core.BuildEnvironment(state, target, false)
-		fmt.Printf("  %s: %s\n", label, target.TmpDir())
+		fmt.Printf("  %s:\n", label)
+		fmt.Printf("   Directory: %s\n", target.TmpDir())
+		fmt.Printf("   Environment:\n    %s\n", strings.Join(env, "\n    "))
 		fmt.Printf("    Command: %s\n", cmd)
 		fmt.Printf("   Expanded: %s\n", os.Expand(cmd, core.ReplaceEnvironment(env)))
 	}

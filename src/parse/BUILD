@@ -29,7 +29,7 @@ cgo_library(
 genrule(
     name = 'type_checked_rules',
     srcs = ['type_checking.py'] + glob(['rules/*.build_defs']),
-    outs = [basename(x) for x in glob(['rules/*.build_defs'])],
+    outs = [x for x in glob(['rules/*.build_defs'])],
     cmd = 'python $SRCS',
 )
 
@@ -43,7 +43,8 @@ genrule(
 
 go_bindata(
     name = 'builtin_rules',
-    srcs = [':type_checked_rules'],
+    srcs = [':type_checked_rules'] + glob(['packages/*.build_defs']),
+    input_dir = 'src/parse/rules src/parse/packages',
     prefix = '${PKG}',
 )
 

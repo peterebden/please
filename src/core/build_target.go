@@ -854,6 +854,12 @@ func (target *BuildTarget) toArch(graph *BuildGraph, arch string) *BuildTarget {
 	// here, otherwise we tend to end up recursing on ourselves unnecessarily.
 	t.dependencies = make([]depInfo, len(target.dependencies))
 	copy(t.dependencies, target.dependencies)
+	// Also deep-copy provides. The labels in provides do not include architecture, but implicitly imply it
+	// (you cannot provide a tool, so provisions are always of the same arch as the provider).
+	t.Provides = make(map[string]BuildLabel, len(target.Provides))
+	for k, v := range target.Provides {
+		t.Provides[k] = v.toArch(arch)
+	}
 	return &t
 }
 
