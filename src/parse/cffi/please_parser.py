@@ -91,6 +91,20 @@ def parse_code(c_code, c_filename, c_package):
         return ffi_from_string(str(err))
 
 
+@ffi.def_extern('RunCode')
+def run_code(c_code):
+    """Executes some arbitrary code in a normal Python context.
+
+    This isn't made available during parse time, it's for some internal functionality.
+    """
+    try:
+        code = _compile(ffi_to_string(c_code), '<data>', 'exec')
+        exec(code, globals())
+        return ffi.NULL
+    except Exception as err:
+        return ffi_from_string(str(err))
+
+
 def _parse_build_code(filename, globals_dict, cache=False):
     """Parses given file and interprets it. Optionally caches code for future reuse."""
     code = _build_code_cache.get(filename)
@@ -453,7 +467,14 @@ def _get_globals(c_package, c_package_name):
 @ffi.def_extern('RegisterCallback')
 def register_callback(name, c_type, callback):
     """Called at initialisation time to register a single callback."""
-    globals()[ffi_to_string(name)] = ffi.cast(ffi_to_string(c_type), callback)
+    f = ffi.cast(ffi_to_string(c_type), callback)
+    if is_py3:
+        # Wrap the function up to auto-encode to bytes (ffi requires this in py3)
+        # TODO(pebers): this is not exactly beautiful, can we find a better way of handling it?
+        globals()[ffi_to_string(name)] = lambda *args: f(
+            *[ffi_from_string(arg) if isinstance(arg, str) else arg for arg in args])
+    else:
+        globals()[ffi_to_string(name)] = f
     return 1  # used to detect success (must be nonzero)
 
 

@@ -7,56 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var a = []LineCoverage{NotExecutable, Uncovered, Uncovered, Covered, NotExecutable, Unreachable}
-var b = []LineCoverage{Uncovered, Covered, Uncovered, Uncovered, Unreachable, Covered}
-var c = []LineCoverage{Covered, NotExecutable, Covered, Uncovered, Covered, NotExecutable}
-var empty = []LineCoverage{}
-
-func TestMergeCoverageLines1(t *testing.T) {
-	coverage := MergeCoverageLines(a, b)
-	expected := []LineCoverage{Uncovered, Covered, Uncovered, Covered, Unreachable, Covered}
-	assert.Equal(t, expected, coverage)
-}
-
-func TestMergeCoverageLines2(t *testing.T) {
-	coverage := MergeCoverageLines(a, c)
-	expected := []LineCoverage{Covered, Uncovered, Covered, Covered, Covered, Unreachable}
-	assert.Equal(t, expected, coverage)
-}
-
-func TestMergeCoverageLines3(t *testing.T) {
-	coverage := MergeCoverageLines(b, c)
-	expected := []LineCoverage{Covered, Covered, Covered, Uncovered, Covered, Covered}
-	assert.Equal(t, expected, coverage)
-}
-
-func TestMergeCoverageLines4(t *testing.T) {
-	coverage := MergeCoverageLines(MergeCoverageLines(a, b), c)
-	expected := []LineCoverage{Covered, Covered, Covered, Covered, Covered, Covered}
-	assert.Equal(t, expected, coverage)
-}
-
-func TestMergeCoverageLines5(t *testing.T) {
-	coverage := MergeCoverageLines(MergeCoverageLines(c, a), b)
-	expected := []LineCoverage{Covered, Covered, Covered, Covered, Covered, Covered}
-	assert.Equal(t, expected, coverage)
-}
-
-func TestMergeCoverageLines6(t *testing.T) {
-	coverage := MergeCoverageLines(empty, b)
-	assert.Equal(t, b, coverage)
-}
-
-func TestMergeCoverageLines7(t *testing.T) {
-	coverage := MergeCoverageLines(a, empty)
-	assert.Equal(t, a, coverage)
-}
-
-func TestMergeCoverageLines8(t *testing.T) {
-	coverage := MergeCoverageLines(empty, empty)
-	assert.Equal(t, empty, coverage)
-}
-
 func TestExpandOriginalTargets(t *testing.T) {
 	state := NewBuildState(1, nil, 4, DefaultConfiguration())
 	state.OriginalTargets = []BuildLabel{{PackageName: "src/core", Name: "all"}, {PackageName: "src/parse", Name: "parse"}}
@@ -106,6 +56,19 @@ func TestExpandVisibleOriginalTargets(t *testing.T) {
 	addTarget(state, "//src/core:target1", "py")
 	addTarget(state, "//src/core:_target1#zip", "py")
 	assert.Equal(t, state.ExpandVisibleOriginalTargets(), BuildLabels{NewBuildLabel("src/core", "target1")})
+}
+
+func TestExpandOriginalSubTargets(t *testing.T) {
+	state := NewBuildState(1, nil, 4, DefaultConfiguration())
+	state.OriginalTargets = []BuildLabel{{PackageName: "src/core", Name: "..."}}
+	state.Include = []string{"go"}
+	state.Exclude = []string{"py"}
+	addTarget(state, "//src/core:target1", "go")
+	addTarget(state, "//src/core:target2", "py")
+	addTarget(state, "//src/core/tests:target3", "go")
+	// Only the one target comes out here; it must be a test and otherwise follows
+	// the same include / exclude logic as the previous test.
+	assert.Equal(t, state.ExpandOriginalTargets(), BuildLabels{{PackageName: "src/core", Name: "target1"}, {"src/core/tests", "target3"}})
 }
 
 func TestComparePendingTasks(t *testing.T) {

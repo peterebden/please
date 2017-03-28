@@ -60,9 +60,28 @@ const cffiUnavailable = 3
 // To ensure we only initialise once.
 var initializeOnce sync.Once
 
+// pythonParser is our implementation of core.Parser. It has no actual state because our parser is a global.
+type pythonParser struct{}
+
+// RunPreBuildFunction runs a pre-build function for a target.
+func (p *pythonParser) RunPreBuildFunction(threadId int, state *core.BuildState, target *core.BuildTarget) error {
+	return RunPreBuildFunction(threadId, state, target)
+}
+
+// RunPostBuildFunction runs a post-build function for a target.
+func (p *pythonParser) RunPostBuildFunction(threadId int, state *core.BuildState, target *core.BuildTarget, output string) error {
+	return RunPostBuildFunction(threadId, state, target, output)
+}
+
+// UndeferAnyParses undefers any pending parses that are waiting for this target to build.
+func (p *pythonParser) UndeferAnyParses(state *core.BuildState, target *core.BuildTarget) {
+	UndeferAnyParses(state, target)
+}
+
 // Code to initialise the Python interpreter.
-func initializeInterpreter(config *core.Configuration) {
+func initializeInterpreter(state *core.BuildState) {
 	log.Debug("Initialising interpreter...")
+	config := state.Config
 
 	// PyPy becomes very unhappy if Go schedules it to a different OS thread during
 	// its initialisation. Force it to stay on this one thread for now.
@@ -156,6 +175,7 @@ func initializeInterpreter(config *core.Configuration) {
 	for _, filename := range assetDir("packages") {
 		loadBuiltinPackage(filename)
 	}
+	state.Parser = &pythonParser{}
 	log.Debug("Interpreter ready")
 }
 
@@ -290,7 +310,7 @@ func unsizep(u uintptr) *core.Package { return (*core.Package)(unsafe.Pointer(u)
 func parsePackageFile(state *core.BuildState, filename string, pkg *core.Package) bool {
 	log.Debug("Parsing package file %s", filename)
 	start := time.Now()
-	initializeOnce.Do(func() { initializeInterpreter(state.Config) })
+	initializeOnce.Do(func() { initializeInterpreter(state) })
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	// TODO(pebers): It seems like we should be calling C.pypy_attach_thread here once per OS thread.
@@ -314,8 +334,20 @@ func parsePackageFile(state *core.BuildState, filename string, pkg *core.Package
 // parseSystemPackage is analogous to parsePackageFile but only for system packages.
 // We typically only end up in here if the user specifies a system target on the command line.
 func parseSystemPackage(state *core.BuildState, packageName string) *core.Package {
-	initializeOnce.Do(func() { initializeInterpreter(state.Config) })
+	initializeOnce.Do(func() { initializeInterpreter(state) })
 	return state.Graph.Package(packageName)
+}
+
+// RunCode will run some arbitrary Python code using our embedded interpreter.
+func RunCode(state *core.BuildState, code string) error {
+	initializeOnce.Do(func() { initializeInterpreter(state) })
+	cCode := C.CString(code)
+	defer C.free(unsafe.Pointer(cCode))
+	ret := C.GoString(C.RunCode(cCode))
+	if ret != "" {
+		return fmt.Errorf("%s", ret)
+	}
+	return nil
 }
 
 // IsValidTargetName returns true if the given name is valid in a package.
@@ -521,6 +553,12 @@ func parseSource(src, packageName string, systemAllowed bool) (core.BuildInput, 
 			if core.IsPackage(dir) {
 				return nil, fmt.Errorf("Package %s tries to use file %s, but that belongs to another package (%s).", packageName, src, dir)
 			}
+		}
+	}
+	// Make sure it's not the actual build file.
+	for _, filename := range core.State.Config.Please.BuildFileName {
+		if filename == src {
+			return nil, fmt.Errorf("You can't specify the BUILD file as an input to a rule")
 		}
 	}
 	return core.FileLabel{File: src, Package: packageName}, nil
@@ -800,6 +838,8 @@ func Glob(cPackage *C.char, cIncludes **C.char, numIncludes int, cExcludes **C.c
 	includes := cStringArrayToStringSlice(cIncludes, numIncludes, "")
 	prefixedExcludes := cStringArrayToStringSlice(cExcludes, numExcludes, packageName)
 	excludes := cStringArrayToStringSlice(cExcludes, numExcludes, "")
+	// To make sure we can't glob the BUILD file, it is always added to excludes.
+	excludes = append(excludes, core.State.Config.Please.BuildFileName...)
 	filenames := core.Glob(packageName, includes, prefixedExcludes, excludes, includeHidden)
 	return stringSliceToCStringArray(filenames)
 }

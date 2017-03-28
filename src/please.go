@@ -18,6 +18,7 @@ import (
 	"clean"
 	"cli"
 	"core"
+	"export"
 	"gc"
 	"help"
 	"metrics"
@@ -37,6 +38,7 @@ var log = logging.MustGetLogger("plz")
 var config *core.Configuration
 
 var opts struct {
+	Usage      string `usage:"Please is a high-performance multi-language build system.\n\nIt uses BUILD files to describe what to build and how to build it.\nSee https://please.build for more information about how it works and what Please can do for you."`
 	BuildFlags struct {
 		Config     string            `short:"c" long:"config" description:"Build config to use. Defaults to opt."`
 		RepoRoot   string            `short:"r" long:"repo_root" description:"Root of repository to build."`
@@ -74,9 +76,10 @@ var opts struct {
 	NoCacheCleaner   bool   `description:"Don't start a cleaning process for the directory cache" no-flag:"true"`
 
 	Build struct {
-		Prepare bool     `long:"prepare" description:"Prepare build directory for these targets but don't build them."`
-		Arch    string   `short:"a" long:"arch" description:"Architecture to compile for. Defaults to the system Please is compiled for."`
-		Args    struct { // Inner nesting is necessary to make positional-args work :(
+		Prepare    bool     `long:"prepare" description:"Prepare build directory for these targets but don't build them."`
+		Arch       string   `short:"a" long:"arch" description:"Architecture to compile for. Defaults to the system Please is compiled for."`
+		ShowStatus bool     `long:"show_status" hidden:"true" description:"Show status of each target in output after build"`
+		Args       struct { // Inner nesting is necessary to make positional-args work :(
 			Targets []core.BuildLabel `positional-arg-name:"targets" description:"Targets to build"`
 		} `positional-args:"true" required:"true"`
 	} `command:"build" description:"Builds one or more targets"`
@@ -159,7 +162,20 @@ var opts struct {
 		Conservative bool `short:"c" long:"conservative" description:"Runs a more conservative / safer GC."`
 		TargetsOnly  bool `short:"t" long:"targets_only" description:"Only print the targets to delete"`
 		SrcsOnly     bool `short:"s" long:"srcs_only" description:"Only print the source files to delete"`
+		NoPrompt     bool `short:"y" long:"no_prompt" description:"Remove targets without prompting"`
+		DryRun       bool `short:"n" long:"dry_run" description:"Don't remove any targets or files, just print what would be done"`
+		Git          bool `short:"g" long:"git" description:"Use 'git rm' to remove unused files instead of just 'rm'."`
+		Args         struct {
+			Targets []core.BuildLabel `positional-arg-name:"targets" description:"Targets to limit gc to."`
+		} `positional-args:"true"`
 	} `command:"gc" description:"Analyzes the repo to determine unneeded targets."`
+
+	Export struct {
+		Output string `short:"o" long:"output" required:"true" description:"Directory to export into"`
+		Args   struct {
+			Targets []core.BuildLabel `positional-arg-name:"targets" description:"Targets to export."`
+		} `positional-args:"true"`
+	} `command:"export" description:"Exports a set of targets and files from the repo."`
 
 	Help struct {
 		Args struct {
@@ -247,7 +263,7 @@ func arch() string {
 // Functions are called after args are parsed and return true for success.
 var buildFunctions = map[string]func() bool{
 	"build": func() bool {
-		success, _ := runBuild(opts.Build.Args.Targets, true, false, false)
+		success, _ := runBuild(opts.Build.Args.Targets, true, false)
 		return success
 	},
 	"rebuild": func() bool {
@@ -255,11 +271,11 @@ var buildFunctions = map[string]func() bool{
 		// you use 'plz rebuild', you don't want the cache coming in and mucking things up.
 		// 'plz clean' followed by 'plz build' would still work in those cases, anyway.
 		opts.FeatureFlags.NoCache = true
-		success, _ := runBuild(opts.Rebuild.Args.Targets, true, false, false)
+		success, _ := runBuild(opts.Rebuild.Args.Targets, true, false)
 		return success
 	},
 	"hash": func() bool {
-		success, state := runBuild(opts.Hash.Args.Targets, true, false, false)
+		success, state := runBuild(opts.Hash.Args.Targets, true, false)
 		if opts.Hash.Detailed {
 			for _, target := range state.ExpandOriginalTargets() {
 				build.PrintHashes(state, state.Graph.TargetOrDie(target))
@@ -270,7 +286,7 @@ var buildFunctions = map[string]func() bool{
 	"test": func() bool {
 		os.RemoveAll(opts.Test.TestResultsFile)
 		targets := testTargets(opts.Test.Args.Target, opts.Test.Args.Args)
-		success, state := runBuild(targets, true, true, false)
+		success, state := runBuild(targets, true, true)
 		test.WriteResultsToFileOrDie(state.Graph, opts.Test.TestResultsFile)
 		return success || opts.Test.FailingTestsOk
 	},
@@ -283,7 +299,7 @@ var buildFunctions = map[string]func() bool{
 		os.RemoveAll(opts.Cover.TestResultsFile)
 		os.RemoveAll(opts.Cover.CoverageResultsFile)
 		targets := testTargets(opts.Cover.Args.Target, opts.Cover.Args.Args)
-		success, state := runBuild(targets, true, true, false)
+		success, state := runBuild(targets, true, true)
 		test.WriteResultsToFileOrDie(state.Graph, opts.Cover.TestResultsFile)
 		test.AddOriginalTargetsToCoverage(state, opts.Cover.IncludeAllFiles)
 		test.RemoveFilesFromCoverage(state.Coverage, state.Config.Cover.ExcludeExtension)
@@ -296,7 +312,7 @@ var buildFunctions = map[string]func() bool{
 		return success || opts.Cover.FailingTestsOk
 	},
 	"run": func() bool {
-		if success, state := runBuild([]core.BuildLabel{opts.Run.Args.Target}, true, false, false); success {
+		if success, state := runBuild([]core.BuildLabel{opts.Run.Args.Target}, true, false); success {
 			run.Run(state.Graph, opts.Run.Args.Target, opts.Run.Args.Args)
 		}
 		return false // We should never return from run.Run so if we make it here something's wrong.
@@ -304,19 +320,21 @@ var buildFunctions = map[string]func() bool{
 	"clean": func() bool {
 		opts.NoCacheCleaner = true
 		if len(opts.Clean.Args.Targets) == 0 {
-			opts.OutputFlags.PlainOutput = true // No need for interactive display, we won't parse anything.
-		}
-		if success, state := runBuild(opts.Clean.Args.Targets, false, false, true); success {
-			if len(opts.Clean.Args.Targets) == 0 {
-				state.OriginalTargets = nil // It interprets an empty target list differently.
+			if len(opts.BuildFlags.Include) == 0 && len(opts.BuildFlags.Exclude) == 0 {
+				// Clean everything, doesn't require parsing at all.
+				clean.Clean(config, !opts.FeatureFlags.NoCache, !opts.Clean.NoBackground)
+				return true
 			}
-			clean.Clean(state, state.ExpandOriginalTargets(), !opts.FeatureFlags.NoCache, !opts.Clean.NoBackground)
+			opts.Clean.Args.Targets = core.WholeGraph
+		}
+		if success, state := runBuild(opts.Clean.Args.Targets, false, false); success {
+			clean.CleanTargets(state, state.ExpandOriginalTargets(), !opts.FeatureFlags.NoCache)
 			return true
 		}
 		return false
 	},
 	"watch": func() bool {
-		success, state := runBuild(opts.Watch.Args.Targets, false, false, false)
+		success, state := runBuild(opts.Watch.Args.Targets, false, false)
 		if success {
 			watch.Watch(state, state.ExpandOriginalTargets())
 		}
@@ -338,11 +356,18 @@ var buildFunctions = map[string]func() bool{
 		return false
 	},
 	"gc": func() bool {
-		success, state := runBuild(core.WholeGraph, false, false, false)
+		success, state := runBuild(core.WholeGraph, false, false)
 		if success {
 			state.OriginalTargets = state.Config.Gc.Keep
-			gc.GarbageCollect(state.Graph, state.ExpandOriginalTargets(), state.Config.Gc.KeepLabel,
-				opts.Gc.Conservative, opts.Gc.TargetsOnly, opts.Gc.SrcsOnly)
+			gc.GarbageCollect(state, opts.Gc.Args.Targets, state.ExpandOriginalTargets(), state.Config.Gc.KeepLabel,
+				opts.Gc.Conservative, opts.Gc.TargetsOnly, opts.Gc.SrcsOnly, opts.Gc.NoPrompt, opts.Gc.DryRun, opts.Gc.Git)
+		}
+		return success
+	},
+	"export": func() bool {
+		success, state := runBuild(opts.Export.Args.Targets, false, false)
+		if success {
+			export.ToDir(state, opts.Export.Output, state.ExpandOriginalTargets())
 		}
 		return success
 	},
@@ -455,7 +480,10 @@ func runQuery(needFullParse bool, labels []core.BuildLabel, onSuccess func(state
 		opts.ParsePackageOnly = true
 		opts.OutputFlags.PlainOutput = true // No point displaying this for one of these queries.
 	}
-	if success, state := runBuild(labels, false, false, true); success {
+	if len(labels) == 0 {
+		labels = core.WholeGraph
+	}
+	if success, state := runBuild(labels, false, false); success {
 		onSuccess(state)
 		return true
 	}
@@ -545,7 +573,7 @@ func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput,
 	}()
 	// Draw stuff to the screen while there are still results coming through.
 	shouldRun := !opts.Run.Args.Target.IsEmpty()
-	success := output.MonitorState(state, config.Please.NumThreads, !prettyOutput, opts.BuildFlags.KeepGoing, shouldBuild, shouldTest, shouldRun, opts.OutputFlags.TraceFile)
+	success := output.MonitorState(state, config.Please.NumThreads, !prettyOutput, opts.BuildFlags.KeepGoing, shouldBuild, shouldTest, shouldRun, opts.Build.ShowStatus, opts.OutputFlags.TraceFile)
 	metrics.Stop()
 	build.StopWorkers()
 	if c != nil {
@@ -621,13 +649,9 @@ func readConfig(forceUpdate bool) *core.Configuration {
 
 // Runs the actual build
 // Which phases get run are controlled by shouldBuild and shouldTest.
-func runBuild(targets []core.BuildLabel, shouldBuild, shouldTest, defaultToAllTargets bool) (bool, *core.BuildState) {
+func runBuild(targets []core.BuildLabel, shouldBuild, shouldTest bool) (bool, *core.BuildState) {
 	if len(targets) == 0 {
-		if defaultToAllTargets {
-			targets = core.WholeGraph
-		} else {
-			targets = core.InitialPackage()
-		}
+		targets = core.InitialPackage()
 	}
 	pretty := prettyOutput(opts.OutputFlags.InteractiveOutput, opts.OutputFlags.PlainOutput, opts.OutputFlags.Verbosity)
 	return Please(targets, config, pretty, shouldBuild, shouldTest)

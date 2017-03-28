@@ -1,10 +1,8 @@
 package core
 
 import (
-	"bytes"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -41,6 +39,19 @@ func (t pendingTask) Compare(that queue.Item) int {
 	return int((t.Type & priorityMask) - (that.(pendingTask).Type & priorityMask))
 }
 
+// A Parser allows performing several parsing tasks directly. This is not used for
+// normal BUILD file parsing, but rather pre/post build callbacks etc to decouple
+// the build package from calling straight into parse (since parse is cgo we attempt
+// to minimise any dependencies on it).
+type Parser interface {
+	// RunPreBuildFunction runs a pre-build function for a target.
+	RunPreBuildFunction(threadId int, state *BuildState, target *BuildTarget) error
+	// RunPostBuildFunction runs a post-build function for a target.
+	RunPostBuildFunction(threadId int, state *BuildState, target *BuildTarget, output string) error
+	// UndeferAnyParses undefers any pending parses that are waiting for this target to build.
+	UndeferAnyParses(state *BuildState, target *BuildTarget)
+}
+
 // Passed about to track the current state of the build.
 type BuildState struct {
 	Graph *BuildGraph
@@ -50,6 +61,8 @@ type BuildState struct {
 	Results chan *BuildResult
 	// Configuration options
 	Config *Configuration
+	// Parser implementation. Other things can call this to perform various external parse tasks.
+	Parser Parser
 	// Hashes of variouts bits of the configuration, used for incrementality.
 	Hashes struct {
 		// Hash of the general config, not including specialised bits.
@@ -203,7 +216,11 @@ func (state *BuildState) SetIncludeAndExclude(include, exclude []string) {
 	state.Include = include
 	for _, e := range exclude {
 		if LooksLikeABuildLabel(e) {
-			state.ExcludeTargets = append(state.ExcludeTargets, parseMaybeRelativeBuildLabel(e, ""))
+			if label, err := parseMaybeRelativeBuildLabel(e, ""); err != nil {
+				log.Fatalf("%s", err)
+			} else {
+				state.ExcludeTargets = append(state.ExcludeTargets, label)
+			}
 		} else {
 			state.Exclude = append(state.Exclude, e)
 		}
@@ -214,7 +231,7 @@ func (state *BuildState) SetIncludeAndExclude(include, exclude []string) {
 func (state *BuildState) AddOriginalTarget(label BuildLabel) {
 	// Check it's not excluded first.
 	for _, e := range state.ExcludeTargets {
-		if e.includes(label) {
+		if e.Includes(label) {
 			return
 		}
 	}
@@ -233,7 +250,7 @@ func (state *BuildState) LogBuildResult(tid int, label BuildLabel, status BuildR
 	}
 }
 
-func (state *BuildState) LogTestResult(tid int, label BuildLabel, status BuildResultStatus, results TestResults, coverage TestCoverage, err error, format string, args ...interface{}) {
+func (state *BuildState) LogTestResult(tid int, label BuildLabel, status BuildResultStatus, results *TestResults, coverage *TestCoverage, err error, format string, args ...interface{}) {
 	state.Results <- &BuildResult{
 		ThreadId:    tid,
 		Time:        time.Now(),
@@ -241,7 +258,7 @@ func (state *BuildState) LogTestResult(tid int, label BuildLabel, status BuildRe
 		Status:      status,
 		Err:         err,
 		Description: fmt.Sprintf(format, args...),
-		Tests:       results,
+		Tests:       *results,
 	}
 	state.mutex.Lock()
 	defer state.mutex.Unlock()
@@ -271,11 +288,20 @@ func (state *BuildState) NumDone() int {
 // from the set of original targets.
 func (state *BuildState) ExpandOriginalTargets() BuildLabels {
 	ret := BuildLabels{}
+	addPackage := func(pkg *Package) {
+		for _, target := range pkg.Targets {
+			if target.ShouldInclude(state.Include, state.Exclude) && (!state.NeedTests || target.IsTest) {
+				ret = append(ret, target.Label)
+			}
+		}
+	}
 	for _, label := range state.OriginalTargets {
 		if label.IsAllTargets() {
-			for _, target := range state.Graph.PackageOrDie(label.PackageName).Targets {
-				if target.ShouldInclude(state.Include, state.Exclude) && (!state.NeedTests || target.IsTest) {
-					ret = append(ret, target.Label)
+			addPackage(state.Graph.PackageOrDie(label.PackageName))
+		} else if label.IsAllSubpackages() {
+			for name, pkg := range state.Graph.PackageMap() {
+				if label.Includes(BuildLabel{PackageName: name}) {
+					addPackage(pkg)
 				}
 			}
 		} else {
@@ -375,88 +401,3 @@ func (s BuildResultStatus) Category() string {
 		return "Other"
 	}
 }
-
-// This is a pretty simple coverage format; we record one int for each line
-// stating what its coverage is.
-type TestCoverage struct {
-	Tests map[BuildLabel]map[string][]LineCoverage
-	Files map[string][]LineCoverage
-}
-
-// Aggregates results from that coverage object into this one.
-func (this *TestCoverage) Aggregate(that TestCoverage) {
-	if this.Tests == nil {
-		this.Tests = map[BuildLabel]map[string][]LineCoverage{}
-	}
-	if this.Files == nil {
-		this.Files = map[string][]LineCoverage{}
-	}
-
-	// Assume that tests are independent (will currently always be the case).
-	for label, coverage := range that.Tests {
-		this.Tests[label] = coverage
-	}
-	// Files are more complex since multiple tests can cover the same file.
-	// We take the best result for each line from each test.
-	for filename, coverage := range that.Files {
-		this.Files[filename] = MergeCoverageLines(this.Files[filename], coverage)
-	}
-}
-
-func MergeCoverageLines(existing, coverage []LineCoverage) []LineCoverage {
-	ret := make([]LineCoverage, len(existing))
-	copy(ret, existing)
-	for i, line := range coverage {
-		if i >= len(ret) {
-			ret = append(ret, line)
-		} else if coverage[i] > ret[i] {
-			ret[i] = coverage[i]
-		}
-	}
-	return ret
-}
-
-// Returns an ordered slice of all the files we have coverage information for.
-func (this TestCoverage) OrderedFiles() []string {
-	files := []string{}
-	for file := range this.Files {
-		if strings.HasPrefix(file, RepoRoot) {
-			file = strings.TrimLeft(file[len(RepoRoot):], "/")
-		}
-		files = append(files, file)
-	}
-	sort.Strings(files)
-	return files
-}
-
-func NewTestCoverage() TestCoverage {
-	return TestCoverage{
-		Tests: map[BuildLabel]map[string][]LineCoverage{},
-		Files: map[string][]LineCoverage{},
-	}
-}
-
-// Produce a string representation of coverage for serialising to file so we don't
-// expose the internal enum values (ordering is important so we may want to insert
-// new ones later. This format happens to be the same as the one Phabricator uses,
-// which is mildly useful to us since we want to integrate with it anyway. See
-// https://secure.phabricator.com/book/phabricator/article/arcanist_coverage/
-// for more detail of how it works.
-func TestCoverageString(lines []LineCoverage) string {
-	var buffer bytes.Buffer
-	for _, line := range lines {
-		buffer.WriteRune(lineCoverageOutput[line])
-	}
-	return buffer.String()
-}
-
-type LineCoverage uint8
-
-const (
-	NotExecutable LineCoverage = iota // Line isn't executable (eg. comment, blank)
-	Unreachable   LineCoverage = iota // Line is executable but we've determined it can't be reached. So far not used.
-	Uncovered     LineCoverage = iota // Line is executable but isn't covered.
-	Covered       LineCoverage = iota // Line is executable and covered.
-)
-
-var lineCoverageOutput = [...]rune{'N', 'X', 'U', 'C'} // Corresponds to ordering of enum.

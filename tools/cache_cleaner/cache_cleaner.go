@@ -12,10 +12,10 @@ import (
 	"sort"
 	"time"
 
+	"github.com/djherbis/atime"
 	"github.com/dustin/go-humanize"
 	"gopkg.in/op/go-logging.v1"
 
-	"cache/tools"
 	"cli"
 )
 
@@ -72,7 +72,7 @@ func start(directory string, highWaterMark, lowWaterMark int64) {
 			if size, err := findSize(path); err != nil {
 				return err
 			} else {
-				entries = append(entries, CacheEntry{path, size, tools.AccessTime(info)})
+				entries = append(entries, CacheEntry{path, size, atime.Get(info).Unix()})
 				totalSize += size
 				return filepath.SkipDir
 			}
@@ -107,11 +107,21 @@ func start(directory string, highWaterMark, lowWaterMark int64) {
 	}
 }
 
-var opts struct {
+var opts = struct {
+	Usage         string
 	Verbosity     int          `short:"v" long:"verbosity" description:"Verbosity of output (higher number = more output, default 2 -> notice, warnings and errors only)" default:"2"`
 	LowWaterMark  cli.ByteSize `short:"l" long:"low_water_mark" description:"Size of cache to clean down to" default:"8G"`
 	HighWaterMark cli.ByteSize `short:"i" long:"high_water_mark" description:"Max size of cache to clean at" default:"10G"`
 	Directory     string       `short:"d" long:"dir" required:"true" description:"Location of cache directory"`
+}{
+	Usage: `
+cache_cleaner is a tool for Please to clean its directory cache.
+
+Managing the directory cache is a bit tricky since we do not have a persistent daemon process monitoring it.
+This is spun off when Please begins to scan the cache and cut it down to size.
+
+Typically you don't run this manually, it's done for you when Please runs.
+`,
 }
 
 func main() {

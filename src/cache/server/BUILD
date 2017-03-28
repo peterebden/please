@@ -8,8 +8,8 @@ go_library(
     deps = [
         '//src/cache/cluster',
         '//src/cache/proto:rpc_cache',
-        '//src/cache/tools',
         '//src/core',
+        '//third_party/go:atime',
         '//third_party/go:concurrent-map',
         '//third_party/go:grpc',
         '//third_party/go:humanize',
@@ -22,7 +22,7 @@ go_library(
 
 go_binary(
     name = 'http_cache_server_bin',
-    main = 'http_server_main.go',
+    srcs = ['http_server_main.go'],
     deps = [
         ':server',
         '//src/cli',
@@ -33,7 +33,7 @@ go_binary(
 
 go_binary(
     name = 'rpc_cache_server_bin',
-    main = 'rpc_server_main.go',
+    srcs = ['rpc_server_main.go'],
     deps = [
         ':server',
         '//src/cache/cluster',
