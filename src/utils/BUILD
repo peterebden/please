@@ -34,3 +34,21 @@ go_test(
         '//third_party/go:testify',
     ],
 )
+
+go_test(
+    name = 'hash_rewriter_test',
+    srcs = ['hash_rewriter_test.go'],
+    data = [
+        'test_data',
+        '//src/parse/cffi:all_engines',
+    ],
+    labels = [
+        'python2',
+        'python3',
+        'pypy',
+    ],
+    deps = [
+        ':utils',
+        '//third_party/go:testify',
+    ],
+)
