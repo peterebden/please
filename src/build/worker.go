@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path"
 	"strings"
@@ -29,6 +30,8 @@ type workerServer struct {
 	responseMutex sync.Mutex
 	process       *exec.Cmd
 	closing       bool
+	stdinFd       uintptr
+	stdoutFd      uintptr
 }
 
 // workerMap contains all the remote workers we've started so far.
@@ -111,6 +114,8 @@ func getOrStartWorker(worker string) (*workerServer, error) {
 		requests:  make(chan *pb.BuildRequest),
 		responses: map[string]chan *pb.BuildResponse{},
 		process:   cmd,
+		stdinFd:   stdin.(*os.File).Fd(),
+		stdoutFd:  stdout.(*os.File).Fd(),
 	}
 	go w.sendRequests(stdin)
 	go w.readResponses(stdout)
@@ -191,6 +196,10 @@ func (l *stderrLogger) Write(msg []byte) (int, error) {
 // StopWorkers stops any running worker processes.
 func StopWorkers() {
 	for name, worker := range workerMap {
+		if worker.process == nil {
+			log.Debug("Build worker is not owned by us, will not kill.")
+			continue
+		}
 		log.Debug("Killing build worker %s", name)
 		worker.closing = true // suppress any error messages from worker
 		if l, ok := worker.process.Stderr.(*stderrLogger); ok {
@@ -198,4 +207,35 @@ func StopWorkers() {
 		}
 		worker.process.Process.Kill()
 	}
+}
+
+// GetWorkerFds returns a set of file descriptors corresponding to the worker processes.
+// These can be passed to child processes in order to avoid having to start new ones.
+func GetWorkerFds() map[string]string {
+	ret := make(map[string]string, len(workerMap))
+	for k, v := range workerMap {
+		ret[fmt.Sprintf("%d,%d", v.stdinFd, v.stdoutFd)] = k
+	}
+	return ret
+}
+
+// SetWorkerFds creates a set of workers from a set of serialised file descriptors.
+// These are typically passed in from the command line from a previous call to GetWorkerFds
+// in the parent process.
+func SetWorkerFds(m map[string]string) error {
+	workerMutex.Lock()
+	defer workerMutex.Unlock()
+	for k, v := range m {
+		w := &workerServer{
+			requests:  make(chan *pb.BuildRequest),
+			responses: map[string]chan *pb.BuildResponse{},
+		}
+		if _, err := fmt.Sscanf(k, "%d,%d", &w.stdinFd, &w.stdoutFd); err != nil {
+			return err
+		}
+		workerMap[v] = w
+		go w.sendRequests(os.NewFile(w.stdinFd, "|0"))
+		go w.readResponses(os.NewFile(w.stdoutFd, "|1"))
+	}
+	return nil
 }
