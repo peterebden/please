@@ -3,6 +3,7 @@ go_library(
     srcs = glob(['*.go'], excludes = [
         '*_stub.go',
         '*_test.go',
+        'test_worker.go',
     ]),
     deps = [
         '//src/build/proto:worker',
@@ -52,6 +53,27 @@ go_test(
         ':build',
         '//src/core',
         '//src/output',
+        '//third_party/go:testify',
+    ],
+)
+
+go_binary(
+    name = 'test_worker',
+    srcs = ['test_worker.go'],
+    deps = [
+        '//src/build/proto:worker',
+        '//third_party/go:protobuf',
+    ],
+)
+
+go_test(
+    name = 'worker_test',
+    srcs = ['worker_test.go'],
+    data = [':test_worker'],
+    deps = [
+        ':build',
+        '//src/core',
+        '//third_party/go:osext',
         '//third_party/go:testify',
     ],
 )

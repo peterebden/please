@@ -15,6 +15,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/google/shlex"
@@ -30,8 +31,10 @@ type workerServer struct {
 	responseMutex sync.Mutex
 	process       *exec.Cmd
 	closing       bool
+	stdinPipe     io.WriteCloser
 	stdinFd       uintptr
 	stdoutFd      uintptr
+	killTimer     *time.Timer
 }
 
 // workerMap contains all the remote workers we've started so far.
@@ -45,6 +48,12 @@ func buildMaybeRemotely(state *core.BuildState, target *core.BuildTarget, inputH
 	if worker == "" {
 		return runBuildCommand(state, target, localCmd, inputHash)
 	}
+	return buildRemotely(state, worker, workerArgs, localCmd, target, inputHash)
+}
+
+// buildRemotely sends a target to a remote worker to build.
+// This is split from above mostly just for ease of testing.
+func buildRemotely(state *core.BuildState, worker, workerArgs, localCmd string, target *core.BuildTarget, inputHash []byte) ([]byte, error) {
 	// The scheme here is pretty minimal; remote workers currently have quite a bit less info than
 	// local ones get. Over time we'll probably evolve it to add more information.
 	opts, err := shlex.Split(workerArgs)
@@ -52,7 +61,7 @@ func buildMaybeRemotely(state *core.BuildState, target *core.BuildTarget, inputH
 		return nil, err
 	}
 	log.Debug("Sending remote build request to %s; opts %s", worker, workerArgs)
-	resp, err := buildRemotely(worker, &pb.BuildRequest{
+	resp, err := buildRequest(worker, &pb.BuildRequest{
 		Rule:    target.Label.String(),
 		Labels:  target.Labels,
 		TempDir: path.Join(core.RepoRoot, target.TmpDir()),
@@ -74,8 +83,8 @@ func buildMaybeRemotely(state *core.BuildState, target *core.BuildTarget, inputH
 	return []byte(out), nil
 }
 
-// buildRemotely runs a single build request and returns its response.
-func buildRemotely(worker string, req *pb.BuildRequest) (*pb.BuildResponse, error) {
+// buildRequest runs a single build request and returns its response.
+func buildRequest(worker string, req *pb.BuildRequest) (*pb.BuildResponse, error) {
 	w, err := getOrStartWorker(worker)
 	if err != nil {
 		return nil, err
@@ -114,8 +123,9 @@ func getOrStartWorker(worker string) (*workerServer, error) {
 		requests:  make(chan *pb.BuildRequest),
 		responses: map[string]chan *pb.BuildResponse{},
 		process:   cmd,
-		stdinFd:   stdin.(*os.File).Fd(),
-		stdoutFd:  stdout.(*os.File).Fd(),
+		stdinPipe: stdin,
+		//		stdinFd:   stdin.(*os.File).Fd(),
+		//		stdoutFd:  stdout.(*os.File).Fd(),
 	}
 	go w.sendRequests(stdin)
 	go w.readResponses(stdout)
@@ -205,7 +215,21 @@ func StopWorkers() {
 		if l, ok := worker.process.Stderr.(*stderrLogger); ok {
 			l.suppress = true // Make sure we don't print anything as they die.
 		}
-		worker.process.Process.Kill()
+		// This should signal the process to exit relatively gracefully.
+		worker.stdinPipe.Close()
+		// It gets a max of one more second to die.
+		w := worker
+		worker.killTimer = time.AfterFunc(1*time.Second, func() {
+			if err := w.process.Process.Kill(); err != nil {
+				log.Warning("Failed to kill worker process %s: %s", name, err)
+			}
+		})
+	}
+	for name, worker := range workerMap {
+		if err := worker.process.Wait(); err == nil {
+			delete(workerMap, name)
+		}
+		worker.killTimer.Stop()
 	}
 }
 
