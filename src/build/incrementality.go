@@ -431,7 +431,7 @@ func writeRuleHashFile(state *core.BuildState, target *core.BuildTarget) error {
 
 // Returns the filename we'll store the hashes for this file in.
 func ruleHashFileName(target *core.BuildTarget) string {
-	return path.Join(target.OutDir(), ".rule_hash_"+target.Label.Name)
+	return path.Join(target.InternalDir(), "rule_hash_"+target.Label.Name)
 }
 
 func postBuildOutputFileName(target *core.BuildTarget) string {

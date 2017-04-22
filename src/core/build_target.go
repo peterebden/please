@@ -13,10 +13,20 @@ import (
 )
 
 // OutDir is the output directory for everything.
-const OutDir string = "plz-out"
-const TmpDir string = "plz-out/tmp"
-const GenDir string = "plz-out/gen"
-const BinDir string = "plz-out/bin"
+const OutDir = "plz-out"
+
+// TmpDir is the temporary directory that we build things and run tests in.
+const TmpDir = OutDir + "/tmp"
+
+// GenDir is the output directory for non-binary targets.
+const GenDir = OutDir + "/gen"
+
+// BinDir is the output directory for binary targets.
+const BinDir = OutDir + "/bin"
+
+// InternalDir is the output directory that we store internal bookkeeping files in,
+// such as rule hashes and so forth.
+const InternalDir = OutDir + "/.internal"
 
 // Default when this isn't otherwise specified.
 const DefaultBuildingDescription = "Building..."
@@ -214,7 +224,7 @@ func NewBuildTarget(label BuildLabel) *BuildTarget {
 	return target
 }
 
-// TmpDir returns the temporary working directory for this target, eg.
+// TmpDir returns the temporary working directory for this target, e.g.
 // //mickey/donald:goofy -> plz-out/tmp/mickey/donald/goofy._build
 // Note the extra subdirectory to keep rules separate from one another, and the .build suffix
 // to attempt to keep rules from duplicating the names of sub-packages; obviously that is not
@@ -223,7 +233,7 @@ func (target *BuildTarget) TmpDir() string {
 	return path.Join(TmpDir, target.Label.PackageName, target.Label.Name+buildDirSuffix)
 }
 
-// Returns the output directory for this target, eg.
+// OutDir returns the output directory for this target, e.g.
 // //mickey/donald:goofy -> plz-out/gen/mickey/donald (or plz-out/bin if it's a binary)
 func (target *BuildTarget) OutDir() string {
 	if target.IsBinary {
@@ -233,12 +243,18 @@ func (target *BuildTarget) OutDir() string {
 	}
 }
 
-// Returns the test directory for this target, eg.
+// TestDir returns the test directory for this target, e.g.
 // //mickey/donald:goofy -> plz-out/tmp/mickey/donald/goofy._test
 // This is different to TmpDir so we run tests in a clean environment
 // and to facilitate containerising tests.
 func (target *BuildTarget) TestDir() string {
 	return path.Join(TmpDir, target.Label.PackageName, target.Label.Name+testDirSuffix)
+}
+
+// InternalDir returns the internal output directory for this target, e.g.
+// //mickey/donald:goofy -> plz-out/.internal/mickey/donald
+func (target *BuildTarget) InternalDir() string {
+	return path.Join(InternalDir, target.Label.PackageName)
 }
 
 // AllSourcePaths returns all the source paths for this target
