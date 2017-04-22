@@ -34,18 +34,18 @@ func (cache *httpCache) Store(target *core.BuildTarget, key []byte, files ...str
 					if err != nil {
 						return err
 					} else if !info.IsDir() {
-						cache.StoreExtra(target, key, name)
+						cache.StoreExtra(target, key, target.OutDir(), name)
 					}
 					return nil
 				})
 			} else {
-				cache.StoreExtra(target, key, out)
+				cache.StoreExtra(target, key, target.OutDir(), out)
 			}
 		}
 	}
 }
 
-func (cache *httpCache) StoreExtra(target *core.BuildTarget, key []byte, file string) {
+func (cache *httpCache) StoreExtra(target *core.BuildTarget, key []byte, dir, file string) {
 	if cache.Writeable {
 		artifact := path.Join(
 			cache.OSName,
@@ -57,7 +57,7 @@ func (cache *httpCache) StoreExtra(target *core.BuildTarget, key []byte, file st
 		log.Info("Storing %s: %s in http cache...", target.Label, artifact)
 
 		// NB. Don't need to close this file, http.Post will do it for us.
-		file, err := os.Open(path.Join(target.OutDir(), file))
+		file, err := os.Open(path.Join(dir, file))
 		if err != nil {
 			log.Warning("Failed to read artifact: %s", err)
 			return
@@ -78,7 +78,7 @@ func (cache *httpCache) Retrieve(target *core.BuildTarget, key []byte) bool {
 	// case but a test already exists in the plz test suite so...
 	retrieved := false
 	for out := range cacheArtifacts(target) {
-		if !cache.RetrieveExtra(target, key, out) {
+		if !cache.RetrieveExtra(target, key, target.OutDir(), out) {
 			return false
 		}
 		retrieved = true
@@ -86,7 +86,7 @@ func (cache *httpCache) Retrieve(target *core.BuildTarget, key []byte) bool {
 	return retrieved
 }
 
-func (cache *httpCache) RetrieveExtra(target *core.BuildTarget, key []byte, file string) bool {
+func (cache *httpCache) RetrieveExtra(target *core.BuildTarget, key []byte, dir, file string) bool {
 	log.Debug("Retrieving %s:%s from http cache...", target.Label, file)
 
 	artifact := path.Join(
@@ -122,15 +122,14 @@ func (cache *httpCache) RetrieveExtra(target *core.BuildTarget, key []byte, file
 			} else if err != nil {
 				log.Warning("Error reading multipart response: %s", err)
 				return false
-			} else if !cache.writeFile(target, part.FileName(), part) {
+			} else if !cache.writeFile(target, path.Join(dir, part.FileName()), part) {
 				return false
 			}
 		}
 	}
 }
 
-func (cache *httpCache) writeFile(target *core.BuildTarget, file string, r io.Reader) bool {
-	outFile := path.Join(target.OutDir(), file)
+func (cache *httpCache) writeFile(target *core.BuildTarget, outFile string, r io.Reader) bool {
 	if err := os.MkdirAll(path.Dir(outFile), core.DirPermissions); err != nil {
 		log.Errorf("Failed to create directory: %s", err)
 		return false

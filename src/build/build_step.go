@@ -167,7 +167,7 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		// what we would retrieve from the cache.
 		if target.PostBuildFunction != 0 {
 			log.Debug("Checking for post-build output file for %s in cache...", target.Label)
-			if state.Cache.RetrieveExtra(target, cacheKey, target.PostBuildOutputFileName()) {
+			if state.Cache.RetrieveExtra(target, cacheKey, target.InternalDir(), target.PostBuildOutputFileName()) {
 				if postBuildOutput, err = runPostBuildFunctionIfNeeded(tid, state, target); err != nil {
 					panic(err)
 				}
@@ -225,17 +225,12 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 	}
 	if state.Cache != nil {
 		state.LogBuildResult(tid, target.Label, core.TargetBuilding, "Storing...")
-		newCacheKey := mustShortTargetHash(state, target)
 		if target.PostBuildFunction != 0 {
-			if !bytes.Equal(newCacheKey, cacheKey) {
-				// NB. Important this is stored with the earlier hash - if we calculate the hash
-				//     now, it might be different, and we could of course never retrieve it again.
-				state.Cache.StoreExtra(target, cacheKey, target.PostBuildOutputFileName())
-			} else {
-				extraOuts = append(extraOuts, target.PostBuildOutputFileName())
-			}
+			// NB. Important this is stored with the earlier hash - if we calculate the hash
+			//     now, it might be different, and we could of course never retrieve it again.
+			state.Cache.StoreExtra(target, cacheKey, target.InternalDir(), target.PostBuildOutputFileName())
 		}
-		state.Cache.Store(target, newCacheKey, extraOuts...)
+		state.Cache.Store(target, mustShortTargetHash(state, target), extraOuts...)
 	}
 	// Clean up the temporary directory once it's done.
 	if state.CleanWorkdirs {
@@ -273,6 +268,9 @@ func prepareDirectories(target *core.BuildTarget) error {
 		return err
 	}
 	if err := prepareDirectory(target.OutDir(), false); err != nil {
+		return err
+	}
+	if err := prepareDirectory(target.InternalDir(), false); err != nil {
 		return err
 	}
 	// Nicety for the build rules: create any directories that it's
@@ -531,6 +529,9 @@ func checkLicences(state *core.BuildState, target *core.BuildTarget) {
 // and it's actually quite fiddly to get just so there.
 func buildFilegroup(tid int, state *core.BuildState, target *core.BuildTarget) error {
 	if err := prepareDirectory(target.OutDir(), false); err != nil {
+		return err
+	}
+	if err := prepareDirectory(target.InternalDir(), false); err != nil {
 		return err
 	}
 	if err := os.RemoveAll(ruleHashFileName(target)); err != nil {

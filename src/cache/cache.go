@@ -81,12 +81,12 @@ func (mplex cacheMultiplexer) storeUntil(target *core.BuildTarget, key []byte, f
 	wg.Wait()
 }
 
-func (mplex cacheMultiplexer) StoreExtra(target *core.BuildTarget, key []byte, file string) {
-	mplex.storeExtraUntil(target, key, file, len(mplex.caches))
+func (mplex cacheMultiplexer) StoreExtra(target *core.BuildTarget, key []byte, dir, file string) {
+	mplex.storeExtraUntil(target, key, dir, file, len(mplex.caches))
 }
 
 // storeExtraUntil is similar to storeUntil but stores a single file.
-func (mplex cacheMultiplexer) storeExtraUntil(target *core.BuildTarget, key []byte, file string, stopAt int) {
+func (mplex cacheMultiplexer) storeExtraUntil(target *core.BuildTarget, key []byte, dir, file string, stopAt int) {
 	// Attempt to store on all caches simultaneously.
 	var wg sync.WaitGroup
 	for i, cache := range mplex.caches {
@@ -95,7 +95,7 @@ func (mplex cacheMultiplexer) storeExtraUntil(target *core.BuildTarget, key []by
 		}
 		wg.Add(1)
 		go func(cache core.Cache) {
-			cache.StoreExtra(target, key, file)
+			cache.StoreExtra(target, key, dir, file)
 			wg.Done()
 		}(cache)
 	}
@@ -115,13 +115,13 @@ func (mplex cacheMultiplexer) Retrieve(target *core.BuildTarget, key []byte) boo
 	return false
 }
 
-func (mplex cacheMultiplexer) RetrieveExtra(target *core.BuildTarget, key []byte, file string) bool {
+func (mplex cacheMultiplexer) RetrieveExtra(target *core.BuildTarget, key []byte, dir, file string) bool {
 	// Retrieve from caches sequentially; if we did them simultaneously we could
 	// easily write the same file from two goroutines at once.
 	for i, cache := range mplex.caches {
-		if cache.RetrieveExtra(target, key, file) {
+		if cache.RetrieveExtra(target, key, dir, file) {
 			// Store this into other caches
-			mplex.storeExtraUntil(target, key, file, i)
+			mplex.storeExtraUntil(target, key, dir, file, i)
 			return true
 		}
 	}

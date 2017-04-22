@@ -58,8 +58,9 @@ func (cache *rpcCache) Store(target *core.BuildTarget, key []byte, files ...stri
 		log.Debug("Storing %s in RPC cache...", target.Label)
 		artifacts := []*pb.Artifact{}
 		totalSize := 0
+		outDir := target.OutDir()
 		for out := range cacheArtifacts(target, files...) {
-			artifacts2, size, err := cache.loadArtifacts(target, out)
+			artifacts2, size, err := cache.loadArtifacts(target, outDir, out)
 			if err != nil {
 				log.Warning("RPC cache failed to load artifact %s: %s", out, err)
 				cache.error()
@@ -76,10 +77,10 @@ func (cache *rpcCache) Store(target *core.BuildTarget, key []byte, files ...stri
 	}
 }
 
-func (cache *rpcCache) StoreExtra(target *core.BuildTarget, key []byte, file string) {
+func (cache *rpcCache) StoreExtra(target *core.BuildTarget, key []byte, dir, file string) {
 	if cache.isConnected() && cache.Writeable {
 		log.Debug("Storing %s : %s in RPC cache...", target.Label, file)
-		artifacts, totalSize, err := cache.loadArtifacts(target, file)
+		artifacts, totalSize, err := cache.loadArtifacts(target, dir, file)
 		if err != nil {
 			log.Warning("RPC cache failed to load artifact %s: %s", file, err)
 			cache.error()
@@ -93,9 +94,8 @@ func (cache *rpcCache) StoreExtra(target *core.BuildTarget, key []byte, file str
 	}
 }
 
-func (cache *rpcCache) loadArtifacts(target *core.BuildTarget, file string) ([]*pb.Artifact, int, error) {
+func (cache *rpcCache) loadArtifacts(target *core.BuildTarget, outDir, file string) ([]*pb.Artifact, int, error) {
 	artifacts := []*pb.Artifact{}
-	outDir := target.OutDir()
 	root := path.Join(outDir, file)
 	totalSize := 1000 // Allow a little space for encoding overhead.
 	err := filepath.Walk(root, func(name string, info os.FileInfo, err error) error {
@@ -148,20 +148,20 @@ func (cache *rpcCache) Retrieve(target *core.BuildTarget, key []byte) bool {
 	if len(req.Artifacts) == 0 {
 		return false
 	}
-	return cache.retrieveArtifacts(target, &req, true)
+	return cache.retrieveArtifacts(target, target.OutDir(), &req, true)
 }
 
-func (cache *rpcCache) RetrieveExtra(target *core.BuildTarget, key []byte, file string) bool {
+func (cache *rpcCache) RetrieveExtra(target *core.BuildTarget, key []byte, dir, file string) bool {
 	if !cache.isConnected() {
 		return false
 	}
 	artifact := pb.Artifact{Package: target.Label.PackageName, Target: target.Label.Name, File: file}
 	artifacts := []*pb.Artifact{&artifact}
 	req := pb.RetrieveRequest{Hash: key, Os: runtime.GOOS, Arch: runtime.GOARCH, Artifacts: artifacts}
-	return cache.retrieveArtifacts(target, &req, false)
+	return cache.retrieveArtifacts(target, dir, &req, false)
 }
 
-func (cache *rpcCache) retrieveArtifacts(target *core.BuildTarget, req *pb.RetrieveRequest, remove bool) bool {
+func (cache *rpcCache) retrieveArtifacts(target *core.BuildTarget, dir string, req *pb.RetrieveRequest, remove bool) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), cache.timeout)
 	defer cancel()
 	success, artifacts := cache.runRpc(req.Hash, func(cache *rpcCache) (bool, []*pb.Artifact) {
@@ -194,7 +194,7 @@ func (cache *rpcCache) retrieveArtifacts(target *core.BuildTarget, req *pb.Retri
 		}
 	}
 	for _, artifact := range artifacts {
-		if !cache.writeFile(target, artifact.File, artifact.Body) {
+		if !cache.writeFile(target, path.Join(dir, artifact.File), artifact.Body) {
 			return false
 		}
 	}
@@ -202,8 +202,7 @@ func (cache *rpcCache) retrieveArtifacts(target *core.BuildTarget, req *pb.Retri
 	return len(artifacts) > 0
 }
 
-func (cache *rpcCache) writeFile(target *core.BuildTarget, file string, body []byte) bool {
-	out := path.Join(target.OutDir(), file)
+func (cache *rpcCache) writeFile(target *core.BuildTarget, out string, body []byte) bool {
 	if err := os.MkdirAll(path.Dir(out), core.DirPermissions); err != nil {
 		log.Warning("Failed to create directory for artifacts: %s", err)
 		return false
@@ -212,7 +211,7 @@ func (cache *rpcCache) writeFile(target *core.BuildTarget, file string, body []b
 		log.Warning("RPC cache failed to write file %s", err)
 		return false
 	}
-	log.Debug("Retrieved %s - %s from RPC cache", target.Label, file)
+	log.Debug("Retrieved %s - %s from RPC cache", target.Label, out)
 	return true
 }
 

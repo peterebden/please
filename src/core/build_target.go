@@ -804,7 +804,7 @@ func (target *BuildTarget) OutMode() os.FileMode {
 
 // PostBuildOutputFileName returns the post-build output file for this target.
 func (target *BuildTarget) PostBuildOutputFileName() string {
-	return ".build_output_" + target.Label.Name
+	return "build_output_" + target.Label.Name
 }
 
 // Parent finds the parent of a build target, or nil if the target is parentless.

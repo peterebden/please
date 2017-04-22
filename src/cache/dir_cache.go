@@ -27,19 +27,20 @@ func (cache *dirCache) Store(target *core.BuildTarget, key []byte, files ...stri
 		log.Warning("Failed to create cache directory %s: %s", tmpDir, err)
 		return
 	}
+	outDir := target.OutDir()
 	for out := range cacheArtifacts(target, files...) {
-		cache.storeFile(target, out, tmpDir)
+		cache.storeFile(target, outDir, out, tmpDir)
 	}
 	if err := os.Rename(tmpDir, cacheDir); err != nil {
 		log.Warning("Failed to create cache directory %s: %s", cacheDir, err)
 	}
 }
 
-func (cache *dirCache) StoreExtra(target *core.BuildTarget, key []byte, out string) {
-	cache.storeFile(target, out, cache.getPath(target, key))
+func (cache *dirCache) StoreExtra(target *core.BuildTarget, key []byte, dir, out string) {
+	cache.storeFile(target, dir, out, cache.getPath(target, key))
 }
 
-func (cache *dirCache) storeFile(target *core.BuildTarget, out, cacheDir string) {
+func (cache *dirCache) storeFile(target *core.BuildTarget, targetDir, out, cacheDir string) {
 	log.Debug("Storing %s: %s in dir cache...", target.Label, out)
 	if dir := path.Dir(out); dir != "." {
 		if err := os.MkdirAll(path.Join(cacheDir, dir), core.DirPermissions); err != nil {
@@ -47,7 +48,7 @@ func (cache *dirCache) storeFile(target *core.BuildTarget, out, cacheDir string)
 			return
 		}
 	}
-	outFile := path.Join(core.RepoRoot, target.OutDir(), out)
+	outFile := path.Join(core.RepoRoot, targetDir, out)
 	cachedFile := path.Join(cacheDir, out)
 	// Remove anything existing
 	if err := os.RemoveAll(cachedFile); err != nil {
@@ -67,16 +68,17 @@ func (cache *dirCache) Retrieve(target *core.BuildTarget, key []byte) bool {
 		log.Debug("%s: %s doesn't exist in dir cache", target.Label, cacheDir)
 		return false
 	}
+	outDir := target.OutDir()
 	for out := range cacheArtifacts(target) {
-		if !cache.RetrieveExtra(target, key, out) {
+		if !cache.RetrieveExtra(target, key, outDir, out) {
 			return false
 		}
 	}
 	return true
 }
 
-func (cache *dirCache) RetrieveExtra(target *core.BuildTarget, key []byte, out string) bool {
-	outDir := path.Join(core.RepoRoot, target.OutDir())
+func (cache *dirCache) RetrieveExtra(target *core.BuildTarget, key []byte, dir, out string) bool {
+	outDir := path.Join(core.RepoRoot, dir)
 	cacheDir := cache.getPath(target, key)
 	cachedOut := path.Join(cacheDir, out)
 	realOut := path.Join(outDir, out)

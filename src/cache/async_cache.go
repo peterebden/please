@@ -23,6 +23,7 @@ type cacheRequest struct {
 	key    []byte
 	files  []string
 	file   string
+	dir    string
 }
 
 func newAsyncCache(realCache core.Cache, config *core.Configuration) core.Cache {
@@ -45,10 +46,11 @@ func (c *asyncCache) Store(target *core.BuildTarget, key []byte, files ...string
 	}
 }
 
-func (c *asyncCache) StoreExtra(target *core.BuildTarget, key []byte, file string) {
+func (c *asyncCache) StoreExtra(target *core.BuildTarget, key []byte, dir, file string) {
 	c.requests <- cacheRequest{
 		target: target,
 		key:    key,
+		dir:    dir,
 		file:   file,
 	}
 }
@@ -57,8 +59,8 @@ func (c *asyncCache) Retrieve(target *core.BuildTarget, key []byte) bool {
 	return c.realCache.Retrieve(target, key)
 }
 
-func (c *asyncCache) RetrieveExtra(target *core.BuildTarget, key []byte, file string) bool {
-	return c.realCache.RetrieveExtra(target, key, file)
+func (c *asyncCache) RetrieveExtra(target *core.BuildTarget, key []byte, dir, file string) bool {
+	return c.realCache.RetrieveExtra(target, key, dir, file)
 }
 
 func (c *asyncCache) Clean(target *core.BuildTarget) {
@@ -75,7 +77,7 @@ func (c *asyncCache) Shutdown() {
 func (c *asyncCache) run() {
 	for r := range c.requests {
 		if r.file != "" {
-			c.realCache.StoreExtra(r.target, r.key, r.file)
+			c.realCache.StoreExtra(r.target, r.key, r.dir, r.file)
 		} else {
 			c.realCache.Store(r.target, r.key, r.files...)
 		}

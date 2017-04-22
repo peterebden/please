@@ -9,13 +9,13 @@ type Cache interface {
 	Store(target *BuildTarget, key []byte, files ...string)
 	// Stores an extra file against a build target.
 	// The file name is relative to the target's out directory.
-	StoreExtra(target *BuildTarget, key []byte, file string)
+	StoreExtra(target *BuildTarget, key []byte, dir, file string)
 	// Retrieves the results of a single build target.
 	// If successful, the outputs will be placed into the output file tree.
 	Retrieve(target *BuildTarget, key []byte) bool
 	// Retrieves an extra file previously stored by StoreExtra.
 	// If successful, the file will be placed into the output file tree.
-	RetrieveExtra(target *BuildTarget, key []byte, file string) bool
+	RetrieveExtra(target *BuildTarget, key []byte, dir, file string) bool
 	// Cleans any artifacts associated with this target from the cache, for any possible key.
 	Clean(target *BuildTarget)
 	// Shuts down the cache, blocking until any potentially pending requests are done.

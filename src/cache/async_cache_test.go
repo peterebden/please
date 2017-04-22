@@ -23,7 +23,7 @@ func TestStore(t *testing.T) {
 func TestStoreExtra(t *testing.T) {
 	mCache, aCache := makeCaches()
 	target := makeTarget("//pkg1:test_store_extra")
-	aCache.StoreExtra(target, nil, "some_other_file")
+	aCache.StoreExtra(target, nil, target.OutDir(), "some_other_file")
 	aCache.Shutdown()
 	assert.False(t, mCache.inFlight[target])
 	assert.True(t, mCache.completed[target])
@@ -41,7 +41,7 @@ func TestRetrieve(t *testing.T) {
 func TestRetrieveExtra(t *testing.T) {
 	mCache, aCache := makeCaches()
 	target := makeTarget("//pkg1:test_retrieve_extra")
-	aCache.RetrieveExtra(target, nil, "some_other_file")
+	aCache.RetrieveExtra(target, nil, target.OutDir(), "some_other_file")
 	aCache.Shutdown()
 	assert.False(t, mCache.inFlight[target])
 	assert.True(t, mCache.completed[target])
@@ -109,8 +109,8 @@ func (c *mockCache) Store(target *core.BuildTarget, key []byte, files ...string)
 	c.Unlock()
 }
 
-func (c *mockCache) StoreExtra(target *core.BuildTarget, key []byte, file string) {
-	c.Store(target, key, file)
+func (c *mockCache) StoreExtra(target *core.BuildTarget, key []byte, dir, file string) {
+	c.Store(target, key, dir, file)
 }
 
 func (c *mockCache) Retrieve(target *core.BuildTarget, key []byte) bool {
@@ -120,7 +120,7 @@ func (c *mockCache) Retrieve(target *core.BuildTarget, key []byte) bool {
 	return false
 }
 
-func (c *mockCache) RetrieveExtra(target *core.BuildTarget, key []byte, file string) bool {
+func (c *mockCache) RetrieveExtra(target *core.BuildTarget, key []byte, dir, file string) bool {
 	return c.Retrieve(target, key)
 }
 
