@@ -5,14 +5,13 @@ go_library(
         'write_test_main.go',
     ],
     deps = [
-        '//src/output',
         '//third_party/go:logging',
     ],
 )
 
 go_binary(
     name = 'please_go_test',
-    main = 'plz_go_test.go',
+    srcs = ['plz_go_test.go'],
     deps = [
         ':buildgo',
         '//src/cli',

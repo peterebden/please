@@ -151,41 +151,33 @@ const (
 	Failed                             // Target failed for some reason
 )
 
-type TestResults struct {
-	NumTests         int // Total number of test cases in the test target.
-	Passed           int // Number of tests that passed outright.
-	Failed           int // Number of tests that failed.
-	ExpectedFailures int // Number of tests that were expected to fail (counts as a pass, but displayed differently)
-	Skipped          int // Number of tests skipped (also count as passes)
-	Flakes           int // Number of failed attempts to run the test
-	Failures         []TestFailure
-	Passes           []string
-	Output           string  // Stdout / stderr from the test.
-	Cached           bool    // True if the test results were retrieved from cache
-	TimedOut         bool    // True if the test failed because we timed it out.
-	Duration         float64 // Length of time this test took, in seconds.
-}
-
-type TestFailure struct {
-	Name      string // Name of failed test
-	Type      string // Type of failure, eg. type of exception raised
-	Traceback string // Traceback
-	Stdout    string // Standard output during test
-	Stderr    string // Standard error during test
-}
-
-// Aggregates the given results into this one.
-func (this *TestResults) Aggregate(that TestResults) {
-	this.NumTests += that.NumTests
-	this.Passed += that.Passed
-	this.Failed += that.Failed
-	this.ExpectedFailures += that.ExpectedFailures
-	this.Skipped += that.Skipped
-	this.Flakes += that.Flakes
-	this.Failures = append(this.Failures, that.Failures...)
-	this.Passes = append(this.Passes, that.Passes...)
-	this.Duration += that.Duration
-	// Output can't really be aggregated sensibly.
+// String implements the fmt.Stringer interface.
+// TODO(pebers): Convert this to use go generate / stringer.
+func (s BuildTargetState) String() string {
+	if s == Inactive {
+		return "Inactive"
+	} else if s == Semiactive {
+		return "Semiactive"
+	} else if s == Active {
+		return "Active"
+	} else if s == Pending {
+		return "Pending"
+	} else if s == Building {
+		return "Building"
+	} else if s == Stopped {
+		return "Stopped"
+	} else if s == Built {
+		return "Built"
+	} else if s == Cached {
+		return "Cached"
+	} else if s == Unchanged {
+		return "Unchanged"
+	} else if s == Reused {
+		return "Reused"
+	} else if s == Failed {
+		return "Failed"
+	}
+	return "Unknown"
 }
 
 // Inputs to a build can be either a file in the local package or another build rule.
@@ -417,7 +409,7 @@ func (target *BuildTarget) allDependenciesResolved() bool {
 
 // isExperimental returns true if the given target is in the "experimental" tree
 func isExperimental(target *BuildTarget) bool {
-	return State.experimentalLabel.PackageName != "" && State.experimentalLabel.includes(target.Label)
+	return State.experimentalLabel.PackageName != "" && State.experimentalLabel.Includes(target.Label)
 }
 
 // CanSee returns true if target can see the given dependency, or false if not.
@@ -431,7 +423,7 @@ func (target *BuildTarget) CanSee(dep *BuildTarget) bool {
 		return false
 	}
 	for _, vis := range dep.Visibility {
-		if vis.includes(target.Label.Parent()) {
+		if vis.Includes(target.Label.Parent()) {
 			return true
 		}
 	}

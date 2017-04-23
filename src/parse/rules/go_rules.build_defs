@@ -25,7 +25,7 @@ def go_library(name, srcs, out=None, deps=None, visibility=None, test_only=False
       test_only (bool): If True, is only visible to test rules.
       go_tools (list): A list of targets to pre-process your src files with go generate.
       complete (bool): Indicates whether the library is complete or not (ie. buildable with
-                       'go tool build -complete'). In nearly all cases this is True (the main
+                       `go tool build -complete`). In nearly all cases this is True (the main
                        exception being for cgo).
     """
     deps = deps or []
@@ -258,17 +258,20 @@ def go_binary(name, main=None, srcs=None, deps=None, visibility=None, test_only=
 
     Args:
       name (str): Name of the rule.
-      main (str): Go source file containing the main function.
+      main (str): Deprecated, prefer srcs instead.
+                  Go source file containing the main function.
       srcs (list): Go source files, one of which contains the main function.
       deps (list): Dependencies
       visibility (list): Visibility specification
       test_only (bool): If True, is only visible to test rules.
       static (bool): If True, passes flags to the linker to try to force fully static linking.
-                     (specifically -linkmode external -extldflags static).
+                     (specifically `-linkmode external -extldflags static`).
                      Typically this increases size & link time a little but in return the binary
                      has absolutely no external dependencies.
                      Not yet tested against cgo.
     """
+    if main:
+        log.warning('"main" on go_binary is deprecated, prefer "srcs" instead.')
     go_library(
         name='_%s#lib' % name,
         srcs=srcs or [main or name + '.go'],
@@ -295,7 +298,7 @@ def go_binary(name, main=None, srcs=None, deps=None, visibility=None, test_only=
 
 
 def go_test(name, srcs, data=None, deps=None, visibility=None, flags='', container=False, cgo=False,
-            timeout=0, flaky=0, test_outputs=None, labels=None, size=None, mocks=None):
+            timeout=0, flaky=0, test_outputs=None, labels=None, size=None):
     """Defines a Go test rule.
 
     Args:
@@ -312,9 +315,6 @@ def go_test(name, srcs, data=None, deps=None, visibility=None, flags='', contain
       test_outputs (list): Extra test output files to generate from this test.
       labels (list): Labels for this rule.
       size (str): Test size (enormous, large, medium or small).
-      mocks (dict): Dictionary of packages to mock, e.g. {"os": "//mocks:mock_os"}
-                    They are replaced at link time, so it's only possible to mock complete packages.
-                    Each build rule should be a go_library (or something equivalent).
     """
     deps = deps or []
     timeout, labels = _test_size_and_timeout(size, timeout, labels)
@@ -365,14 +365,6 @@ def go_test(name, srcs, data=None, deps=None, visibility=None, flags='', contain
         test_only=True,
     )
     cmds, tools = _go_binary_cmds()
-    if mocks:
-        cmds = cmds.copy()
-        mocks = sorted(mocks.items())
-        deps.extend(v for _, v in mocks)
-        dirs = 'mkdir -p ' + ' '.join('$(dirname %s)' % k for k, _ in mocks)
-        mvs = ' && '.join('mv $(location %s) %s.a' % (v, k) for k, v in mocks)
-        for k, v in cmds.items():
-            cmds[k] = ' && '.join([dirs, mvs, v])
     build_rule(
         name=name,
         srcs=[':_%s#main_lib' % name],

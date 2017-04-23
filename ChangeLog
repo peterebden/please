@@ -1,3 +1,71 @@
+Version 7.8.1
+    * Fixate tarball timestamps #188
+
+Version 7.8.0
+-------------
+
+    * Added `plz export` command which exports a subset of the repo and its dependencies
+      to an arbitrary directory.
+    * Updating has a progress bar
+    * Fixed some subtle linking issues in the compiled artifacts.
+
+
+Version 7.7.1
+-------------
+
+    * Fixed flags argument to python_test rules.
+
+
+Version 7.7.0
+-------------
+
+    * Versions in .plzconfig can now be specified as >=. Other patterns aren't (yet?) supported.
+    * plz clean honours --include / --exclude
+    * plz gc now rewrites / removes files and can be filtered to a list of targets
+    * python3 parser engine now (mostly) works
+    * Help message output improved
+    * Fixed plz query revdeps when given a subpackage path (//src/... etc)
+
+
+Version 7.6.4
+-------------
+
+    * Excluding errors from Python coverage reports; fixes failures when dynamically
+      loading modules inside tests which coverage can't find the source for.
+
+
+Version 7.6.3
+-------------
+
+    * Logging a periodic message during long-running tasks so it's possible to see
+      what's still going (often the slowest test started a while back and you don't see
+      any further messages logged while waiting).
+
+
+Version 7.6.2
+-------------
+
+    * Minor bugfixes
+
+
+Version 7.6.1
+-------------
+
+    * Fix to Istanbul coverage parsing to support instrumenting the source in a different
+      target to the test target.
+
+
+Version 7.6.0
+-------------
+
+    * Allow Unicode characters in target names.
+    * Fixed some issues with plz cover when using Go 1.8
+    * Fixed plz clean so it does not parse the repo unnecessarily.
+    * Add current package directory to GOPATH, fixes #184.
+    * Correctly exclude BUILD files from glob()
+    * Fixed glob() for paths containing some atoms like ++
+
+
 Version 7.5.0
 -------------
 

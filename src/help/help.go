@@ -6,27 +6,19 @@ package help
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"regexp"
 	"sort"
 	"strings"
 
 	"gopkg.in/op/go-logging.v1"
 
+	"cli"
 	"utils"
 )
 
 var log = logging.MustGetLogger("help")
 
-const defaultHelpMessage = `
-Please is a high-performance language-agnostic build system.
-
-Try plz help <topic> for help on a specific topic;
-plz --help if you want information on flags / options / commands that it accepts;
-plz help topics if you want to see the list of possible topics to get help on
-or try a few commands like plz build or plz test if your repo is already set up
-and you'd like to see it in action.
-
-Or see the website (https://please.build) for more information.
-`
 const topicsHelpMessage = `
 The following help topics are available:
 
@@ -37,16 +29,18 @@ var allHelpFiles = []string{"rule_defs.json", "config.json", "misc.json"}
 // maxSuggestionDistance is the maximum Levenshtein edit distance we'll suggest help topics at.
 const maxSuggestionDistance = 5
 
+var backtickRegex = regexp.MustCompile("\\`[^\\`\n]+\\`")
+
 // Help prints help on a particular topic.
 // It returns true if the topic is known or false if it isn't.
 func Help(topic string) bool {
 	if message := help(topic); message != "" {
-		fmt.Println(message)
+		printMessage(message)
 		return true
 	}
 	fmt.Printf("Sorry OP, can't halp you with %s\n", topic)
 	if message := suggest(topic); message != "" {
-		fmt.Println(message)
+		printMessage(message)
 		fmt.Printf("Or have a look on the website: https://please.build\n")
 	} else {
 		fmt.Printf("\nMaybe have a look on the website? https://please.build\n")
@@ -65,9 +59,7 @@ func HelpTopics(prefix string) {
 
 func help(topic string) string {
 	topic = strings.ToLower(topic)
-	if topic == "" {
-		return defaultHelpMessage
-	} else if topic == "topics" {
+	if topic == "topics" {
 		return fmt.Sprintf(topicsHelpMessage, strings.Join(allTopics(), "\n"))
 	}
 	for _, filename := range allHelpFiles {
@@ -83,6 +75,9 @@ func findHelpFromFile(topic, filename string) (string, bool) {
 	message, found := topics[topic]
 	if !found {
 		return "", false
+	}
+	if preamble == "" {
+		return message, true
 	}
 	return fmt.Sprintf(preamble+"\n\n", topic) + message, true
 }
@@ -119,4 +114,14 @@ func allTopics() []string {
 type helpFile struct {
 	Preamble string            `json:"preamble"`
 	Topics   map[string]string `json:"topics"`
+}
+
+// printMessage prints a message, with some string replacements for ANSI codes.
+func printMessage(msg string) {
+	if cli.StdErrIsATerminal && cli.StdOutIsATerminal {
+		msg = backtickRegex.ReplaceAllStringFunc(msg, func(s string) string {
+			return "${BOLD_CYAN}" + strings.Replace(s, "`", "", -1) + "${RESET}"
+		})
+	}
+	cli.Fprintf(os.Stdout, msg)
 }
