@@ -68,7 +68,7 @@ func TestExpandOriginalSubTargets(t *testing.T) {
 	addTarget(state, "//src/core/tests:target3", "go")
 	// Only the one target comes out here; it must be a test and otherwise follows
 	// the same include / exclude logic as the previous test.
-	assert.Equal(t, state.ExpandOriginalTargets(), BuildLabels{{PackageName: "src/core", Name: "target1"}, {"src/core/tests", "target3"}})
+	assert.Equal(t, state.ExpandOriginalTargets(), BuildLabels{{PackageName: "src/core", Name: "target1", Arch: ""}, {"src/core/tests", "target3", ""}})
 }
 
 func TestComparePendingTasks(t *testing.T) {

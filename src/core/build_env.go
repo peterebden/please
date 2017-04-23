@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/base64"
+	"fmt"
 	"os"
 	"path"
 	"regexp"
@@ -18,32 +19,40 @@ func ExpandHomePath(path string) string {
 	})
 }
 
+// GeneralBuildEnvironment creates the shell env vars used for a command, not based
+// on any specific target etc.
+func GeneralBuildEnvironment(config *Configuration) []string {
+	env := []string{
+		// Need this for certain tools, for example sass
+		"LANG=" + config.Please.Lang,
+		// Use a restricted PATH; it'd be easier for the user if we pass it through
+		// but really external environment variables shouldn't affect this.
+		// The only concession is that ~ is expanded as the user's home directory
+		// in PATH entries.
+		"PATH=" + ExpandHomePath(strings.Join(config.Build.Path, ":")),
+	}
+	if config.Go.GoRoot != "" {
+		env = append(env, "GOROOT="+config.Go.GoRoot)
+	}
+	return env
+}
+
 // BuildEnvironment creates the shell env vars to be passed
 // into the exec.Command calls made by plz. Use test=true for plz test targets.
 func BuildEnvironment(state *BuildState, target *BuildTarget, test bool) []string {
 	sources := target.AllSourcePaths(state.Graph)
 	os, arch := target.Label.OsArch()
-	env := []string{
-		"PKG=" + target.Label.PackageName,
-		"PKG_DIR=" + target.Label.PackageDir(),
+	env := append(GeneralBuildEnvironment(state.Config),
 		// This is set depending on which arch the rule is compiling for.
-		"ARCH=" + target.Label.FullArch(),
+		"ARCH="+target.Label.FullArch(),
 		// These provide cross-compiling support for Go.
 		// They aren't really Go-specific but it makes things a lot easier to just
 		// name them this from the beginning.
-		"GOOS=" + os,
-		"GOARCH=" + arch,
-		// Need this for certain tools, for example sass
-		"LANG=" + state.Config.Please.Lang,
-		// Use a restricted PATH; it'd be easier for the user if we pass it through
-		// but really external environment variables shouldn't affect this.
-		// The only concession is that ~ is expanded as the user's home directory
-		// in PATH entries.
-		"PATH=" + ExpandHomePath(strings.Join(state.Config.Build.Path, ":")),
-	}
-	if state.Config.Go.GoRoot != "" {
-		env = append(env, "GOROOT="+state.Config.Go.GoRoot)
-	}
+		"GOOS="+os,
+		"GOARCH="+arch,
+		"PKG="+target.Label.PackageName,
+		"PKG_DIR="+target.Label.PackageDir(),
+	)
 	if !test {
 		env = append(env,
 			"TMP_DIR="+path.Join(RepoRoot, target.TmpDir()),
@@ -67,6 +76,12 @@ func BuildEnvironment(state *BuildState, target *BuildTarget, test bool) []strin
 		// Similarly, TOOL is only available on rules with a single tool.
 		if len(target.Tools) == 1 {
 			env = append(env, "TOOL="+toolPath(state, target.Tools[0]))
+		}
+		if len(target.Tools) >= 1 {
+			// If there are multiple tools, you can use TOOL1, TOOL2 etc.
+			for i, tool := range target.Tools {
+				env = append(env, fmt.Sprintf("TOOL%d=%s", i+1, toolPath(state, tool)))
+			}
 		}
 		// Named source groups if the target declared any.
 		for name, srcs := range target.NamedSources {

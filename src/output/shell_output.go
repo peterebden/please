@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -281,7 +282,19 @@ func printTempDirs(state *core.BuildState, duration float64) {
 		fmt.Printf("   Directory: %s\n", target.TmpDir())
 		fmt.Printf("   Environment:\n    %s\n", strings.Join(env, "\n    "))
 		fmt.Printf("    Command: %s\n", cmd)
-		fmt.Printf("   Expanded: %s\n", os.Expand(cmd, core.ReplaceEnvironment(env)))
+		if !state.PrepareShell {
+			// This isn't very useful if we're opening a shell (since then the vars will be set anyway)
+			fmt.Printf("   Expanded: %s\n", os.Expand(cmd, core.ReplaceEnvironment(env)))
+		} else {
+			fmt.Printf("\n")
+			cmd := exec.Command("bash", "--noprofile", "--norc") // plz requires bash, some commands contain bashisms.
+			cmd.Dir = target.TmpDir()
+			cmd.Env = env
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			cmd.Run() // Ignore errors, it will typically end by the user killing it somehow.
+		}
 	}
 }
 
