@@ -187,7 +187,7 @@ func TestHashReplacement(t *testing.T) {
 	target.Stamp = true
 	// Note that this hash is determined arbitrarily, it doesn't matter for this test
 	// precisely what its value is.
-	assert.Equal(t, "echo atEv6JE4Af62tnNvDkjWmnWRY5I", replaceSequences(target))
+	assert.Equal(t, "echo l9MM-cMUljGqkC6S5M2iupbMqRg", replaceSequences(target))
 }
 
 func TestWorkerReplacement(t *testing.T) {

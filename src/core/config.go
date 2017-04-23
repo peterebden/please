@@ -51,14 +51,21 @@ func readConfigFile(config *Configuration, filename string) error {
 // Reads a config file from the given locations, in order.
 // Values are filled in by defaults initially and then overridden by each file in turn.
 func ReadConfigFiles(filenames []string) (*Configuration, error) {
-	config := DefaultConfiguration()
+	config := defaultConfiguration()
 	for _, filename := range filenames {
 		if err := readConfigFile(config, filename); err != nil {
 			return config, err
 		}
 	}
-	// Set default values for slices. These add rather than overwriting so we can't set
-	// them upfront as we would with other config values.
+	if (config.Cache.RpcPrivateKey == "") != (config.Cache.RpcPublicKey == "") {
+		return config, fmt.Errorf("Must pass both rpcprivatekey and rpcpublickey properties for cache")
+	}
+	return setDefaults(config), nil
+}
+
+// setDefaults sets a bunch of default values. These must be done after reading files though to
+// allow users to overwrite slice values.
+func setDefaults(config *Configuration) *Configuration {
 	setDefault(&config.Please.BuildFileName, []string{"BUILD"})
 	setDefault(&config.Build.Path, []string{"/usr/local/bin", "/usr/bin", "/bin"})
 	setDefault(&config.Cover.FileExtension, []string{".go", ".py", ".java", ".js", ".cc", ".h", ".c"})
@@ -73,11 +80,7 @@ func ReadConfigFiles(filenames []string) (*Configuration, error) {
 	defaultPath(&config.Java.JarCatTool, config.Please.Location, "jarcat")
 	defaultPath(&config.Java.PleaseMavenTool, config.Please.Location, "please_maven")
 	defaultPath(&config.Java.JUnitRunner, config.Please.Location, "junit_runner.jar")
-
-	if (config.Cache.RpcPrivateKey == "") != (config.Cache.RpcPublicKey == "") {
-		return config, fmt.Errorf("Must pass both rpcprivatekey and rpcpublickey properties for cache")
-	}
-	return config, nil
+	return config
 }
 
 // setDefault sets a slice of strings in the config if the set one is empty.
@@ -94,7 +97,12 @@ func defaultPath(conf *string, dir, file string) {
 	}
 }
 
+// DefaultConfiguration returns the default config setup.
 func DefaultConfiguration() *Configuration {
+	return setDefaults(defaultConfiguration())
+}
+
+func defaultConfiguration() *Configuration {
 	config := Configuration{}
 	config.Please.Location = "~/.please"
 	config.Please.SelfUpdate = true
