@@ -33,7 +33,7 @@ func LinkPackages(tmpDir string) error {
 		} else if !info.IsDir() && strings.HasSuffix(path, ".a") {
 			// Package archive, link it up.
 			dir, file := filepath.Split(path)
-			dest := filepath.Join(filepath.Dir(dir), file)
+			dest := filepath.Join(filepath.Dir(strings.TrimRight(dir, "/")), file)
 			err := os.Symlink(path, dest)
 			if err != nil && os.IsExist(err) {
 				// This happens sometimes, we can't guarantee that all libraries are unique

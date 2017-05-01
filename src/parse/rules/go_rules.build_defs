@@ -337,11 +337,7 @@ def go_test(name, srcs, data=None, deps=None, visibility=None, flags='', contain
         srcs=srcs,
         outs=[name + '_main.go'],
         deps=deps,
-        cmd={
-            'dbg': '$TOOLS -cover',
-            'opt': '$TOOLS -cover',
-            'cover': '$TOOLS -cover -d .',
-        },
+        cmd='$TOOL1 -g $TOOL2',
         needs_transitive_deps=True,  # Need all .a files to template coverage variables
         requires=['go'],
         test_only=True,
@@ -613,13 +609,13 @@ def _collect_rule_outs(name, output):
 def _go_library_cmds(complete=True, all_srcs=False):
     """Returns the commands to run for building a Go library."""
     # Invokes the Go compiler.
-    compile_cmd = 'export GOPATH="%s"; $TOOLS --%s' % (CONFIG.GOPATH, ' -complete' if complete else '')
+    compile_cmd = 'export GOPATH="%s"; $TOOL1 -g $TOOL2 --%s' % (CONFIG.GOPATH, ' -complete' if complete else '')
     if all_srcs:
         compile_cmd = 'export SRCS="$PKG_DIR/*.go"; ' + compile_cmd
     return {
         'dbg': compile_cmd + ' -N -l',
         'opt': compile_cmd,
-        'cover': compile_cmd + ' -cover',
+        'cover': compile_cmd,
     }
 
 

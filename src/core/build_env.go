@@ -82,6 +82,11 @@ func BuildEnvironment(state *BuildState, target *BuildTarget, test bool) []strin
 			paths := target.SourcePaths(state.Graph, srcs)
 			env = append(env, "SRCS_"+strings.ToUpper(name)+"="+strings.Join(paths, " "))
 		}
+		// It's convenient for some things to pick this up as an env var instead of explicitly
+		// declaring different commands.
+		if state.NeedCoverage {
+			env = append(env, "COVERAGE=true")
+		}
 		if state.Config.Bazel.Compatibility {
 			// Obviously this is only a subset of the variables Bazel would expose, but there's
 			// no point populating ones that we literally have no clue what they should be.

@@ -9,7 +9,7 @@ filegroup(
         '//tools/junit_runner',
         '//tools/linter',
         '//tools/please_diff_graphs',
-        '//tools/please_go_test',
+        '//tools/please_go_tool',
         '//tools/please_maven',
         '//tools/please_pex',
     ],
