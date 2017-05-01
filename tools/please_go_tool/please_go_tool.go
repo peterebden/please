@@ -5,6 +5,7 @@ package main
 
 import (
 	"os"
+	"strings"
 	"syscall"
 
 	"github.com/jessevdk/go-flags"
@@ -58,6 +59,12 @@ func main() {
 	} else if len(args) != 0 {
 		log.Fatalf("unparsed arguments: %s", args)
 	}
+
+	// Go gets a little upset if we have shell vars in GOPATH still.
+	for i, p := range opts.GoPath {
+		opts.GoPath[i] = gotool.ReplaceEnv(p)
+	}
+	os.Setenv("GOPATH", strings.Join(opts.GoPath, ":"))
 
 	if !opts.TestMain {
 		if err := gotool.LinkPackages(opts.TmpDir); err != nil {

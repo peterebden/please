@@ -46,3 +46,12 @@ go_test(
         '//third_party/go:testify',
     ],
 )
+
+go_test(
+    name = 'compile_test',
+    srcs = ['compile_test.go'],
+    deps = [
+        ':gotool',
+        '//third_party/go:testify',
+    ],
+)

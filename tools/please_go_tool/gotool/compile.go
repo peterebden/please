@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -14,6 +15,11 @@ import (
 )
 
 var log = logging.MustGetLogger("gotool")
+
+// envRegex is used in ReplaceEnv below.
+// Note that this is a little quick and dirty, we should really have two disjoint
+// replacements (one for ${} and one for just $) but we assume it's not necessary.
+var envRegex = regexp.MustCompile(`\$\{[^/}]+`)
 
 // LinkPackages finds any Go packages in the given temp dir and links them up a directory when needed.
 // This is required for Go's import machinery to work, which can't be overridden in go tool compile
@@ -78,4 +84,12 @@ func AnnotateCoverage(tool string, srcs []string) error {
 	}
 	wg.Wait()
 	return ret
+}
+
+// ReplaceEnv replaces shell-style variables in a string with environment variables.
+// We use this to support things like $TMP_DIR in GOPATH.
+func ReplaceEnv(s string) string {
+	return envRegex.ReplaceAllStringFunc(s, func(s string) string {
+		return os.Getenv(strings.Trim(s, "${}"))
+	})
 }

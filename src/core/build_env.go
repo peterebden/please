@@ -53,6 +53,7 @@ func BuildEnvironment(state *BuildState, target *BuildTarget, test bool) []strin
 			"SRCS="+strings.Join(sources, " "),
 			"OUTS="+strings.Join(target.Outputs(), " "),
 			"NAME="+target.Label.Name,
+			"GOPATH="+state.Config.Go.GoPath,
 		)
 		tools := make([]string, len(target.Tools))
 		for i, tool := range target.Tools {
