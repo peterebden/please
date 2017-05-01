@@ -1,12 +1,15 @@
 go_binary(
     name = 'please',
+    srcs = ['please.go'],
     deps = [
         '//src/build',
         '//src/cache',
         '//src/clean',
         '//src/cli',
         '//src/core',
+        '//src/export',
         '//src/gc',
+        '//src/hashes',
         '//src/help',
         '//src/metrics',
         '//src/output',

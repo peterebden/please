@@ -150,6 +150,35 @@ const (
 	Failed                             // Target failed for some reason
 )
 
+// String implements the fmt.Stringer interface.
+// TODO(pebers): Convert this to use go generate / stringer.
+func (s BuildTargetState) String() string {
+	if s == Inactive {
+		return "Inactive"
+	} else if s == Semiactive {
+		return "Semiactive"
+	} else if s == Active {
+		return "Active"
+	} else if s == Pending {
+		return "Pending"
+	} else if s == Building {
+		return "Building"
+	} else if s == Stopped {
+		return "Stopped"
+	} else if s == Built {
+		return "Built"
+	} else if s == Cached {
+		return "Cached"
+	} else if s == Unchanged {
+		return "Unchanged"
+	} else if s == Reused {
+		return "Reused"
+	} else if s == Failed {
+		return "Failed"
+	}
+	return "Unknown"
+}
+
 // Inputs to a build can be either a file in the local package or another build rule.
 // All users care about is where they find them.
 type BuildInput interface {
@@ -254,7 +283,9 @@ func (target *BuildTarget) Dependencies() []*BuildTarget {
 	ret := make(BuildTargets, 0, len(target.dependencies))
 	for _, deps := range target.dependencies {
 		for _, dep := range deps.deps {
+			// N.B. Include any exported dependencies of this guy too.
 			ret = append(ret, dep)
+			ret = append(ret, dep.transitiveExportedDependencies()...)
 		}
 	}
 	sort.Sort(ret)
@@ -267,6 +298,20 @@ func (target *BuildTarget) ExportedDependencies() []BuildLabel {
 	for _, info := range target.dependencies {
 		if info.exported {
 			ret = append(ret, info.declared)
+		}
+	}
+	return ret
+}
+
+// transitiveExportedDependencies returns the transitive set of exported dependencies of this target.
+func (target *BuildTarget) transitiveExportedDependencies() []*BuildTarget {
+	var ret []*BuildTarget
+	for _, info := range target.dependencies {
+		if info.exported {
+			for _, dep := range info.deps {
+				ret = append(ret, dep)
+				ret = append(ret, dep.transitiveExportedDependencies()...)
+			}
 		}
 	}
 	return ret
@@ -362,7 +407,7 @@ func (target *BuildTarget) allDependenciesResolved() bool {
 
 // isExperimental returns true if the given target is in the "experimental" tree
 func isExperimental(target *BuildTarget) bool {
-	return State.experimentalLabel.PackageName != "" && State.experimentalLabel.includes(target.Label)
+	return State.experimentalLabel.PackageName != "" && State.experimentalLabel.Includes(target.Label)
 }
 
 // CanSee returns true if target can see the given dependency, or false if not.
@@ -376,7 +421,7 @@ func (target *BuildTarget) CanSee(dep *BuildTarget) bool {
 		return false
 	}
 	for _, vis := range dep.Visibility {
-		if vis.includes(target.Label.Parent()) {
+		if vis.Includes(target.Label.Parent()) {
 			return true
 		}
 	}
@@ -587,6 +632,14 @@ func (target *BuildTarget) AddTestCommand(config, command string) {
 // GetCommand returns the command we should use to build this target for the current config.
 func (target *BuildTarget) GetCommand() string {
 	return target.getCommand(target.Commands, target.Command)
+}
+
+// GetCommandConfig returns the command we should use to build this target for the given config.
+func (target *BuildTarget) GetCommandConfig(config string) string {
+	if config == "" {
+		return target.Command
+	}
+	return target.Commands[config]
 }
 
 // GetTestCommand returns the command we should use to test this target for the current config.

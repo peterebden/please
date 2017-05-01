@@ -221,6 +221,17 @@ func TestLabels(t *testing.T) {
 	assert.True(t, target.HasLabel("test"))
 }
 
+func TestGetCommandConfig(t *testing.T) {
+	target := makeTarget("//src/core:target1", "PUBLIC")
+	target.Command = "test1"
+	assert.Equal(t, "test1", target.GetCommandConfig(""))
+	target.Command = ""
+	target.AddCommand("opt", "test3")
+	target.AddCommand("dbg", "test4")
+	assert.Equal(t, "test3", target.GetCommandConfig("opt"))
+	assert.Equal(t, "test4", target.GetCommandConfig("dbg"))
+}
+
 func TestGetCommand(t *testing.T) {
 	state := NewBuildState(10, nil, 2, DefaultConfiguration())
 	state.Config.Build.Config = "dbg"
@@ -286,6 +297,20 @@ func TestDependencies(t *testing.T) {
 	assert.Equal(t, []BuildLabel{target1.Label}, target2.DeclaredDependencies())
 	assert.Equal(t, []*BuildTarget{target1}, target2.Dependencies())
 	assert.Equal(t, []BuildLabel{target1.Label, target2.Label}, target3.DeclaredDependencies())
+	assert.Equal(t, []*BuildTarget{target1, target2}, target3.Dependencies())
+}
+
+func TestDependenciesExported(t *testing.T) {
+	target1 := makeTarget("//src/core:target1", "")
+	target2 := makeTarget("//src/core:target2", "")
+	target2.AddMaybeExportedDependency(target1.Label, true)
+	target2.resolveDependency(target1.Label, target1)
+	target3 := makeTarget("//src/core:target3", "", target2)
+	assert.Equal(t, []BuildLabel{}, target1.DeclaredDependencies())
+	assert.Equal(t, []*BuildTarget{}, target1.Dependencies())
+	assert.Equal(t, []BuildLabel{target1.Label}, target2.DeclaredDependencies())
+	assert.Equal(t, []*BuildTarget{target1}, target2.Dependencies())
+	assert.Equal(t, []BuildLabel{target2.Label}, target3.DeclaredDependencies())
 	assert.Equal(t, []*BuildTarget{target1, target2}, target3.Dependencies())
 }
 

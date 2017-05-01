@@ -29,12 +29,12 @@ def java_library(name, srcs=None, src_dir=None, resources=None, resources_root=N
                             Java; any dependency that forms part of the public API for your classes
                             should be an exported dependency.
       visibility (list): Visibility declaration of this rule.
-      source (int): Java source level to compile sources as. Defaults to whatever's set in the config,
+      source (int): Deprecated, will be removed in a future version in favour of control via package().
+                    Java source level to compile sources as. Defaults to whatever's set in the config,
                     which itself defaults to 8.
-                    Deprecated, will be removed in a future version in favour of control via package().
-      target (int): Java bytecode level to target after compile. Defaults to whatever's set in the
+      target (int): Deprecated, will be removed in a future version in favour of control via package().
+                    Java bytecode level to target after compile. Defaults to whatever's set in the
                     config, which itself defaults to 8.
-                    Deprecated, will be removed in a future version in favour of control via package().
       test_only (bool): If True, this rule can only be depended on by tests.
       javac_flags (list): List of flags passed to javac.
     """
@@ -86,7 +86,7 @@ def java_library(name, srcs=None, src_dir=None, resources=None, resources_root=N
             'cd _tmp',
             jarcat_tool + ' -d -o $OUT -i .',
         ])
-        build_rule(
+        return build_rule(
             name=name,
             srcs=srcs or [src_dir],
             deps=deps,
@@ -105,7 +105,7 @@ def java_library(name, srcs=None, src_dir=None, resources=None, resources_root=N
             cmd = 'cd ${PKG}/%s && %s -d -o ${OUT} -i .' % (resources_root, jarcat_tool)
         else:
             cmd = '%s -d -o ${OUTS} -i .' % jarcat_tool
-        build_rule(
+        return build_rule(
             name=name,
             srcs=resources,
             deps=deps,
@@ -121,7 +121,7 @@ def java_library(name, srcs=None, src_dir=None, resources=None, resources_root=N
     else:
         # If input is only jar files (as maven_jar produces in some cases) we simply collect them
         # all up for other rules to use.
-        filegroup(
+        return filegroup(
             name=name,
             deps=deps,
             exported_deps=exported_deps,
@@ -379,7 +379,7 @@ def maven_jars(name, id, repository=None, exclude=None, hashes=None, combine=Fal
 def maven_jar(name, id=None, repository=None, hash=None, hashes=None, deps=None,
               visibility=None, filename=None, sources=True, licences=None,
               exclude_paths=None, native=False, artifact_type=None, test_only=False,
-              binary=False):
+              binary=False, classifier='', classifier_sources_override=''):
     """Fetches a single Java dependency from Maven.
 
     Args:
@@ -399,6 +399,11 @@ def maven_jar(name, id=None, repository=None, hash=None, hashes=None, deps=None,
       test_only (bool): If True, this target can only be used by tests or other test_only rules.
       binary (bool): If True, we attempt to fetch and download an executable binary. The output
                      is marked as such. Implies native=True and sources=False.
+      classifier (str): Maven classifier, allows to distinguish artifacts that were built from 
+                     the same POM but differ in their content.
+      classifier_sources_override (str): Allows to override the classifier used to fetch the 
+                     source artifact. 
+                     e.g. logback-core-1.1.3-tests.jar and logback-core-1.1.3-test-sources.jar  
     """
     if hash and hashes:
         raise ParseError('You can pass only one of hash or hashes to maven_jar')
@@ -409,6 +414,8 @@ def maven_jar(name, id=None, repository=None, hash=None, hashes=None, deps=None,
     group, artifact, version, sources, licences = _parse_maven_artifact(id, sources, licences)
     artifact_type = '.' + artifact_type
     out_artifact_type = artifact_type
+    if classifier:
+        classifier = '-' + classifier
     if binary:
         native = True
         sources = False
@@ -418,9 +425,10 @@ def maven_jar(name, id=None, repository=None, hash=None, hashes=None, deps=None,
         # Maven has slightly different names for these.
         os = 'osx' if CONFIG.OS == 'darwin' else CONFIG.OS
         arch = 'x86_64' if CONFIG.ARCH == 'amd64' else CONFIG.ARCH
-        filename = filename or '%s-%s-%s-%s%s' % (artifact, version, os, arch, artifact_type)
+        filename = filename or '%s-%s-%s%s-%s%s' % (artifact, version, classifier, os, arch,
+                                                    artifact_type)
     else:
-        filename = filename or '%s-%s%s' % (artifact, version, artifact_type)
+        filename = filename or '%s-%s%s%s' % (artifact, version, classifier, artifact_type)
     url_base = '/'.join([
         repository or CONFIG.DEFAULT_MAVEN_REPO,
         group.replace('.', '/'),
@@ -448,7 +456,9 @@ def maven_jar(name, id=None, repository=None, hash=None, hashes=None, deps=None,
     srcs = [bin_rule]
 
     if sources:
-        src_url = '%s/%s-%s-sources.jar' % (url_base, artifact, version)
+        if classifier_sources_override:
+            classifier = '-' + classifier_sources_override
+        src_url = '%s/%s-%s%s-sources.jar' % (url_base, artifact, version, classifier)
         cmd = 'echo "Fetching %s..." && curl -fsSL %s -o $OUT' % (src_url, src_url)
         src_rule = build_rule(
             name=name,

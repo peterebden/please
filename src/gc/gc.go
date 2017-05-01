@@ -1,20 +1,24 @@
+// +build ignore
+
 // Package gc implements "garbage collection" logic for Please, which is an attempt to identify
 // targets in the repo that are no longer needed.
 // The definition of "needed" is a bit unclear; we define it as non-test binaries, but the
 // command accepts an argument to add extra ones just in case (for example, if you have a repo which
 // is primarily a library, you might have to tell it that).
-// Note that right now it doesn't do anything to actually "collect" the garbage, i.e. it tells
-// you what to do but doesn't rewrite BUILD files itself.
 package gc
 
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"sort"
+	"strings"
 
+	"github.com/Songmu/prompter"
 	"gopkg.in/op/go-logging.v1"
 
 	"core"
+	"parse"
 )
 
 var log = logging.MustGetLogger("gc")
@@ -22,10 +26,10 @@ var log = logging.MustGetLogger("gc")
 type targetMap map[*core.BuildTarget]bool
 
 // GarbageCollect initiates the garbage collection logic.
-func GarbageCollect(graph *core.BuildGraph, targets []core.BuildLabel, keepLabels []string, conservative, targetsOnly, srcsOnly bool) {
-	if targets, srcs := targetsToRemove(graph, targets, keepLabels, conservative); len(targets) > 0 {
+func GarbageCollect(state *core.BuildState, filter, targets []core.BuildLabel, keepLabels []string, conservative, targetsOnly, srcsOnly, noPrompt, dryRun, git bool) {
+	if targets, srcs := targetsToRemove(state.Graph, filter, targets, keepLabels, conservative); len(targets) > 0 {
 		if !srcsOnly {
-			fmt.Fprintf(os.Stderr, "Targets to remove (total %d of %d):\n", len(targets), graph.Len())
+			fmt.Fprintf(os.Stderr, "Targets to remove (total %d of %d):\n", len(targets), state.Graph.Len())
 			for _, target := range targets {
 				fmt.Printf("  %s\n", target)
 			}
@@ -36,13 +40,43 @@ func GarbageCollect(graph *core.BuildGraph, targets []core.BuildLabel, keepLabel
 				fmt.Printf("  %s\n", src)
 			}
 		}
+		if dryRun {
+			return
+		} else if !noPrompt && !prompter.YN("Remove these targets / files?", false) {
+			os.Exit(1)
+		}
+		if !srcsOnly {
+			if err := removeTargets(state, targets); err != nil {
+				log.Fatalf("%s\n", err)
+			}
+		}
+		if !targetsOnly {
+			if git {
+				log.Notice("Running git rm %s\n", strings.Join(srcs, " "))
+				srcs = append([]string{"rm", "-q"}, srcs...)
+				cmd := exec.Command("git", srcs...)
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+				if err := cmd.Run(); err != nil {
+					log.Fatalf("git rm failed: %s\n", err)
+				}
+			} else {
+				for _, src := range srcs {
+					log.Notice("Deleting %s...\n", src)
+					if err := os.Remove(src); err != nil {
+						log.Fatalf("Failed to remove %s: %s\n", src, err)
+					}
+				}
+			}
+		}
+		fmt.Fprintf(os.Stderr, "Garbage collected!\n")
 	} else {
 		fmt.Fprintf(os.Stderr, "Nothing to remove\n")
 	}
 }
 
 // targetsToRemove finds the set of targets that are no longer needed and any extraneous sources.
-func targetsToRemove(graph *core.BuildGraph, targets []core.BuildLabel, keepLabels []string, includeTests bool) (core.BuildLabels, []string) {
+func targetsToRemove(graph *core.BuildGraph, filter, targets []core.BuildLabel, keepLabels []string, includeTests bool) (core.BuildLabels, []string) {
 	keepTargets := targetMap{}
 	for _, target := range graph.AllTargets() {
 		if (target.IsBinary && (!target.IsTest || includeTests)) || target.HasAnyLabel(keepLabels) {
@@ -103,7 +137,7 @@ func targetsToRemove(graph *core.BuildGraph, targets []core.BuildLabel, keepLabe
 	ret := make(core.BuildLabels, 0, len(keepTargets))
 	retSrcs := []string{}
 	for _, target := range graph.AllTargets() {
-		if !target.HasParent() && !keepTargets[target] {
+		if !target.HasParent() && !keepTargets[target] && isIncluded(target, filter) {
 			ret = append(ret, target.Label)
 			for _, src := range target.AllLocalSources() {
 				if !keepSrcs[src] {
@@ -117,6 +151,19 @@ func targetsToRemove(graph *core.BuildGraph, targets []core.BuildLabel, keepLabe
 	log.Notice("%d targets to remove", len(ret))
 	log.Notice("%d sources to remove", len(retSrcs))
 	return ret, retSrcs
+}
+
+// isIncluded returns true if the given target is included in a set of filtering labels.
+func isIncluded(target *core.BuildTarget, filter []core.BuildLabel) bool {
+	if len(filter) == 0 {
+		return true // if you don't specify anything, the filter has no effect.
+	}
+	for _, f := range filter {
+		if f.Includes(target.Label) {
+			return true
+		}
+	}
+	return false
 }
 
 // addTarget adds a target and all its transitive dependencies to the given map.
@@ -152,4 +199,32 @@ func publicDependencies(graph *core.BuildGraph, target *core.BuildTarget) []*cor
 		}
 	}
 	return ret
+}
+
+// RewriteFile rewrites a BUILD file to exclude a set of targets.
+func RewriteFile(state *core.BuildState, filename string, targets []string) error {
+	for i, t := range targets {
+		targets[i] = fmt.Sprintf(`"%s"`, t)
+	}
+	data := string(MustAsset("rewrite.py"))
+	// Template in the variables we want.
+	data = strings.Replace(data, "__FILENAME__", filename, 1)
+	data = strings.Replace(data, "__TARGETS__", strings.Replace(fmt.Sprintf("%s", targets), " ", ", ", -1), 1)
+	return parse.RunCode(state, data)
+}
+
+// removeTargets rewrites the given set of targets out of their BUILD files.
+func removeTargets(state *core.BuildState, labels core.BuildLabels) error {
+	byPackage := map[string][]string{}
+	for _, l := range labels {
+		byPackage[l.PackageName] = append(byPackage[l.PackageName], l.Name)
+	}
+	for pkgName, victims := range byPackage {
+		filename := state.Graph.PackageOrDie(pkgName).Filename
+		log.Notice("Rewriting %s to remove %s...\n", filename, strings.Join(victims, ", "))
+		if err := RewriteFile(state, filename, victims); err != nil {
+			return err
+		}
+	}
+	return nil
 }

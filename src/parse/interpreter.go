@@ -308,6 +308,18 @@ func parsePackageFile(state *core.BuildState, filename string, pkg *core.Package
 	return ret == pyDeferParse
 }
 
+// RunCode will run some arbitrary Python code using our embedded interpreter.
+func RunCode(state *core.BuildState, code string) error {
+	initializeOnce.Do(func() { initializeInterpreter(state) })
+	cCode := C.CString(code)
+	defer C.free(unsafe.Pointer(cCode))
+	ret := C.GoString(C.RunCode(cCode))
+	if ret != "" {
+		return fmt.Errorf("%s", ret)
+	}
+	return nil
+}
+
 // IsValidTargetName returns true if the given name is valid in a package.
 // This is provided to help error handling on the Python side.
 //export IsValidTargetName
@@ -439,6 +451,15 @@ func AddLicencePost(cPackage uintptr, cTarget *C.char, cLicence *C.char) *C.char
 	return nil
 }
 
+//export GetCommand
+func GetCommand(cPackage uintptr, cTarget *C.char, cConfig *C.char) *C.char {
+	target, err := getTargetPost(cPackage, cTarget)
+	if err != nil {
+		log.Fatalf("%s", err) // Too hard to signal this one back to Python.
+	}
+	return C.CString(target.GetCommandConfig(C.GoString(cConfig)))
+}
+
 //export SetCommand
 func SetCommand(cPackage uintptr, cTarget *C.char, cConfigOrCommand *C.char, cCommand *C.char) *C.char {
 	target, err := getTargetPost(cPackage, cTarget)
@@ -505,6 +526,12 @@ func parseSource(src, packageName string, systemAllowed bool) (core.BuildInput, 
 			if core.IsPackage(dir) {
 				return nil, fmt.Errorf("Package %s tries to use file %s, but that belongs to another package (%s).", packageName, src, dir)
 			}
+		}
+	}
+	// Make sure it's not the actual build file.
+	for _, filename := range core.State.Config.Please.BuildFileName {
+		if filename == src {
+			return nil, fmt.Errorf("You can't specify the BUILD file as an input to a rule")
 		}
 	}
 	return core.FileLabel{File: src, Package: packageName}, nil
@@ -787,6 +814,8 @@ func Glob(cPackage *C.char, cIncludes **C.char, numIncludes int, cExcludes **C.c
 	includes := cStringArrayToStringSlice(cIncludes, numIncludes, "")
 	prefixedExcludes := cStringArrayToStringSlice(cExcludes, numExcludes, packageName)
 	excludes := cStringArrayToStringSlice(cExcludes, numExcludes, "")
+	// To make sure we can't glob the BUILD file, it is always added to excludes.
+	excludes = append(excludes, core.State.Config.Please.BuildFileName...)
 	filenames := core.Glob(packageName, includes, prefixedExcludes, excludes, includeHidden)
 	return stringSliceToCStringArray(filenames)
 }

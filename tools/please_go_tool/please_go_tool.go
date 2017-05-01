@@ -72,7 +72,7 @@ func main() {
 			log.Fatalf("Failed to exec %s: %s", opts.Args.Go, err)
 		}
 	} else {
-		coverVars, err := gotool.FindCoverVars(opts.TmpDir, opts.Exclude)
+		coverVars, err := gotool.FindCoverVars(opts.TmpDir, opts.Exclude, opts.Sources)
 		if err != nil {
 			log.Fatalf("Error scanning for coverage: %s", err)
 		}

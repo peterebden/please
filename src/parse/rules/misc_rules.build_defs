@@ -305,7 +305,7 @@ def remote_file(name, url, hashes=None, out=None, binary=False, visibility=None,
       test_only (bool): If true the rule is only visible to test targets.
       deps (list): List of extra dependencies for this rule.
     """
-    build_rule(
+    return build_rule(
         name=name,
         cmd='echo "Fetching %s..." && curl -fsSL %s -o $OUT' % (url, url),
         outs=[out or url[url.rfind('/') + 1:]],
@@ -319,7 +319,7 @@ def remote_file(name, url, hashes=None, out=None, binary=False, visibility=None,
     )
 
 
-def github_file(name, repo, file, revision='master', hash=None, visibility=None, test_only=False):
+def github_file(name, repo, file, revision='master', out=None, hash=None, visibility=None, test_only=False):
     """Defines a rule to fetch a file from Github.
 
     This is just a convenience wrapper around remote_file but is somewhat clearer to write.
@@ -329,6 +329,7 @@ def github_file(name, repo, file, revision='master', hash=None, visibility=None,
       repo (str): Repository to fetch from (e.g. thought-machine/please).
       file (str): File in the repo to fetch (e.g. src/parse/rules/misc_rules.py).
       revision (str): Git revision to fetch from. Defaults to most recent on master.
+      out (str): Name of the output file
       hash (str): Hash of downloaded file. You should set 'revision' if you set this.
       visibility (list): Visibility declaration of the rule.
       test_only (bool): If true the rule is only visible to test targets.
@@ -336,9 +337,10 @@ def github_file(name, repo, file, revision='master', hash=None, visibility=None,
     if revision == 'master' and hash:
         log.warning('Your github_file rule fetches from master but is hash verified; this '
                     'is prone to breaking if upstream changes at any point.')
-    remote_file(
+    return remote_file(
         name = name,
         url = join_path('https://raw.githubusercontent.com', repo, revision, file),
+        out = out,
         hashes = [hash] if hash else None,
         visibility = visibility,
         test_only = test_only,
@@ -511,6 +513,9 @@ def tarball(name, srcs, out=None, deps=None, subdir=None,
             compression='gzip', visibility=None, labels=None):
     """Defines a rule to create a tarball containing outputs of other rules.
 
+    File mode and ownership are preserved. However, the atime and mtime of all
+    files will be set to 1 Jan 1970 00:00:00.
+
     Args:
       name (str): Rule name
       srcs (list): Source files to include in the tarball
@@ -537,15 +542,27 @@ def tarball(name, srcs, out=None, deps=None, subdir=None,
                              'explicit flag for "compression"')
     else:
         compression, extension = _COMPRESSION.get(compression, ('-a', ''))
+
+    out = out or name + '.tar' + extension
+    # Unlike the rest of the compressions, gzip preserves the file's (the tar)
+    # timestamp by default, making the output unreproducible.
+    # Hence the compression is done with the -n flag in a separate step
+    if extension == '.gz' or out.endswith('.gz'):
+        archive_cmd = 'tar -c * | gzip -n > $OUT'
+    else:
+        archive_cmd = 'tar %s -cf $OUT *' % compression
+
     build_rule(
         name=name,
         cmd=' && '.join([
             'mkdir -p _tmp/' + subdir,
-            'cp -r $(locations :_%s#files) _tmp/%s' % (name, subdir),
+            'cp -pr $(locations :_%s#files) _tmp/%s' % (name, subdir),
             'cd _tmp',
-            'tar %s -cf $OUT *' % compression,
+            # not using tar's --mtime because it's only available in GNU tar
+            'find . -exec touch -t 200001010000.00 {} +',
+            archive_cmd
         ]),
-        outs=[out or name + '.tar' + extension],
+        outs=[out],
         deps=deps,
         visibility=visibility,
         labels=(labels or []) + ['tar'],

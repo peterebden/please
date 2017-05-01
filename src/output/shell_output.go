@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -49,7 +50,7 @@ type buildingTargetData struct {
 	Colour      string
 }
 
-func MonitorState(state *core.BuildState, numThreads int, plainOutput, keepGoing, shouldBuild, shouldTest, shouldRun bool, traceFile string) bool {
+func MonitorState(state *core.BuildState, numThreads int, plainOutput, keepGoing, shouldBuild, shouldTest, shouldRun, showStatus bool, traceFile string) bool {
 	failedTargetMap := map[core.BuildLabel]error{}
 	buildingTargets := make([]buildingTarget, numThreads, numThreads)
 
@@ -99,7 +100,7 @@ func MonitorState(state *core.BuildState, numThreads int, plainOutput, keepGoing
 		} else if state.PrepareOnly {
 			printTempDirs(state, duration)
 		} else if !shouldRun { // Must be plz build or similar, report build outputs.
-			printBuildResults(state, duration)
+			printBuildResults(state, duration, showStatus)
 		}
 	}
 	return len(failedTargetMap) == 0
@@ -229,7 +230,7 @@ func testResultMessage(results core.TestResults, failedTargets []core.BuildLabel
 	}
 }
 
-func printBuildResults(state *core.BuildState, duration float64) {
+func printBuildResults(state *core.BuildState, duration float64, showStatus bool) {
 	// Count incrementality.
 	totalBuilt := 0
 	totalReused := 0
@@ -248,7 +249,11 @@ func printBuildResults(state *core.BuildState, duration float64) {
 	printf("Build finished; total time %0.2fs, incrementality %.1f%%. Outputs:\n", duration, incrementality)
 	for _, label := range state.ExpandVisibleOriginalTargets() {
 		target := state.Graph.TargetOrDie(label)
-		fmt.Printf("%s:\n", label)
+		if showStatus {
+			fmt.Printf("%s [%s]:\n", label, target.State())
+		} else {
+			fmt.Printf("%s:\n", label)
+		}
 		for _, result := range buildResult(target) {
 			fmt.Printf("  %s\n", result)
 		}
@@ -275,7 +280,19 @@ func printTempDirs(state *core.BuildState, duration float64) {
 		env := core.BuildEnvironment(state, target, false)
 		fmt.Printf("  %s: %s\n", label, target.TmpDir())
 		fmt.Printf("    Command: %s\n", cmd)
-		fmt.Printf("   Expanded: %s\n", os.Expand(cmd, core.ReplaceEnvironment(env)))
+		if !state.PrepareShell {
+			// This isn't very useful if we're opening a shell (since then the vars will be set anyway)
+			fmt.Printf("   Expanded: %s\n", os.Expand(cmd, core.ReplaceEnvironment(env)))
+		} else {
+			fmt.Printf("\n")
+			cmd := exec.Command("bash", "--noprofile", "--norc") // plz requires bash, some commands contain bashisms.
+			cmd.Dir = target.TmpDir()
+			cmd.Env = env
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			cmd.Run() // Ignore errors, it will typically end by the user killing it somehow.
+		}
 	}
 }
 

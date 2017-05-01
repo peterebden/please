@@ -13,7 +13,7 @@ _GO_TOOL = ['go']
 
 
 def go_library(name, srcs, out=None, deps=None, visibility=None, test_only=False,
-               go_tools=None, complete=True, _needs_transitive_deps=False, _all_srcs=False):
+               go_tools=None, complete=True, _needs_transitive_deps=False,_all_srcs=False):
     """Generates a Go library which can be reused by other rules.
 
     Args:
@@ -25,7 +25,7 @@ def go_library(name, srcs, out=None, deps=None, visibility=None, test_only=False
       test_only (bool): If True, is only visible to test rules.
       go_tools (list): A list of targets to pre-process your src files with go generate.
       complete (bool): Indicates whether the library is complete or not (ie. buildable with
-                       'go tool build -complete'). In nearly all cases this is True (the main
+                       `go tool build -complete`). In nearly all cases this is True (the main
                        exception being for cgo).
     """
     deps = deps or []
@@ -35,7 +35,6 @@ def go_library(name, srcs, out=None, deps=None, visibility=None, test_only=False
         srcs=srcs,
         exported_deps=deps,
         visibility=visibility,
-        output_is_complete=False,
         requires=['go'],
         test_only=test_only,
     )
@@ -51,7 +50,7 @@ def go_library(name, srcs, out=None, deps=None, visibility=None, test_only=False
         )
         srcs += [':_%s#gen' % name]
 
-    build_rule(
+    return build_rule(
         name=name,
         srcs=srcs,
         deps=deps + [':_%s#srcs' % name],
@@ -201,14 +200,9 @@ def cgo_library(name, srcs, go_srcs=None, c_srcs=None, hdrs=None, out=None, comp
         requires = ['cc'],
         tools = tools,
     )
-    srcs_rule = filegroup(
-        name = name,
-        tag = 'go_src',
-        srcs = [gen_go] + go_srcs,
-    )
-    go_library(
+    go_rule = go_library(
         name = '_%s#go' % name,
-        srcs = [srcs_rule],
+        srcs = [gen_go] + go_srcs,
         test_only = test_only,
         complete = False,
         deps = deps,
@@ -224,7 +218,7 @@ def cgo_library(name, srcs, go_srcs=None, c_srcs=None, hdrs=None, out=None, comp
         out=out,
         provides = {
             'go': ':' + name,
-            'go_src': srcs_rule,
+            'go_src': go_rule,
             'cgo_obj': cgo_o_rule,
         },
     )
@@ -258,17 +252,20 @@ def go_binary(name, main=None, srcs=None, deps=None, visibility=None, test_only=
 
     Args:
       name (str): Name of the rule.
-      main (str): Go source file containing the main function.
+      main (str): Deprecated, prefer srcs instead.
+                  Go source file containing the main function.
       srcs (list): Go source files, one of which contains the main function.
       deps (list): Dependencies
       visibility (list): Visibility specification
       test_only (bool): If True, is only visible to test rules.
       static (bool): If True, passes flags to the linker to try to force fully static linking.
-                     (specifically -linkmode external -extldflags static).
+                     (specifically `-linkmode external -extldflags static`).
                      Typically this increases size & link time a little but in return the binary
                      has absolutely no external dependencies.
                      Not yet tested against cgo.
     """
+    if main:
+        log.warning('"main" on go_binary is deprecated, prefer "srcs" instead.')
     go_library(
         name='_%s#lib' % name,
         srcs=srcs or [main or name + '.go'],
@@ -323,7 +320,6 @@ def go_test(name, srcs, data=None, deps=None, visibility=None, flags='', contain
         deps = deps,
         test_only = True,
         _all_srcs = True,
-        _needs_transitive_deps = True,  # Need deps of our deps as well. Not ideal though.
         complete = False,
     )
     lib_rule = ':_%s#lib' % name
@@ -452,8 +448,23 @@ def go_get(name, get=None, outs=None, deps=None, exported_deps=None, visibility=
         if not binary:
             post_build = _extra_outs(get)
     cmd = [
-        'export GOPATH=$TMP_DIR:$TMP_DIR/$PKG',
-        'rm -rf pkg src',
+        # the TMP_DIR contains all the compiled dependencies already. Later when
+        # we go install, it is difficult to seperate its outputs from the
+        # deps outputs, hence why we capture them here in advance
+        'export existing="$(find $TMP_DIR -name \"*.a\")"',
+
+        # go_get dependencies could be in different paths, make sure they are
+        # all available in the GOPATH by detecting their pkg/ folder and using its parent
+        'export GOPATH="$TMP_DIR"',
+        # loop done like this because the GOPATH export should not be in a SubShell
+        'while IFS= read -r dep_dir; do '
+        'if [ -n "$dep_dir" ]; then export GOPATH="${dep_dir}:${GOPATH}" ; fi ; done '
+        '< <(echo "$existing" | sed -e \'s|pkg/.*||g\' | sort -u)',
+
+        'export INSTALL_DIR=$(mktemp -d ${TMP_DIR}/tmp.XXXXX)',
+        'export GOPATH="$INSTALL_DIR:$GOPATH"',
+
+        'cd $INSTALL_DIR',
         'go get -d ' + get,
     ]
     subdir = 'src/' + (get[:-4] if get.endswith('/...') else get)
@@ -462,9 +473,19 @@ def go_get(name, get=None, outs=None, deps=None, exported_deps=None, visibility=
         cmd.append('(cd %s && git checkout -q %s)' % (subdir, revision))
     if patch:
         cmd.append('patch -s -d %s -p1 < ${TMP_DIR}/$(location %s)' % (subdir, patch))
-    cmd.append('go install -gcflags "-trimpath $TMP_DIR" ' + ' '.join([get] + (install or [])))
+    cmd.append('go install -gcflags "-trimpath $INSTALL_DIR" ' + ' '.join([get] + (install or [])))
     # Remove anything that was there already.
-    cmd.append('if [ -d $PKG_DIR ]; then find $PKG_DIR -name "*.a" | sed -e "s|$PKG_DIR/||g" | xargs rm -f; fi')
+    cmd.extend([
+        # go_get built dependencies could be in different dirs so we strip the prefix
+        # leading up to `/pkg/`. These have been cached in the "$INSTALL_DIR/pkg/.."
+        # during the `go install`. So clean them up from this target's outputs
+        'echo "$existing" | while IFS= read -r pathname; do '
+        'if [ -n "$pathname" ]; then rm -f "$INSTALL_DIR/pkg/${pathname#*/pkg/}" ; fi ; done',
+        'cd $TMP_DIR',
+        # delete all other dirs with deps. Only src,pkg and maybe bin will remain
+        'ls | grep -v $(basename $INSTALL_DIR) | xargs rm -rf',
+        'mv $INSTALL_DIR/* $TMP_DIR/'
+    ])
     if not binary:
         cmd.extend([
             'find . -name .git | xargs rm -rf',

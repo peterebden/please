@@ -97,6 +97,8 @@ type BuildState struct {
 	NeedHashesOnly bool
 	// True if we only want to prepare build directories (ie. 'plz build --prepare')
 	PrepareOnly bool
+	// True if we're going to run a shell after builds are prepared.
+	PrepareShell bool
 	// Number of times to run each test target. 0 == once each, plus flakes if necessary.
 	NumTestRuns int
 	// True to clean working directories after successful builds.
@@ -214,7 +216,11 @@ func (state *BuildState) SetIncludeAndExclude(include, exclude []string) {
 	state.Include = include
 	for _, e := range exclude {
 		if LooksLikeABuildLabel(e) {
-			state.ExcludeTargets = append(state.ExcludeTargets, parseMaybeRelativeBuildLabel(e, ""))
+			if label, err := parseMaybeRelativeBuildLabel(e, ""); err != nil {
+				log.Fatalf("%s", err)
+			} else {
+				state.ExcludeTargets = append(state.ExcludeTargets, label)
+			}
 		} else {
 			state.Exclude = append(state.Exclude, e)
 		}
@@ -225,7 +231,7 @@ func (state *BuildState) SetIncludeAndExclude(include, exclude []string) {
 func (state *BuildState) AddOriginalTarget(label BuildLabel) {
 	// Check it's not excluded first.
 	for _, e := range state.ExcludeTargets {
-		if e.includes(label) {
+		if e.Includes(label) {
 			return
 		}
 	}
@@ -282,11 +288,20 @@ func (state *BuildState) NumDone() int {
 // from the set of original targets.
 func (state *BuildState) ExpandOriginalTargets() BuildLabels {
 	ret := BuildLabels{}
+	addPackage := func(pkg *Package) {
+		for _, target := range pkg.Targets {
+			if target.ShouldInclude(state.Include, state.Exclude) && (!state.NeedTests || target.IsTest) {
+				ret = append(ret, target.Label)
+			}
+		}
+	}
 	for _, label := range state.OriginalTargets {
 		if label.IsAllTargets() {
-			for _, target := range state.Graph.PackageOrDie(label.PackageName).Targets {
-				if target.ShouldInclude(state.Include, state.Exclude) && (!state.NeedTests || target.IsTest) {
-					ret = append(ret, target.Label)
+			addPackage(state.Graph.PackageOrDie(label.PackageName))
+		} else if label.IsAllSubpackages() {
+			for name, pkg := range state.Graph.PackageMap() {
+				if label.Includes(BuildLabel{PackageName: name}) {
+					addPackage(pkg)
 				}
 			}
 		} else {

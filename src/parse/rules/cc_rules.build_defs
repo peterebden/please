@@ -18,7 +18,7 @@ _NO_WHOLE_ARCHIVE = '-noall_load' if CONFIG.OS == 'darwin' else '--no-whole-arch
 def cc_library(name, srcs=None, hdrs=None, private_hdrs=None, deps=None, visibility=None, test_only=False,
                compiler_flags=None, linker_flags=None, pkg_config_libs=None, includes=None, defines=None,
                alwayslink=False, _c=False):
-    """Generate a C++ library target.
+    """Generate a C or C++ library target.
 
     Args:
       name (str): Name of the rule
@@ -76,7 +76,7 @@ def cc_library(name, srcs=None, hdrs=None, private_hdrs=None, deps=None, visibil
 
     if not srcs:
         # Header-only library, no compilation needed.
-        filegroup(
+        return filegroup(
             name=name,
             srcs=hdrs,
             requires=['cc_hdrs'],
@@ -86,7 +86,6 @@ def cc_library(name, srcs=None, hdrs=None, private_hdrs=None, deps=None, visibil
             visibility=visibility,
             output_is_complete=False,
         )
-        return
 
     # Collect the headers for other rules
     hdrs_rule = filegroup(
@@ -184,7 +183,7 @@ def cc_library(name, srcs=None, hdrs=None, private_hdrs=None, deps=None, visibil
             output_is_complete=False,
         )
 
-    filegroup(
+    return filegroup(
         name=name,
         srcs=[lib_rule],
         deps=[hdrs_rule],
@@ -275,6 +274,9 @@ def cc_shared_object(name, srcs=None, hdrs=None, out='', compiler_flags=None, li
       pkg_config_libs (list): Libraries to declare a dependency on using pkg-config.
       includes (list): Include directories to be added to the compiler's lookup path.
     """
+    linker_flags = linker_flags or []
+    if CONFIG.DEFAULT_LDFLAGS:
+        linker_flags.append(CONFIG.DEFAULT_LDFLAGS)
     deps = deps or []
     provides = None
     if srcs:
@@ -305,8 +307,10 @@ def cc_shared_object(name, srcs=None, hdrs=None, out='', compiler_flags=None, li
         visibility=visibility,
         cmd=cmds,
         building_description='Linking...',
+        binary=True,
         needs_transitive_deps=True,
         output_is_complete=True,
+        provides=provides,
         tools=tools,
         test_only=test_only,
         requires=['cc', 'cc_hdrs'],
@@ -348,6 +352,7 @@ def cc_binary(name, srcs=None, hdrs=None, private_hdrs=None, compiler_flags=None
             hdrs=hdrs,
             private_hdrs=private_hdrs,
             deps=deps,
+            pkg_config_libs=pkg_config_libs,
             compiler_flags=compiler_flags,
             test_only=test_only,
             _c=_c,
@@ -414,9 +419,9 @@ def cc_test(name, srcs=None, hdrs=None, compiler_flags=None, linker_flags=None, 
         srcs.append(':_%s#main' % name)
     cmds, tools = _binary_cmds(_c, linker_flags, pkg_config_libs)
     test_cmd = None if not CONFIG.CPP_COVERAGE else {
-        'opt': '$TEST',
-        'dbg': '$TEST',
-        'cover': '$TEST; R=$?; cp $GCNO_DIR/*.gcno . && gcov *.gcda && cat *.gcov > test.coverage; exit $R',
+        'opt': '$TEST %s' % flags,
+        'dbg': '$TEST %s' % flags,
+        'cover': '$TEST %s; R=$?; cp $GCNO_DIR/*.gcno . && gcov *.gcda && cat *.gcov > test.coverage; exit $R' % flags,
     }
     if srcs:
         cc_library(
@@ -424,6 +429,7 @@ def cc_test(name, srcs=None, hdrs=None, compiler_flags=None, linker_flags=None, 
             srcs=srcs,
             hdrs=hdrs,
             deps=deps,
+            pkg_config_libs=pkg_config_libs,
             compiler_flags=compiler_flags,
             test_only=True,
             alwayslink=True,
@@ -654,9 +660,9 @@ def _binary_build_flags(linker_flags, pkg_config_libs, shared=False, alwayslink=
     """Builds flags that we'll pass to the linker invocation."""
     pkg_config_cmd = ' '.join('`pkg-config --libs %s`' % x for x in pkg_config_libs or [])
     objs = '`find . -name "*.o" -or -name "*.a" | sort`'
-    if not shared:
-        objs = alwayslink + ' ' + objs
     linker_prefix = '' if CONFIG.LINK_WITH_LD_TOOL else '-Wl,'
+    if not shared and alwayslink:
+        objs = '%s%s %s %s%s %s' % (linker_prefix, _WHOLE_ARCHIVE, alwayslink, linker_prefix, _NO_WHOLE_ARCHIVE, objs)
     build_id_flag = ''
     if CONFIG.OS != 'darwin':
         # We don't order libraries in a way that is especially useful for the linker, which is
@@ -679,7 +685,7 @@ def _library_cmds(c, compiler_flags, pkg_config_libs, extra_flags=''):
     opt_flags = _build_flags(compiler_flags, pkg_config_libs, c=c)
     cc_tool, tools = _tool_path(CONFIG.CC_TOOL if c else CONFIG.CPP_TOOL)
     ar_tool, tools = _tool_path(CONFIG.AR_TOOL, tools)
-    cmd_template = '%s -c -I . ${SRCS_SRCS} %s%s && %s rcs $OUT *.o'
+    cmd_template = '%s -c -I . ${SRCS_SRCS} %s %s && %s rcs $OUT *.o'
     cmds = {
         'dbg': cmd_template % (cc_tool, dbg_flags, extra_flags, ar_tool),
         'opt': cmd_template % (cc_tool, opt_flags, extra_flags, ar_tool),
@@ -720,7 +726,8 @@ def _binary_transitive_labels(c, linker_flags, pkg_config_libs, shared=False):
     """Applies commands from transitive labels to a cc_binary, cc_test or cc_shared_object rule."""
     def apply_transitive_labels(name):
         labels = get_labels(name, 'cc:')
-        flags = [l[3:] for l in labels if l.startswith('ld:')]
+        linker_prefix = '' if CONFIG.LINK_WITH_LD_TOOL else '-Wl,'
+        flags = [linker_prefix + l[3:] for l in labels if l.startswith('ld:')]
         flags.extend('`pkg-config --libs %s`' % l[3:] for l in labels if l.startswith('pc:'))
         # ./ here because some weak linkers don't realise ./lib.a is the same file as lib.a
         # and report duplicate symbol errors as a result.

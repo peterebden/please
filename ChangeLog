@@ -1,3 +1,136 @@
+Version 7.10.3
+--------------
+
+    * Disabling tracing on RPC cache server, possible fix for aforementioned
+      memory leak.
+    * Fix for #208, whereby some C++ settings were not being honoured properly.
+
+
+Version 7.10.2
+--------------
+
+    * Protobuf / gRPC update, testing to see if this helps an apparent memory leak in
+      RPC cache server.
+
+
+Version 7.10.1
+--------------
+
+    * Fix to go_get change in 7.10 to make it BSD-compatible.
+
+
+Version 7.10.0
+--------------
+
+    * Add support for classifiers on `maven_jar`.
+    * Automatic creation of `plz-out/go`, which contains some symlinks making it
+      suitable for setting your GOPATH to to find some things in plz-out/gen (e.g.
+      generated code).
+    * Fix go_get with dependencies when in declared in repo root
+
+
+Version 7.9.2
+-------------
+
+    * Honour the PATH settings given in plzconfig when starting worker processes.
+
+
+Version 7.9.1
+-------------
+
+    * `proto_library` is a little more robust about some cases involving sources in
+      subdirectories.
+    * Fixed alwayslink for `cc_library` which was sometimes not honoured.
+
+
+Version 7.9.0
+-------------
+
+    * Rewrite of proto_library and grpc_library rules. It's now possible to configure new
+      languages externally for plugins such as grpc-gateway.
+    * Add <root>/third_party/ to the default GOPATH
+    * Added --shell flag to plz build, which is like --prepare but opens a shell in the
+      work directory with an appropriate environment set.
+    * Added --update flag to plz hash to rewrite hashes in a BUILD file.
+
+
+Version 7.8.2
+-------------
+
+    * Correctly pass `pkg_config_libs` through `cc_binary` to `cc_library` (#190).
+
+
+Version 7.8.1
+-------------
+
+    * Fixate tarball timestamps #188
+
+
+Version 7.8.0
+-------------
+
+    * Added `plz export` command which exports a subset of the repo and its dependencies
+      to an arbitrary directory.
+    * Updating has a progress bar
+    * Fixed some subtle linking issues in the compiled artifacts.
+
+
+Version 7.7.1
+-------------
+
+    * Fixed flags argument to python_test rules.
+
+
+Version 7.7.0
+-------------
+
+    * Versions in .plzconfig can now be specified as >=. Other patterns aren't (yet?) supported.
+    * plz clean honours --include / --exclude
+    * plz gc now rewrites / removes files and can be filtered to a list of targets
+    * python3 parser engine now (mostly) works
+    * Help message output improved
+    * Fixed plz query revdeps when given a subpackage path (//src/... etc)
+
+
+Version 7.6.4
+-------------
+
+    * Excluding errors from Python coverage reports; fixes failures when dynamically
+      loading modules inside tests which coverage can't find the source for.
+
+
+Version 7.6.3
+-------------
+
+    * Logging a periodic message during long-running tasks so it's possible to see
+      what's still going (often the slowest test started a while back and you don't see
+      any further messages logged while waiting).
+
+
+Version 7.6.2
+-------------
+
+    * Minor bugfixes
+
+
+Version 7.6.1
+-------------
+
+    * Fix to Istanbul coverage parsing to support instrumenting the source in a different
+      target to the test target.
+
+
+Version 7.6.0
+-------------
+
+    * Allow Unicode characters in target names.
+    * Fixed some issues with plz cover when using Go 1.8
+    * Fixed plz clean so it does not parse the repo unnecessarily.
+    * Add current package directory to GOPATH, fixes #184.
+    * Correctly exclude BUILD files from glob()
+    * Fixed glob() for paths containing some atoms like ++
+
+
 Version 7.5.0
 -------------
 
