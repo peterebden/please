@@ -138,6 +138,8 @@ func DefaultConfiguration() *Configuration {
 	config.Java.TargetLevel = "8"
 	config.Java.DefaultMavenRepo = "https://repo1.maven.org/maven2"
 	config.Java.JavacFlags = "-Werror -Xlint:-options" // bootstrap class path warnings are pervasive without this.
+	config.Js.YarnTool = "yarn"
+	config.Js.RequireLockfiles = true
 	config.Cpp.CCTool = "gcc"
 	config.Cpp.CppTool = "g++"
 	config.Cpp.LdTool = "ld"
@@ -264,6 +266,10 @@ type Configuration struct {
 		JavacTestFlags     string  `help:"Additional flags to pass to javac when compiling tests." example:"-Xmx1200M" var:"JAVAC_TEST_FLAGS"`
 		DefaultMavenRepo   cli.URL `help:"Default location to load artifacts from in maven_jar rules. Can be overridden on a per-rule basis." var:"DEFAULT_MAVEN_REPO"`
 	} `help:"Please has built-in support for compiling Java.\nIt builds uber-jars for binary and test rules which contain all dependencies and can be easily deployed, and with the help of some of Please's additional tools they are deterministic as well.\n\nWe've only tested support for Java 7 and 8, although it's likely newer versions will work with little or no change."`
+	Js struct {
+		YarnTool         string `help:"Location of Yarn, which is used to install third-party dependencies." var:"YARN_TOOL"`
+		RequireLockfiles bool   `help:"Require lockfiles for all yarn_library rules. Defaults to true but can be disabled if you'd rather experiment without them." var:"REQUIRE_YARN_LOCKFILES"`
+	}
 	Cpp struct {
 		CCTool             string `help:"The tool invoked to compile C code. Defaults to gcc but you might want to set it to clang, for example." var:"CC_TOOL"`
 		CppTool            string `help:"The tool invoked to compile C++ code. Defaults to g++ but you might want to set it to clang++, for example." var:"CPP_TOOL"`

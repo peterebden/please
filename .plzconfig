@@ -45,6 +45,9 @@ defaulttestpackage = build.please
 sourcelevel = 7
 targetlevel = 7
 
+[js]
+yarntool = //third_party/js:yarn
+
 [proto]
 pythonpackage = third_party.python.google.protobuf
 grpcjavaplugin = //third_party/java:protoc-gen-grpc-java

@@ -1,0 +1,56 @@
+def yarn_library(name, version=None, package_json=None, lock_file=None, flat=True,
+                 patches=None, hashes=None, test_only=False, visibility=None, deps=None):
+    """Install a third-party library using Yarn.
+
+    TODO(peterebden): Add support for licence detection (probably needs jq or some similar
+                      json-parsing utility).
+
+    Args:
+      name (str): Name of the rule.
+      version (str): Version of the package to install. Required if package / lock files aren't used.
+      package_json (str): package.json file describing what to install. Defaults to name + '.json'.
+      lock_file (str): yarn.lock file fixing dependency versions. Defaults to name + '.lock'.
+      flat (bool): Flattens installed packages. Defaults to True.
+      patches (list): List of patch files to apply after install.
+      hashes (list): List of hashes that outputs must match.
+      test_only (bool): If True, can only be depended on by test rules.
+      visibility (list): Visibility declaration for this rule.
+      deps (list): Any other dependencies of the rule.
+    """
+    labels = ['yarn:%s@%s' % (name, version)] if version else None
+    srcs = {}
+    # Need a mutex since we can run several of these in parallel.
+    flags = ' --no-progress --non-interactive --no-emoji --no-bin-links --mutex file:/tmp/plz_yarn.lock'
+    if flat:
+        flags += ' --flat'
+    if CONFIG.REQUIRE_YARN_LOCKFILES or package_json or lock_file:
+        cmds = [
+            'mv $SRCS_PACKAGE package.json',
+            'mv $SRCS_LOCK yarn.lock',
+            '$TOOL install --pure-lockfile' + flags,
+        ]
+        srcs = {
+            'package': [package_json or (name + '.json')],
+            'lock': [lock_file or (name + '.lock')],
+        }
+    else:
+        cmds = ['$TOOL install --no-lockfile' + flags]
+        srcs = {}
+    cmds.append('mv node_modules/%s .' % name)
+    if patches:
+        srcs['patches'] = patches
+        cmds.append('for PATCH in $SRCS_PATCHES; do patch -p1 -d %s < $PATCH; done' % name)
+
+
+    build_rule(
+        name = name,
+        srcs = srcs,
+        cmd = ' && '.join(cmds),
+        outs = [name],
+        labels = labels,
+        requires = ['js'],
+        hashes = hashes,
+        visibility = visibility,
+        tools = [CONFIG.YARN_TOOL],
+        test_only = test_only,
+    )
