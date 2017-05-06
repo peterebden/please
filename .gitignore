@@ -30,6 +30,7 @@
 *.o
 *.a
 __pycache__
+node_modules
 
 .idea
 *.iml

@@ -15,8 +15,8 @@ remote_file(
 )
 
 yarn_library(
-    name = 'babel',
-    version = '6.23.0',
+    name = 'babel-cli',
+    version = '6.24.1',
     visibility = ['PUBLIC'],
 )
 

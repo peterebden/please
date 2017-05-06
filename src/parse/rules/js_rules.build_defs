@@ -1,60 +1,106 @@
-def yarn_library(name, version=None, package_json=None, lock_file=None, flat=True,
-                 patches=None, hashes=None, test_only=False, visibility=None, deps=None):
+def yarn_library(name, version, package_name='', package_json='package.json', lock_file='yarn.lock',
+                 flat=False, patches=None, hashes=None, test_only=False, visibility=None, deps=None):
     """Install a third-party library using Yarn.
 
-    This is still a little basic; each library installs its dependencies completely
-    independently. In future we may add a mechanism for deduplicating dependencies
-    between them somehow.
-
-    TODO(peterebden): Add support for licence detection (probably needs jq or some similar
-                      json-parsing utility).
+    The typical workflow for this is to construct a package.json using `yarn add`, then
+    create a set of yarn_library rules for the top-level packages you added (i.e. the ones
+    in the `dependencies` section of package.json). Please will generate appropriate other
+    rules for each other dependency.
 
     Args:
       name (str): Name of the rule.
-      version (str): Version of the package to install. Required if package / lock files aren't used.
-      package_json (str): package.json file describing what to install. Defaults to name + '.json'.
-      lock_file (str): yarn.lock file fixing dependency versions. Defaults to name + '.lock'.
-      flat (bool): Flattens installed packages. Defaults to True.
+      version (str): Version of the package to install.
+      package_name (str): Name of the package to install. Defaults to the same as `name`.
+      package_json (str): package.json file describing what to install. Defaults to 'package.json'.
+      lock_file (str): yarn.lock file fixing dependency versions. Defaults to 'yarn.lock'.
+      flat (bool): Flattens installed packages. Defaults to False - for this to work you must have
+                   previously added the package using `yarn add --flat`.
       patches (list): List of patch files to apply after install.
       hashes (list): List of hashes that outputs must match.
       test_only (bool): If True, can only be depended on by test rules.
       visibility (list): Visibility declaration for this rule.
       deps (list): Any other dependencies of the rule.
     """
-    labels = ['yarn:%s@%s' % (name, version)] if version else None
-    srcs = {}
+    package_name = package_name or name
+    deps = deps or []
+    srcs = {
+        'package': [package_json],
+        'lock': [lock_file],
+    }
+    preamble = 'mv $SRCS_PACKAGE package.json && mv $SRCS_LOCK yarn.lock && '
+
+    # Generate a rule to analyse the dependencies of this rule & generate new rules & dependencies.
+    pkg = '%s@%s' % (package_name, version)
+    deps_rule = build_rule(
+        name = name,
+        tag = 'deps',
+        srcs = srcs,
+        cmd = preamble + '$TOOL info --json %s license && $TOOL info --json %s dependencies' % (pkg, pkg),
+        post_build = _generate_yarn_deps,
+        tools = [CONFIG.YARN_TOOL],
+        requires = ['js'],
+    )
+
     # Need a mutex since we can run several of these in parallel.
-    flags = ' --no-progress --non-interactive --no-emoji --no-bin-links --mutex file:/tmp/plz_yarn.lock'
+    # Also note that it is not very efficient - this installs everything into the tmp dir and plz copies only parts of it.
+    # AFAICT there is not a way to get yarn to install only a single package with no dependencies?
+    cmd = preamble + '$TOOL install --pure-lockfile --modules-folder . --no-progress --pure-lockfile --non-interactive --no-bin-links --mutex file:/tmp/plz_yarn.lock'
     if flat:
-        flags += ' --flat'
-    if CONFIG.REQUIRE_YARN_LOCKFILES or package_json or lock_file:
-        cmds = [
-            'mv $SRCS_PACKAGE package.json',
-            'mv $SRCS_LOCK yarn.lock',
-            '$TOOL install --pure-lockfile' + flags,
-        ]
-        srcs = {
-            'package': [package_json or (name + '.json')],
-            'lock': [lock_file or (name + '.lock')],
-        }
-    else:
-        cmds = ['$TOOL install --no-lockfile' + flags]
-        srcs = {}
-    cmds.append('mv node_modules/%s .' % name)
+        cmd += ' --flat'
     if patches:
         srcs['patches'] = patches
-        cmds.append('for PATCH in $SRCS_PATCHES; do patch -p1 -d %s < $PATCH; done' % name)
+        cmd += ' && for PATCH in $SRCS_PATCHES; do patch -p1 -d %s < $PATCH; done' % name
 
-
-    build_rule(
+    return build_rule(
         name = name,
         srcs = srcs,
-        cmd = ' && '.join(cmds),
+        cmd = cmd,
         outs = [name],
-        labels = labels,
+        labels = ['yarn:%s@%s' % (name, version)],
         requires = ['js'],
         hashes = hashes,
         visibility = visibility,
         tools = [CONFIG.YARN_TOOL],
         test_only = test_only,
+        deps = deps + [deps_rule],
     )
+
+
+def _generate_yarn_deps(rule_name, output):
+    """Post-build rule to create new yarn_library rules for all the deps of another rule.
+
+    Parsing the deps is a bit of a pain since we don't have a proper JSON parser. Ideally we
+    would run it through something to turn it into a friendlier format first, but for now
+    we're just going to do something dodgy.
+    """
+    if len(output) < 2:
+        raise ValueError('Unknown yarn_library output (missing line): %s' % output)
+    # TODO(peterebden): promote _parent_rule to an official builtin? it seems useful...
+    name = _parent_rule(rule_name)
+    licence = _parse(output[0])
+    if licence:
+        for l in licence.split(' OR '):
+            add_licence(name, l)
+    for entry in _parse(output[1]).split('","'):
+        if not entry:
+            continue
+        dep, version = entry.split('":"')
+        try:
+            new_rule = yarn_library(
+                name = dep,
+                version = version.lstrip('^>= ').split(' ')[0],  # TODO(peterebden): this is also too simplistic.
+            )
+            add_dep(name, new_rule)
+        except DuplicateTargetError:
+            # Assume that multiple things are trying to install the same target at once, and
+            # it doesn't matter if we create it or someone else does, as long as it's there.
+            # This is not quite true in the face of differing versions for a package - we may
+            # be better insisting on flat installs.
+            pass
+
+
+def _parse(line):
+    """Dodgy parse function for a single output line."""
+    if '{"type":"inspect"}' in line:
+        return ''
+    return line.replace('"type":"inspect","data":', '').strip('{}"')
