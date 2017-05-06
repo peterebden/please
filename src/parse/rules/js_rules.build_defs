@@ -2,6 +2,10 @@ def yarn_library(name, version=None, package_json=None, lock_file=None, flat=Tru
                  patches=None, hashes=None, test_only=False, visibility=None, deps=None):
     """Install a third-party library using Yarn.
 
+    This is still a little basic; each library installs its dependencies completely
+    independently. In future we may add a mechanism for deduplicating dependencies
+    between them somehow.
+
     TODO(peterebden): Add support for licence detection (probably needs jq or some similar
                       json-parsing utility).
 

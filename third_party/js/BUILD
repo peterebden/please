@@ -19,3 +19,9 @@ yarn_library(
     version = '6.23.0',
     visibility = ['PUBLIC'],
 )
+
+yarn_library(
+    name = 'jest',
+    version = '20.0.0',
+    visibility = ['PUBLIC'],
+)
