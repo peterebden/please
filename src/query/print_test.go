@@ -153,7 +153,7 @@ func testPrint(target *core.BuildTarget) string {
 
 func testPrintFields(target *core.BuildTarget, fields []string) string {
 	var buf bytes.Buffer
-	newPrinter(&buf, target, 2).PrintFields(fields)
+	newPrinter(&buf, target, 0).PrintFields(fields)
 	return buf.String()
 }
 

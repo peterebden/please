@@ -397,7 +397,7 @@ var buildFunctions = map[string]func() bool{
 	},
 	"print": func() bool {
 		return runQuery(false, opts.Query.Print.Args.Targets, func(state *core.BuildState) {
-			return query.Print(state.Graph, state.ExpandOriginalTargets(), opts.Query.Print.Args.Fields)
+			query.Print(state.Graph, state.ExpandOriginalTargets(), opts.Query.Print.Fields)
 		})
 	},
 	"affectedtargets": func() bool {

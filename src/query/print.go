@@ -33,7 +33,8 @@ var specialFields = map[string]func(*printer) (string, bool){
 		return "'" + p.target.Label.Name + "'", true
 	},
 	"building_description": func(p *printer) (string, bool) {
-		return p.target.BuildingDescription, p.target.BuildingDescription != core.DefaultBuildingDescription
+		s, ok := p.genericPrint(reflect.ValueOf(p.target.BuildingDescription))
+		return s, ok && p.target.BuildingDescription != core.DefaultBuildingDescription
 	},
 	"deps": func(p *printer) (string, bool) {
 		return p.genericPrint(reflect.ValueOf(p.target.DeclaredDependenciesStrict()))
@@ -62,11 +63,12 @@ var fieldPrecedence = map[string]int{
 
 // A printer is responsible for creating the output of 'plz query print'.
 type printer struct {
-	w          io.Writer
-	target     *core.BuildTarget
-	indent     int
-	doneFields map[string]bool
-	error      bool // true if something went wrong
+	w              io.Writer
+	target         *core.BuildTarget
+	indent         int
+	doneFields     map[string]bool
+	error          bool // true if something went wrong
+	surroundSyntax bool // true if we are quoting strings or surrounding slices with [] etc.
 }
 
 // newPrinter creates a new printer instance.
@@ -92,6 +94,7 @@ func (p *printer) PrintTarget() {
 	} else {
 		p.printf("build_rule(\n")
 	}
+	p.surroundSyntax = true
 	p.indent += 4
 	v := reflect.ValueOf(p.target).Elem()
 	t := v.Type()
@@ -117,7 +120,7 @@ func (p *printer) PrintFields(fields []string) bool {
 	for _, field := range fields {
 		f := p.findField(field)
 		if contents, shouldPrint := p.shouldPrintField(f, v.FieldByIndex(f.Index)); shouldPrint {
-			p.printf("%s\n", contents)
+			p.printf("%s", contents)
 		}
 	}
 	return p.error
@@ -178,7 +181,7 @@ func (p *printer) genericPrint(v reflect.Value) (string, bool) {
 	case reflect.Map:
 		return p.printMap(v), v.Len() > 0
 	case reflect.String:
-		return "'" + v.String() + "'", v.Len() > 0
+		return p.quote(v.String()), v.Len() > 0
 	case reflect.Bool:
 		return "True", v.Bool()
 	case reflect.Int, reflect.Int32:
@@ -187,7 +190,7 @@ func (p *printer) genericPrint(v reflect.Value) (string, bool) {
 		return "<python ref>", v.Uint() != 0
 	case reflect.Struct, reflect.Interface:
 		if stringer, ok := v.Interface().(fmt.Stringer); ok {
-			return "'" + stringer.String() + "'", true
+			return p.quote(stringer.String()), true
 		}
 	case reflect.Int64:
 		if v.Type().Name() == "Duration" {
@@ -205,15 +208,15 @@ func (p *printer) printSlice(v reflect.Value) string {
 	if v.Len() == -1 {
 		// Single-element slices are printed on one line
 		elem, _ := p.genericPrint(v.Index(0))
-		return "[" + elem + "]"
+		return p.surround("[", elem, "]", "")
 	}
 	s := make([]string, v.Len())
 	indent := strings.Repeat(" ", p.indent+4)
 	for i := 0; i < v.Len(); i++ {
 		elem, _ := p.genericPrint(v.Index(i))
-		s[i] = indent + elem + ",\n"
+		s[i] = p.surround(indent, elem, ",", "\n")
 	}
-	return "[\n" + strings.Join(s, "") + strings.Repeat(" ", p.indent) + "]"
+	return p.surround("[\n", strings.Join(s, ""), strings.Repeat(" ", p.indent)+"]", "")
 }
 
 // printMap prints the representation of a map field.
@@ -225,9 +228,25 @@ func (p *printer) printMap(v reflect.Value) string {
 	for i, key := range keys {
 		keyElem, _ := p.genericPrint(key)
 		valElem, _ := p.genericPrint(v.MapIndex(key))
-		s[i] = indent + keyElem + ": " + valElem + ",\n"
+		s[i] = p.surround(indent, keyElem+": "+valElem, ",", "\n")
 	}
-	return "{\n" + strings.Join(s, "") + strings.Repeat(" ", p.indent) + "}"
+	return p.surround("{\n", strings.Join(s, ""), strings.Repeat(" ", p.indent)+"}", "")
+}
+
+// quote quotes the given string appropriately for the current printing method.
+func (p *printer) quote(s string) string {
+	if p.surroundSyntax {
+		return "'" + s + "'"
+	}
+	return s
+}
+
+// surround surrounds the given string with a prefix and suffix, if appropriate for the current printing method.
+func (p *printer) surround(prefix, s, suffix, always string) string {
+	if p.surroundSyntax {
+		return prefix + s + suffix + always
+	}
+	return s + always
 }
 
 // An orderedField is used to sort the fields into the order we print them in.
