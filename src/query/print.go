@@ -1,193 +1,211 @@
 package query
 
-import "core"
-import "fmt"
+import (
+	"fmt"
+	"io"
+	"os"
+
+	"core"
+)
 
 // QueryPrint produces a Python call which would (hopefully) regenerate the same build rule if run.
 // This is of course not ideal since they were almost certainly created as a java_library
 // or some similar wrapper rule, but we've lost that information by now.
 func QueryPrint(graph *core.BuildGraph, labels []core.BuildLabel) {
 	for _, label := range labels {
-		target := graph.TargetOrDie(label)
-		fmt.Printf("%s:\n", label)
-		if target.IsFilegroup {
-			fmt.Printf("  filegroup(\n")
+		fmt.Fprintf(os.Stderr, "%s:\n", label)
+		p := printer{w: os.Stdout}
+		p.queryPrint(graph.TargetOrDie(label))
+	}
+}
+
+// A printer is responsible for creating the output of 'plz query print'.
+type printer struct {
+	w io.Writer
+}
+
+func (p *printer) printf(msg string, args ...interface{}) {
+	fmt.Fprintf(p.w, msg, args...)
+}
+
+func (p *printer) queryPrint(target *core.BuildTarget) {
+	if target.IsFilegroup {
+		p.printf("  filegroup(\n")
+	} else {
+		p.printf("  build_rule(\n")
+	}
+	p.printf("      name = '%s',\n", target.Label.Name)
+	if len(target.Sources) > 0 {
+		p.printf("      srcs = [\n")
+		for _, src := range target.Sources {
+			p.printf("          '%s',\n", src)
+		}
+		p.printf("      ],\n")
+	} else if target.NamedSources != nil {
+		p.printf("      srcs = {\n")
+		for name, srcs := range target.NamedSources {
+			p.printf("          '%s': [\n", name)
+			for _, src := range srcs {
+				p.printf("              '%s'\n", src)
+			}
+			p.printf("          ],\n")
+		}
+		p.printf("      },\n")
+	}
+	if len(target.DeclaredOutputs()) > 0 && !target.IsFilegroup {
+		p.printf("      outs = [\n")
+		for _, out := range target.DeclaredOutputs() {
+			p.printf("          '%s',\n", out)
+		}
+		p.printf("      ],\n")
+	} else if names := target.DeclaredOutputNames(); len(names) > 0 {
+		p.printf("      outs = {\n")
+		outs := target.DeclaredNamedOutputs()
+		for _, name := range names {
+			p.printf("          '%s': [\n", name)
+			for _, out := range outs[name] {
+				p.printf("              '%s'\n", out)
+			}
+			p.printf("          ],\n")
+		}
+		p.printf("      },\n")
+	}
+	p.stringList("optional_outs", target.OptionalOutputs)
+	if !target.IsFilegroup {
+		if target.Command == "" {
+			p.pythonDict(target.Commands, "cmd")
 		} else {
-			fmt.Printf("  build_rule(\n")
+			p.printf("      cmd = '%s',\n", target.Command)
 		}
-		fmt.Printf("      name = '%s',\n", target.Label.Name)
-		if len(target.Sources) > 0 {
-			fmt.Printf("      srcs = [\n")
-			for _, src := range target.Sources {
-				fmt.Printf("          '%s',\n", src)
-			}
-			fmt.Printf("      ],\n")
-		} else if target.NamedSources != nil {
-			fmt.Printf("      srcs = {\n")
-			for name, srcs := range target.NamedSources {
-				fmt.Printf("          '%s': [\n", name)
-				for _, src := range srcs {
-					fmt.Printf("              '%s'\n", src)
-				}
-				fmt.Printf("          ],\n")
-			}
-			fmt.Printf("      },\n")
+	}
+	p.pythonDict(target.TestCommands, "test_cmd")
+	if target.TestCommand != "" {
+		p.printf("      test_cmd = '%s',\n", target.TestCommand)
+	}
+	p.pythonBool("binary", target.IsBinary)
+	p.pythonBool("test", target.IsTest)
+	p.pythonBool("needs_transitive_deps", target.NeedsTransitiveDependencies)
+	if !target.IsFilegroup {
+		p.pythonBool("output_is_complete", target.OutputIsComplete)
+		if target.BuildingDescription != core.DefaultBuildingDescription {
+			p.printf("      building_description = '%s',\n", target.BuildingDescription)
 		}
-		if len(target.DeclaredOutputs()) > 0 && !target.IsFilegroup {
-			fmt.Printf("      outs = [\n")
-			for _, out := range target.DeclaredOutputs() {
-				fmt.Printf("          '%s',\n", out)
-			}
-			fmt.Printf("      ],\n")
-		} else if names := target.DeclaredOutputNames(); len(names) > 0 {
-			fmt.Printf("      outs = {\n")
-			outs := target.DeclaredNamedOutputs()
-			for _, name := range names {
-				fmt.Printf("          '%s': [\n", name)
-				for _, out := range outs[name] {
-					fmt.Printf("              '%s'\n", out)
-				}
-				fmt.Printf("          ],\n")
-			}
-			fmt.Printf("      },\n")
+	}
+	p.pythonBool("stamp", target.Stamp)
+	if target.ContainerSettings != nil {
+		p.printf("      container = {\n")
+		p.printf("          'docker_image': '%s',\n", target.ContainerSettings.DockerImage)
+		p.printf("          'docker_user': '%s',\n", target.ContainerSettings.DockerUser)
+		p.printf("          'docker_run_args': '%s',\n", target.ContainerSettings.DockerRunArgs)
+	} else {
+		p.pythonBool("container", target.Containerise)
+	}
+	p.pythonBool("no_test_output", target.NoTestOutput)
+	p.pythonBool("test_only", target.TestOnly)
+	p.labelList("deps", excludeLabels(target.DeclaredDependencies(), target.ExportedDependencies(), sourceLabels(target)), target)
+	p.labelList("exported_deps", target.ExportedDependencies(), target)
+	if len(target.Tools) > 0 {
+		p.printf("      tools = [\n")
+		for _, tool := range target.Tools {
+			p.printf("          '%s',\n", tool)
 		}
-		stringList("optional_outs", target.OptionalOutputs)
-		if !target.IsFilegroup {
-			if target.Command == "" {
-				pythonDict(target.Commands, "cmd")
+		p.printf("      ],\n")
+	}
+	if len(target.Data) > 0 {
+		p.printf("      data = [\n")
+		for _, datum := range target.Data {
+			p.printf("          '%s',\n", datum)
+		}
+		p.printf("      ],\n")
+	}
+	p.stringList("labels", excludeStrings(target.Labels, target.Requires))
+	p.stringList("hashes", target.Hashes)
+	p.stringList("licences", target.Licences)
+	p.stringList("test_outputs", target.TestOutputs)
+	p.stringList("requires", target.Requires)
+	if len(target.Provides) > 0 {
+		p.printf("      provides = {\n")
+		for k, v := range target.Provides {
+			if v.PackageName == target.Label.PackageName {
+				p.printf("          '%s': ':%s',\n", k, v.Name)
 			} else {
-				fmt.Printf("      cmd = '%s',\n", target.Command)
+				p.printf("          '%s': '%s',\n", k, v)
 			}
 		}
-		pythonDict(target.TestCommands, "test_cmd")
-		if target.TestCommand != "" {
-			fmt.Printf("      test_cmd = '%s',\n", target.TestCommand)
-		}
-		pythonBool("binary", target.IsBinary)
-		pythonBool("test", target.IsTest)
-		pythonBool("needs_transitive_deps", target.NeedsTransitiveDependencies)
-		if !target.IsFilegroup {
-			pythonBool("output_is_complete", target.OutputIsComplete)
-			if target.BuildingDescription != core.DefaultBuildingDescription {
-				fmt.Printf("      building_description = '%s',\n", target.BuildingDescription)
-			}
-		}
-		pythonBool("stamp", target.Stamp)
-		if target.ContainerSettings != nil {
-			fmt.Printf("      container = {\n")
-			fmt.Printf("          'docker_image': '%s',\n", target.ContainerSettings.DockerImage)
-			fmt.Printf("          'docker_user': '%s',\n", target.ContainerSettings.DockerUser)
-			fmt.Printf("          'docker_run_args': '%s',\n", target.ContainerSettings.DockerRunArgs)
-		} else {
-			pythonBool("container", target.Containerise)
-		}
-		pythonBool("no_test_output", target.NoTestOutput)
-		pythonBool("test_only", target.TestOnly)
-		labelList("deps", excludeLabels(target.DeclaredDependencies(), target.ExportedDependencies(), sourceLabels(target)), target)
-		labelList("exported_deps", target.ExportedDependencies(), target)
-		if len(target.Tools) > 0 {
-			fmt.Printf("      tools = [\n")
-			for _, tool := range target.Tools {
-				fmt.Printf("          '%s',\n", tool)
-			}
-			fmt.Printf("      ],\n")
-		}
-		if len(target.Data) > 0 {
-			fmt.Printf("      data = [\n")
-			for _, datum := range target.Data {
-				fmt.Printf("          '%s',\n", datum)
-			}
-			fmt.Printf("      ],\n")
-		}
-		stringList("labels", excludeStrings(target.Labels, target.Requires))
-		stringList("hashes", target.Hashes)
-		stringList("licences", target.Licences)
-		stringList("test_outputs", target.TestOutputs)
-		stringList("requires", target.Requires)
-		if len(target.Provides) > 0 {
-			fmt.Printf("      provides = {\n")
-			for k, v := range target.Provides {
-				if v.PackageName == target.Label.PackageName {
-					fmt.Printf("          '%s': ':%s',\n", k, v.Name)
-				} else {
-					fmt.Printf("          '%s': '%s',\n", k, v)
-				}
-			}
-			fmt.Printf("      },\n")
-		}
-		if target.Flakiness > 0 {
-			fmt.Printf("      flaky = %d,\n", target.Flakiness)
-		}
-		if target.BuildTimeout > 0 {
-			fmt.Printf("      timeout = %0.0f,\n", target.BuildTimeout.Seconds())
-		}
-		if target.TestTimeout > 0 {
-			fmt.Printf("      test_timeout = %0.0f,\n", target.TestTimeout.Seconds())
-		}
-		if len(target.Visibility) > 0 {
-			fmt.Printf("      visibility = [\n")
-			for _, vis := range target.Visibility {
-				if vis.PackageName == "" && vis.IsAllSubpackages() {
-					fmt.Printf("          'PUBLIC',\n")
-				} else {
-					fmt.Printf("          '%s',\n", vis)
-				}
-			}
-			fmt.Printf("      ],\n")
-		}
-		if target.PreBuildFunction != 0 {
-			fmt.Printf("      pre_build = '<python ref>',\n") // Don't have any sensible way of printing this.
-		}
-		if target.PostBuildFunction != 0 {
-			fmt.Printf("      post_build = '<python ref>',\n") // Don't have any sensible way of printing this.
-		}
-		fmt.Printf("  )\n\n")
+		p.printf("      },\n")
 	}
+	if target.Flakiness > 0 {
+		p.printf("      flaky = %d,\n", target.Flakiness)
+	}
+	if target.BuildTimeout > 0 {
+		p.printf("      timeout = %0.0f,\n", target.BuildTimeout.Seconds())
+	}
+	if target.TestTimeout > 0 {
+		p.printf("      test_timeout = %0.0f,\n", target.TestTimeout.Seconds())
+	}
+	if len(target.Visibility) > 0 {
+		p.printf("      visibility = [\n")
+		for _, vis := range target.Visibility {
+			if vis.PackageName == "" && vis.IsAllSubpackages() {
+				p.printf("          'PUBLIC',\n")
+			} else {
+				p.printf("          '%s',\n", vis)
+			}
+		}
+		p.printf("      ],\n")
+	}
+	if target.PreBuildFunction != 0 {
+		p.printf("      pre_build = '<python ref>',\n") // Don't have any sensible way of printing this.
+	}
+	if target.PostBuildFunction != 0 {
+		p.printf("      post_build = '<python ref>',\n") // Don't have any sensible way of printing this.
+	}
+	p.printf("  )\n\n")
 }
 
-func pythonBool(s string, b bool) {
+func (p *printer) pythonBool(s string, b bool) {
 	if b {
-		fmt.Printf("      %s = True,\n", s)
+		p.printf("      %s = True,\n", s)
 	}
 }
 
-func pythonDict(m map[string]string, name string) {
+func (p *printer) pythonDict(m map[string]string, name string) {
 	if m != nil {
-		fmt.Printf("      %s = {\n", name)
+		p.printf("      %s = {\n", name)
 		for config, command := range m {
-			fmt.Printf("          '%s': '%s',\n", config, command)
+			p.printf("          '%s': '%s',\n", config, command)
 		}
-		fmt.Printf("      },\n")
+		p.printf("      },\n")
 	}
 }
 
-func labelList(s string, l []core.BuildLabel, target *core.BuildTarget) {
+func (p *printer) labelList(s string, l []core.BuildLabel, target *core.BuildTarget) {
 	if len(l) > 0 {
-		fmt.Printf("      %s = [\n", s)
+		p.printf("      %s = [\n", s)
 		for _, d := range l {
-			printLabel(d, target)
+			p.printLabel(d, target)
 		}
-		fmt.Printf("      ],\n")
+		p.printf("      ],\n")
 	}
 }
 
 // printLabel prints a single label relative to a given target.
-func printLabel(label core.BuildLabel, target *core.BuildTarget) {
+func (p *printer) printLabel(label core.BuildLabel, target *core.BuildTarget) {
 	if label.PackageName == target.Label.PackageName {
-		fmt.Printf("          ':%s',\n", label.Name)
+		p.printf("          ':%s',\n", label.Name)
 	} else {
-		fmt.Printf("          '%s',\n", label)
+		p.printf("          '%s',\n", label)
 	}
 
 }
 
-func stringList(s string, l []string) {
+func (p *printer) stringList(s string, l []string) {
 	if len(l) > 0 {
-		fmt.Printf("      %s = [\n", s)
+		p.printf("      %s = [\n", s)
 		for _, d := range l {
-			fmt.Printf("          '%s',\n", d)
+			p.printf("          '%s',\n", d)
 		}
-		fmt.Printf("      ],\n")
+		p.printf("      ],\n")
 	}
 }
 

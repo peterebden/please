@@ -3,10 +3,12 @@
 
 package query
 
-import "reflect"
-import "testing"
+import (
+	"reflect"
+	"testing"
 
-import "core"
+	"core"
+)
 
 // Add fields to this list *after* you teach print about them.
 var KnownFields = map[string]bool{
@@ -65,4 +67,7 @@ func TestAllFieldsArePresentAndAccountedFor(t *testing.T) {
 			t.Errorf("Unaccounted field in 'query print': %s", field.Name)
 		}
 	}
+}
+
+func TestPrintBasic(t *testing.T) {
 }
