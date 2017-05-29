@@ -124,9 +124,7 @@ func TestFilegroupOutput(t *testing.T) {
           'file.go',
           '//src/query:target1',
       ],
-      visibility = [
-          'PUBLIC',
-      ],
+      visibility = ['PUBLIC'],
   )
 
 `
@@ -167,10 +165,27 @@ func TestPostBuildOutput(t *testing.T) {
 	expected := `  build_rule(
       name = 'test_post_build_output',
       cmd = {
-          'opt': '/bin/true',
           'dbg': '/bin/false',
+          'opt': '/bin/true',
       },
-      post_build = '<python ref>',
+      post_build = <python ref>,
+  )
+
+`
+	assert.Equal(t, expected, s)
+}
+
+func TestContainerOutput(t *testing.T) {
+	target := core.NewBuildTarget(core.ParseBuildLabel("//src/query:test_container_output", ""))
+	target.SetContainerSetting("dockerimage", "alpine:3.5")
+	target.SetContainerSetting("dockeruser", "test")
+	s := testPrint(target)
+	expected := `  build_rule(
+      name = 'test_container_output',
+      container = {
+          'docker_image': 'alpine:3.5',
+          'docker_user': 'test',
+      },
   )
 
 `
@@ -179,8 +194,7 @@ func TestPostBuildOutput(t *testing.T) {
 
 func testPrint(target *core.BuildTarget) string {
 	var buf bytes.Buffer
-	p := printer{w: &buf}
-	p.queryPrint(target)
+	newPrinter(&buf, target, 2).PrintTarget()
 	return buf.String()
 }
 

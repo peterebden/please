@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
+	"sort"
+	"strings"
+	"time"
 
 	"core"
 )
@@ -14,241 +18,189 @@ import (
 func QueryPrint(graph *core.BuildGraph, labels []core.BuildLabel) {
 	for _, label := range labels {
 		fmt.Fprintf(os.Stderr, "%s:\n", label)
-		p := printer{w: os.Stdout}
-		p.queryPrint(graph.TargetOrDie(label))
+		newPrinter(os.Stdout, graph.TargetOrDie(label), 2).PrintTarget()
 	}
+}
+
+// specialFields is a mapping of field name -> any special casing relating to how to print it.
+var specialFields = map[string]func(*printer) (string, bool){
+	"name": func(p *printer) (string, bool) {
+		return "'" + p.target.Label.Name + "'", true
+	},
+	"building_description": func(p *printer) (string, bool) {
+		return p.target.BuildingDescription, p.target.BuildingDescription != core.DefaultBuildingDescription
+	},
+	"deps": func(p *printer) (string, bool) {
+		return p.genericPrint(reflect.ValueOf(p.target.DeclaredDependenciesStrict()))
+	},
+	"visibility": func(p *printer) (string, bool) {
+		if len(p.target.Visibility) == 1 && p.target.Visibility[0] == core.WholeGraph[0] {
+			return "['PUBLIC']", true
+		}
+		return p.genericPrint(reflect.ValueOf(p.target.Visibility))
+	},
+	"container": func(p *printer) (string, bool) {
+		if p.target.ContainerSettings == nil {
+			return "True", p.target.Containerise
+		}
+		return p.genericPrint(reflect.ValueOf(p.target.ContainerSettings.ToMap()))
+	},
+}
+
+// fieldPrecedence defines a specific ordering for fields.
+var fieldPrecedence = map[string]int{
+	"name":       -100,
+	"srcs":       -90,
+	"visibility": 90,
+	"deps":       100,
 }
 
 // A printer is responsible for creating the output of 'plz query print'.
 type printer struct {
-	w io.Writer
+	w          io.Writer
+	target     *core.BuildTarget
+	indent     int
+	doneFields map[string]bool
 }
 
+// newPrinter creates a new printer instance.
+func newPrinter(w io.Writer, target *core.BuildTarget, indent int) *printer {
+	return &printer{
+		w:          w,
+		target:     target,
+		indent:     indent,
+		doneFields: make(map[string]bool, 50), // Leave enough space for all of BuildTarget's fields.
+	}
+}
+
+// printf is an internal function which prints to the internal writer with an indent.
 func (p *printer) printf(msg string, args ...interface{}) {
+	fmt.Fprint(p.w, strings.Repeat(" ", p.indent))
 	fmt.Fprintf(p.w, msg, args...)
 }
 
-func (p *printer) queryPrint(target *core.BuildTarget) {
-	if target.IsFilegroup {
-		p.printf("  filegroup(\n")
+// PrintTarget prints an entire build target.
+func (p *printer) PrintTarget() {
+	if p.target.IsFilegroup {
+		p.printf("filegroup(\n")
 	} else {
-		p.printf("  build_rule(\n")
+		p.printf("build_rule(\n")
 	}
-	p.printf("      name = '%s',\n", target.Label.Name)
-	if len(target.Sources) > 0 {
-		p.printf("      srcs = [\n")
-		for _, src := range target.Sources {
-			p.printf("          '%s',\n", src)
-		}
-		p.printf("      ],\n")
-	} else if target.NamedSources != nil {
-		p.printf("      srcs = {\n")
-		for name, srcs := range target.NamedSources {
-			p.printf("          '%s': [\n", name)
-			for _, src := range srcs {
-				p.printf("              '%s'\n", src)
-			}
-			p.printf("          ],\n")
-		}
-		p.printf("      },\n")
-	}
-	if len(target.DeclaredOutputs()) > 0 && !target.IsFilegroup {
-		p.printf("      outs = [\n")
-		for _, out := range target.DeclaredOutputs() {
-			p.printf("          '%s',\n", out)
-		}
-		p.printf("      ],\n")
-	} else if names := target.DeclaredOutputNames(); len(names) > 0 {
-		p.printf("      outs = {\n")
-		outs := target.DeclaredNamedOutputs()
-		for _, name := range names {
-			p.printf("          '%s': [\n", name)
-			for _, out := range outs[name] {
-				p.printf("              '%s'\n", out)
-			}
-			p.printf("          ],\n")
-		}
-		p.printf("      },\n")
-	}
-	p.stringList("optional_outs", target.OptionalOutputs)
-	if !target.IsFilegroup {
-		if target.Command == "" {
-			p.pythonDict(target.Commands, "cmd")
-		} else {
-			p.printf("      cmd = '%s',\n", target.Command)
+	p.indent += 4
+	v := reflect.ValueOf(p.target).Elem()
+	t := v.Type()
+	f := make(orderedFields, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		f[i].structIndex = i
+		f[i].printIndex = i
+		if index, present := fieldPrecedence[p.fieldName(t.Field(i))]; present {
+			f[i].printIndex = index
 		}
 	}
-	p.pythonDict(target.TestCommands, "test_cmd")
-	if target.TestCommand != "" {
-		p.printf("      test_cmd = '%s',\n", target.TestCommand)
+	sort.Sort(f)
+	for _, orderedField := range f {
+		p.printField(t.Field(orderedField.structIndex), v.Field(orderedField.structIndex))
 	}
-	p.pythonBool("binary", target.IsBinary)
-	p.pythonBool("test", target.IsTest)
-	p.pythonBool("needs_transitive_deps", target.NeedsTransitiveDependencies)
-	if !target.IsFilegroup {
-		p.pythonBool("output_is_complete", target.OutputIsComplete)
-		if target.BuildingDescription != core.DefaultBuildingDescription {
-			p.printf("      building_description = '%s',\n", target.BuildingDescription)
-		}
-	}
-	p.pythonBool("stamp", target.Stamp)
-	if target.ContainerSettings != nil {
-		p.printf("      container = {\n")
-		p.printf("          'docker_image': '%s',\n", target.ContainerSettings.DockerImage)
-		p.printf("          'docker_user': '%s',\n", target.ContainerSettings.DockerUser)
-		p.printf("          'docker_run_args': '%s',\n", target.ContainerSettings.DockerRunArgs)
-	} else {
-		p.pythonBool("container", target.Containerise)
-	}
-	p.pythonBool("no_test_output", target.NoTestOutput)
-	p.pythonBool("test_only", target.TestOnly)
-	p.labelList("deps", excludeLabels(target.DeclaredDependencies(), target.ExportedDependencies(), sourceLabels(target)), target)
-	p.labelList("exported_deps", target.ExportedDependencies(), target)
-	if len(target.Tools) > 0 {
-		p.printf("      tools = [\n")
-		for _, tool := range target.Tools {
-			p.printf("          '%s',\n", tool)
-		}
-		p.printf("      ],\n")
-	}
-	if len(target.Data) > 0 {
-		p.printf("      data = [\n")
-		for _, datum := range target.Data {
-			p.printf("          '%s',\n", datum)
-		}
-		p.printf("      ],\n")
-	}
-	p.stringList("labels", excludeStrings(target.Labels, target.Requires))
-	p.stringList("hashes", target.Hashes)
-	p.stringList("licences", target.Licences)
-	p.stringList("test_outputs", target.TestOutputs)
-	p.stringList("requires", target.Requires)
-	if len(target.Provides) > 0 {
-		p.printf("      provides = {\n")
-		for k, v := range target.Provides {
-			if v.PackageName == target.Label.PackageName {
-				p.printf("          '%s': ':%s',\n", k, v.Name)
-			} else {
-				p.printf("          '%s': '%s',\n", k, v)
-			}
-		}
-		p.printf("      },\n")
-	}
-	if target.Flakiness > 0 {
-		p.printf("      flaky = %d,\n", target.Flakiness)
-	}
-	if target.BuildTimeout > 0 {
-		p.printf("      timeout = %0.0f,\n", target.BuildTimeout.Seconds())
-	}
-	if target.TestTimeout > 0 {
-		p.printf("      test_timeout = %0.0f,\n", target.TestTimeout.Seconds())
-	}
-	if len(target.Visibility) > 0 {
-		p.printf("      visibility = [\n")
-		for _, vis := range target.Visibility {
-			if vis.PackageName == "" && vis.IsAllSubpackages() {
-				p.printf("          'PUBLIC',\n")
-			} else {
-				p.printf("          '%s',\n", vis)
-			}
-		}
-		p.printf("      ],\n")
-	}
-	if target.PreBuildFunction != 0 {
-		p.printf("      pre_build = '<python ref>',\n") // Don't have any sensible way of printing this.
-	}
-	if target.PostBuildFunction != 0 {
-		p.printf("      post_build = '<python ref>',\n") // Don't have any sensible way of printing this.
-	}
-	p.printf("  )\n\n")
+	p.indent -= 4
+	p.printf(")\n\n")
 }
 
-func (p *printer) pythonBool(s string, b bool) {
-	if b {
-		p.printf("      %s = True,\n", s)
+// fieldName returns the name we'll use to print a field.
+func (p *printer) fieldName(f reflect.StructField) string {
+	if name := f.Tag.Get("name"); name != "" {
+		return name
+	}
+	// We don't bother specifying on some fields when it's equivalent other than case.
+	return strings.ToLower(f.Name)
+}
+
+// printField prints a single field of a build target.
+func (p *printer) printField(f reflect.StructField, v reflect.Value) {
+	if f.Tag.Get("print") == "false" { // Indicates not to print the field.
+		return
+	}
+	name := p.fieldName(f)
+	if p.doneFields[name] {
+		return
+	}
+	if customFunc, present := specialFields[name]; present {
+		if contents, shouldPrint := customFunc(p); shouldPrint {
+			p.printf("%s = %s,\n", name, contents)
+			p.doneFields[name] = true
+		}
+	} else if contents, shouldPrint := p.genericPrint(v); shouldPrint {
+		p.printf("%s = %s,\n", name, contents)
+		p.doneFields[name] = true
 	}
 }
 
-func (p *printer) pythonDict(m map[string]string, name string) {
-	if m != nil {
-		p.printf("      %s = {\n", name)
-		for config, command := range m {
-			p.printf("          '%s': '%s',\n", config, command)
+// genericPrint is the generic print function for a field.
+func (p *printer) genericPrint(v reflect.Value) (string, bool) {
+	switch v.Kind() {
+	case reflect.Slice:
+		return p.printSlice(v), v.Len() > 0
+	case reflect.Map:
+		return p.printMap(v), v.Len() > 0
+	case reflect.String:
+		return "'" + v.String() + "'", v.Len() > 0
+	case reflect.Bool:
+		return "True", v.Bool()
+	case reflect.Int, reflect.Int32:
+		return fmt.Sprintf("%d", v.Int()), v.Int() > 0
+	case reflect.Uintptr:
+		return "<python ref>", v.Uint() != 0
+	case reflect.Struct, reflect.Interface:
+		if stringer, ok := v.Interface().(fmt.Stringer); ok {
+			return "'" + stringer.String() + "'", true
 		}
-		p.printf("      },\n")
-	}
-}
-
-func (p *printer) labelList(s string, l []core.BuildLabel, target *core.BuildTarget) {
-	if len(l) > 0 {
-		p.printf("      %s = [\n", s)
-		for _, d := range l {
-			p.printLabel(d, target)
-		}
-		p.printf("      ],\n")
-	}
-}
-
-// printLabel prints a single label relative to a given target.
-func (p *printer) printLabel(label core.BuildLabel, target *core.BuildTarget) {
-	if label.PackageName == target.Label.PackageName {
-		p.printf("          ':%s',\n", label.Name)
-	} else {
-		p.printf("          '%s',\n", label)
-	}
-
-}
-
-func (p *printer) stringList(s string, l []string) {
-	if len(l) > 0 {
-		p.printf("      %s = [\n", s)
-		for _, d := range l {
-			p.printf("          '%s',\n", d)
-		}
-		p.printf("      ],\n")
-	}
-}
-
-// excludeLabels returns a filtered slice of labels from l that are not in excl.
-func excludeLabels(l []core.BuildLabel, excl ...[]core.BuildLabel) []core.BuildLabel {
-	var ret []core.BuildLabel
-	// This is obviously quadratic but who cares, the lists will not be long.
-outer:
-	for _, x := range l {
-		for _, y := range excl {
-			for _, z := range y {
-				if x == z {
-					continue outer
-				}
-			}
-		}
-		ret = append(ret, x)
-	}
-	return ret
-}
-
-// excludeStrings returns a filtered slice of strings from l that are not in excl.
-func excludeStrings(l, excl []string) []string {
-	var ret []string
-outer:
-	for _, x := range l {
-		for _, y := range excl {
-			if x == y {
-				continue outer
-			}
-		}
-		ret = append(ret, x)
-	}
-	return ret
-}
-
-// sourceLabels returns all the labels that are sources of this target.
-func sourceLabels(target *core.BuildTarget) []core.BuildLabel {
-	ret := make([]core.BuildLabel, 0, len(target.Sources))
-	for _, src := range target.Sources {
-		if src.Label() != nil {
-			ret = append(ret, *src.Label())
+	case reflect.Int64:
+		if v.Type().Name() == "Duration" {
+			secs := v.Interface().(time.Duration).Seconds()
+			return fmt.Sprintf("%0.0f", secs), secs > 0.0
 		}
 	}
-	return ret
+	log.Error("Unknown field type %s: %s", v.Kind(), v.Type().Name())
+	return "", false
 }
+
+// printSlice prints the representation of a slice field.
+func (p *printer) printSlice(v reflect.Value) string {
+	if v.Len() == -1 {
+		// Single-element slices are printed on one line
+		elem, _ := p.genericPrint(v.Index(0))
+		return "[" + elem + "]"
+	}
+	s := make([]string, v.Len())
+	indent := strings.Repeat(" ", p.indent+4)
+	for i := 0; i < v.Len(); i++ {
+		elem, _ := p.genericPrint(v.Index(i))
+		s[i] = indent + elem + ",\n"
+	}
+	return "[\n" + strings.Join(s, "") + strings.Repeat(" ", p.indent) + "]"
+}
+
+// printMap prints the representation of a map field.
+func (p *printer) printMap(v reflect.Value) string {
+	keys := v.MapKeys()
+	sort.Slice(keys, func(i, j int) bool { return keys[i].String() < keys[j].String() })
+	s := make([]string, len(keys))
+	indent := strings.Repeat(" ", p.indent+4)
+	for i, key := range keys {
+		keyElem, _ := p.genericPrint(key)
+		valElem, _ := p.genericPrint(v.MapIndex(key))
+		s[i] = indent + keyElem + ": " + valElem + ",\n"
+	}
+	return "{\n" + strings.Join(s, "") + strings.Repeat(" ", p.indent) + "}"
+}
+
+// An orderedField is used to sort the fields into the order we print them in.
+// This isn't necessarily the same as the order on the struct.
+type orderedField struct {
+	structIndex, printIndex int
+}
+
+type orderedFields []orderedField
+
+func (f orderedFields) Len() int           { return len(f) }
+func (f orderedFields) Swap(a, b int)      { f[a], f[b] = f[b], f[a] }
+func (f orderedFields) Less(a, b int) bool { return f[a].printIndex < f[b].printIndex }
