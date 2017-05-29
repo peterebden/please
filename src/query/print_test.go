@@ -47,9 +47,7 @@ func TestPrintOutput(t *testing.T) {
       ],
       cmd = 'cp $SRCS $OUTS',
       binary = True,
-      tools = [
-          '//tools:tool1',
-      ],
+      tools = ['//tools:tool1'],
   )
 
 `
@@ -87,9 +85,7 @@ func TestTestOutput(t *testing.T) {
 	s := testPrint(target)
 	expected := `  build_rule(
       name = 'test_test_output',
-      srcs = [
-          'file.go',
-      ],
+      srcs = ['file.go'],
       binary = True,
       test = True,
       flaky = 2,

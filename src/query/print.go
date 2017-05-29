@@ -17,12 +17,13 @@ import (
 // or some similar wrapper rule, but we've lost that information by now.
 func Print(graph *core.BuildGraph, labels []core.BuildLabel, fields []string) {
 	for _, label := range labels {
-		fmt.Fprintf(os.Stderr, "%s:\n", label)
-		p := newPrinter(os.Stdout, graph.TargetOrDie(label), 2)
+		if len(fields) == 0 {
+			fmt.Fprintf(os.Stderr, "%s:\n", label)
+		}
 		if len(fields) > 0 {
-			p.PrintFields(fields)
+			newPrinter(os.Stdout, graph.TargetOrDie(label), 0).PrintFields(fields)
 		} else {
-			p.PrintTarget()
+			newPrinter(os.Stdout, graph.TargetOrDie(label), 2).PrintTarget()
 		}
 	}
 }
@@ -120,6 +121,9 @@ func (p *printer) PrintFields(fields []string) bool {
 	for _, field := range fields {
 		f := p.findField(field)
 		if contents, shouldPrint := p.shouldPrintField(f, v.FieldByIndex(f.Index)); shouldPrint {
+			if !strings.HasSuffix(contents, "\n") {
+				contents += "\n"
+			}
 			p.printf("%s", contents)
 		}
 	}
@@ -205,7 +209,7 @@ func (p *printer) genericPrint(v reflect.Value) (string, bool) {
 
 // printSlice prints the representation of a slice field.
 func (p *printer) printSlice(v reflect.Value) string {
-	if v.Len() == -1 {
+	if v.Len() == 1 {
 		// Single-element slices are printed on one line
 		elem, _ := p.genericPrint(v.Index(0))
 		return p.surround("[", elem, "]", "")
