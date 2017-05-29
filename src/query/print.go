@@ -15,15 +15,18 @@ import (
 // Print produces a Python call which would (hopefully) regenerate the same build rule if run.
 // This is of course not ideal since they were almost certainly created as a java_library
 // or some similar wrapper rule, but we've lost that information by now.
-func Print(graph *core.BuildGraph, labels []core.BuildLabel, fields []string) {
+func Print(graph *core.BuildGraph, labels []core.BuildLabel, fields []string, json bool) {
 	for _, label := range labels {
 		if len(fields) == 0 {
 			fmt.Fprintf(os.Stderr, "%s:\n", label)
 		}
+		p := newPrinter(os.Stdout, graph.TargetOrDie(label))
+		p.json = json
 		if len(fields) > 0 {
-			newPrinter(os.Stdout, graph.TargetOrDie(label), 0).PrintFields(fields)
+			p.PrintFields(fields)
 		} else {
-			newPrinter(os.Stdout, graph.TargetOrDie(label), 2).PrintTarget()
+			p.indent = 2
+			p.PrintTarget()
 		}
 	}
 }
@@ -42,13 +45,14 @@ var specialFields = map[string]func(*printer) (string, bool){
 	},
 	"visibility": func(p *printer) (string, bool) {
 		if len(p.target.Visibility) == 1 && p.target.Visibility[0] == core.WholeGraph[0] {
-			return "['PUBLIC']", true
+			// Special case this guy so it doesn't come out as //...
+			return p.genericPrint(reflect.ValueOf([]string{"PUBLIC"}))
 		}
 		return p.genericPrint(reflect.ValueOf(p.target.Visibility))
 	},
 	"container": func(p *printer) (string, bool) {
 		if p.target.ContainerSettings == nil {
-			return "True", p.target.Containerise
+			return p.genericPrint(reflect.ValueOf(p.target.Containerise))
 		}
 		return p.genericPrint(reflect.ValueOf(p.target.ContainerSettings.ToMap()))
 	},
@@ -70,14 +74,14 @@ type printer struct {
 	doneFields     map[string]bool
 	error          bool // true if something went wrong
 	surroundSyntax bool // true if we are quoting strings or surrounding slices with [] etc.
+	json           bool // true if we are going to print in JSON format.
 }
 
 // newPrinter creates a new printer instance.
-func newPrinter(w io.Writer, target *core.BuildTarget, indent int) *printer {
+func newPrinter(w io.Writer, target *core.BuildTarget) *printer {
 	return &printer{
 		w:          w,
 		target:     target,
-		indent:     indent,
 		doneFields: make(map[string]bool, 50), // Leave enough space for all of BuildTarget's fields.
 	}
 }

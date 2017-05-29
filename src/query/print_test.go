@@ -14,7 +14,7 @@ import (
 func TestAllFieldsArePresentAndAccountedFor(t *testing.T) {
 	target := core.BuildTarget{}
 	var buf bytes.Buffer
-	p := newPrinter(&buf, &target, 0)
+	p := newPrinter(&buf, &target)
 	p.PrintTarget()
 	assert.False(t, p.error, "Appears we do not know how to print some fields")
 }
@@ -141,15 +141,41 @@ func TestPrintFields(t *testing.T) {
 	assert.Equal(t, "go\ntest\n", s)
 }
 
+func TestJSONOutput(t *testing.T) {
+	target := core.NewBuildTarget(core.ParseBuildLabel("//src/query:test_json_output", ""))
+	target.AddSource(src("file.go"))
+	target.IsTest = true
+	target.IsBinary = true
+	target.BuildTimeout = 30 * time.Second
+	target.TestTimeout = 60 * time.Second
+	target.Flakiness = 2
+	s := testPrint(target)
+	expected := `{"test_json_output": {
+    "name": "test_json_output",
+    "srcs": ["file.go"],
+    "binary": true,
+    "test": true,
+    "flaky": 2,
+    "timeout": 30,
+    "test_timeout": 60,
+}
+}
+`
+	assert.Equal(t, expected, s)
+
+}
+
 func testPrint(target *core.BuildTarget) string {
 	var buf bytes.Buffer
-	newPrinter(&buf, target, 2).PrintTarget()
+	p := newPrinter(&buf, target)
+	p.indent = 2
+	p.PrintTarget()
 	return buf.String()
 }
 
 func testPrintFields(target *core.BuildTarget, fields []string) string {
 	var buf bytes.Buffer
-	newPrinter(&buf, target, 0).PrintFields(fields)
+	newPrinter(&buf, target).PrintFields(fields)
 	return buf.String()
 }
 
