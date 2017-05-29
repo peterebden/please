@@ -192,9 +192,23 @@ func TestContainerOutput(t *testing.T) {
 	assert.Equal(t, expected, s)
 }
 
+func TestPrintFields(t *testing.T) {
+	target := core.NewBuildTarget(core.ParseBuildLabel("//src/query:test_print_fields", ""))
+	target.AddLabel("go")
+	target.AddLabel("test")
+	s := testPrintFields(target, []string{"labels"})
+	assert.Equal(t, "go\ntest\n", s)
+}
+
 func testPrint(target *core.BuildTarget) string {
 	var buf bytes.Buffer
 	newPrinter(&buf, target, 2).PrintTarget()
+	return buf.String()
+}
+
+func testPrintFields(target *core.BuildTarget, fields []string) string {
+	var buf bytes.Buffer
+	newPrinter(&buf, target, 2).PrintFields(fields)
 	return buf.String()
 }
 

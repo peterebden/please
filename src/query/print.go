@@ -12,13 +12,18 @@ import (
 	"core"
 )
 
-// QueryPrint produces a Python call which would (hopefully) regenerate the same build rule if run.
+// Print produces a Python call which would (hopefully) regenerate the same build rule if run.
 // This is of course not ideal since they were almost certainly created as a java_library
 // or some similar wrapper rule, but we've lost that information by now.
-func QueryPrint(graph *core.BuildGraph, labels []core.BuildLabel) {
+func Print(graph *core.BuildGraph, labels []core.BuildLabel, fields []string) {
 	for _, label := range labels {
 		fmt.Fprintf(os.Stderr, "%s:\n", label)
-		newPrinter(os.Stdout, graph.TargetOrDie(label), 2).PrintTarget()
+		p := newPrinter(os.Stdout, graph.TargetOrDie(label), 2)
+		if len(fields) > 0 {
+			p.PrintFields(fields)
+		} else {
+			p.PrintTarget()
+		}
 	}
 }
 
@@ -61,6 +66,7 @@ type printer struct {
 	target     *core.BuildTarget
 	indent     int
 	doneFields map[string]bool
+	error      bool // true if something went wrong
 }
 
 // newPrinter creates a new printer instance.
@@ -105,6 +111,32 @@ func (p *printer) PrintTarget() {
 	p.printf(")\n\n")
 }
 
+// PrintFields prints a subset of fields of a build target.
+func (p *printer) PrintFields(fields []string) bool {
+	v := reflect.ValueOf(p.target).Elem()
+	for _, field := range fields {
+		f := p.findField(field)
+		if contents, shouldPrint := p.shouldPrintField(f, v.FieldByIndex(f.Index)); shouldPrint {
+			p.printf("%s\n", contents)
+		}
+	}
+	return p.error
+}
+
+// findField returns the field which would print with the given name.
+// This isn't as simple as using reflect.Value.FieldByName since the print names
+// are different to the actual struct names.
+func (p *printer) findField(field string) reflect.StructField {
+	t := reflect.ValueOf(p.target).Elem().Type()
+	for i := 0; i < t.NumField(); i++ {
+		if f := t.Field(i); p.fieldName(f) == field {
+			return f
+		}
+	}
+	log.Fatalf("Unknown field %s", field)
+	return reflect.StructField{}
+}
+
 // fieldName returns the name we'll use to print a field.
 func (p *printer) fieldName(f reflect.StructField) string {
 	if name := f.Tag.Get("name"); name != "" {
@@ -116,22 +148,26 @@ func (p *printer) fieldName(f reflect.StructField) string {
 
 // printField prints a single field of a build target.
 func (p *printer) printField(f reflect.StructField, v reflect.Value) {
-	if f.Tag.Get("print") == "false" { // Indicates not to print the field.
-		return
-	}
-	name := p.fieldName(f)
-	if p.doneFields[name] {
-		return
-	}
-	if customFunc, present := specialFields[name]; present {
-		if contents, shouldPrint := customFunc(p); shouldPrint {
-			p.printf("%s = %s,\n", name, contents)
-			p.doneFields[name] = true
-		}
-	} else if contents, shouldPrint := p.genericPrint(v); shouldPrint {
+	if contents, shouldPrint := p.shouldPrintField(f, v); shouldPrint {
+		name := p.fieldName(f)
 		p.printf("%s = %s,\n", name, contents)
 		p.doneFields[name] = true
 	}
+}
+
+// shouldPrintField returns whether we should print a field and what we'd print if we did.
+func (p *printer) shouldPrintField(f reflect.StructField, v reflect.Value) (string, bool) {
+	if f.Tag.Get("print") == "false" { // Indicates not to print the field.
+		return "", false
+	}
+	name := p.fieldName(f)
+	if p.doneFields[name] {
+		return "", false
+	}
+	if customFunc, present := specialFields[name]; present {
+		return customFunc(p)
+	}
+	return p.genericPrint(v)
 }
 
 // genericPrint is the generic print function for a field.
@@ -160,6 +196,7 @@ func (p *printer) genericPrint(v reflect.Value) (string, bool) {
 		}
 	}
 	log.Error("Unknown field type %s: %s", v.Kind(), v.Type().Name())
+	p.error = true
 	return "", false
 }
 
