@@ -75,6 +75,7 @@ var opts struct {
 	Profile          string `long:"profile" hidden:"true" description:"Write profiling output to this file"`
 	ParsePackageOnly bool   `description:"Parses a single package only. All that's necessary for some commands." no-flag:"true"`
 	NoCacheCleaner   bool   `description:"Don't start a cleaning process for the directory cache" no-flag:"true"`
+	Complete         string `long:"complete" hidden:"true" env:"PLZ_COMPLETE" description:"Provide completion options for this build target."`
 
 	Build struct {
 		Prepare    bool     `long:"prepare" description:"Prepare build directory for these targets but don't build them."`
@@ -471,8 +472,8 @@ var buildFunctions = map[string]func() bool{
 		if len(fragments) == 0 || len(fragments) == 1 && strings.Trim(fragments[0], "/ ") == "" {
 			os.Exit(0) // Don't do anything for empty completion, it's normally too slow.
 		}
-		labels, hidden := query.QueryCompletionLabels(config, fragments, core.RepoRoot)
-		if success, state := Please(labels, config, false, false, false); success {
+		labels, parseLabels, hidden := query.QueryCompletionLabels(config, fragments, core.RepoRoot)
+		if success, state := Please(parseLabels, config, false, false, false); success {
 			binary := opts.Query.Completions.Cmd == "run"
 			test := opts.Query.Completions.Cmd == "test" || opts.Query.Completions.Cmd == "cover"
 			query.QueryCompletions(state.Graph, labels, binary, test, hidden)
@@ -705,7 +706,12 @@ func main() {
 	cli.InitLogging(opts.OutputFlags.Verbosity)
 
 	command := activeCommand(parser.Command)
-	if command == "init" {
+	if opts.Complete != "" {
+		// Completion via PLZ_COMPLETE env var sidesteps other commands
+		opts.Query.Completions.Cmd = command
+		opts.Query.Completions.Args.Fragments = []string{opts.Complete}
+		command = "completions"
+	} else if command == "init" {
 		if flagsErr != nil { // This error otherwise doesn't get checked until later.
 			cli.ParseFlagsFromArgsOrDie("Please", core.PleaseVersion.String(), &opts, os.Args)
 		}
@@ -725,7 +731,7 @@ func main() {
 		}
 		os.Exit(0)
 	} else if opts.Query.Completions.BashScript || opts.Query.Completions.ZshScript {
-		log.Warning("--bash_script and --zsh_script are deprecated in favour of plz query completions --bash / --zsh")
+		log.Warning("--bash_script and --zsh_script are deprecated in favour of plz query completion script --bash / --zsh")
 		utils.PrintCompletionScript(opts.Query.Completions.BashScript, opts.Query.Completions.ZshScript)
 		os.Exit(0)
 	}
