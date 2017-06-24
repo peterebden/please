@@ -233,7 +233,12 @@ var opts struct {
 			Args       struct {
 				Fragments []string `positional-arg-name:"fragment" description:"Initial fragment to attempt to complete"`
 			} `positional-args:"true"`
-		} `command:"completions" description:"Prints possible completions for a string."`
+
+			Script struct {
+				Bash bool `short:"b" long:"bash" description:"Prints the Bash completion script"`
+				Zsh  bool `short:"z" long:"zsh" description:"Prints the zsh completion script"`
+			} `command:"script" description:"Prints the completion script to be sourced by a shell"`
+		} `command:"completions" alias:"completion" subcommands-optional:"true" description:"Prints possible completions for a string."`
 		AffectedTargets struct {
 			Tests        bool `long:"tests" description:"Shows only affected tests, no other targets."`
 			Intransitive bool `long:"intransitive" description:"Shows only immediately affected targets, not transitive dependencies."`
@@ -674,13 +679,11 @@ func runBuild(targets []core.BuildLabel, shouldBuild, shouldTest bool) (bool, *c
 }
 
 // activeCommand returns the name of the currently active command.
-func activeCommand(parser *flags.Parser) string {
-	if parser.Active == nil {
-		return ""
-	} else if parser.Active.Active != nil {
-		return parser.Active.Active.Name
+func activeCommand(command *flags.Command) string {
+	if command.Active != nil {
+		return activeCommand(command.Active)
 	}
-	return parser.Active.Name
+	return command.Name
 }
 
 func main() {
@@ -701,7 +704,7 @@ func main() {
 	// Init logging, but don't do file output until we've chdir'd.
 	cli.InitLogging(opts.OutputFlags.Verbosity)
 
-	command := activeCommand(parser)
+	command := activeCommand(parser.Command)
 	if command == "init" {
 		if flagsErr != nil { // This error otherwise doesn't get checked until later.
 			cli.ParseFlagsFromArgsOrDie("Please", core.PleaseVersion.String(), &opts, os.Args)
@@ -714,8 +717,16 @@ func main() {
 			os.Exit(1)
 		}
 		os.Exit(0)
+	} else if command == "script" {
+		if opts.Query.Completions.Script.Bash && opts.Query.Completions.Script.Zsh {
+			log.Fatalf("Can't pass both --bash and --zsh")
+		} else if !utils.PrintCompletionScript(opts.Query.Completions.Script.Bash, opts.Query.Completions.Script.Zsh) {
+			log.Fatalf("Can't determine which shell you're in, you must pass --bash or --zsh")
+		}
+		os.Exit(0)
 	} else if opts.Query.Completions.BashScript || opts.Query.Completions.ZshScript {
-		utils.PrintCompletionScript(opts.Query.Completions.ZshScript)
+		log.Warning("--bash_script and --zsh_script are deprecated in favour of plz query completions --bash / --zsh")
+		utils.PrintCompletionScript(opts.Query.Completions.BashScript, opts.Query.Completions.ZshScript)
 		os.Exit(0)
 	}
 	if opts.BuildFlags.RepoRoot == "" {
@@ -745,7 +756,7 @@ func main() {
 			argv = strings.Replace(argv, k, v, 1)
 		}
 		parser = cli.ParseFlagsFromArgsOrDie("Please", core.PleaseVersion.String(), &opts, strings.Fields(argv))
-		command = activeCommand(parser)
+		command = activeCommand(parser.Command)
 	}
 
 	if opts.Profile != "" {
