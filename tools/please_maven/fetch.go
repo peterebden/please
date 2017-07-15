@@ -52,7 +52,7 @@ func toMap(sl []string) map[string]bool {
 // Pom fetches the POM XML for a package.
 // Note that this may invoke itself recursively to fetch parent artifacts and dependencies.
 func (f *Fetch) Pom(a artifact) *pomXml {
-	pom := &pomXml{}
+	pom := &pomXml{artifact: a}
 	pom.Unmarshal(f, f.mustFetch(a.PomPath()))
 	return pom
 }
@@ -111,9 +111,9 @@ func (f *Fetch) fetch(url string, readBody bool) ([]byte, error) {
 		log.Debug("Retrieved %s from cache", url)
 		return contents, nil
 	}
-	url = f.url + url
-	log.Notice("Downloading %s...", url)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	fullUrl := f.url + url
+	log.Notice("Downloading %s...", fullUrl)
+	req, err := http.NewRequest(http.MethodGet, fullUrl, nil)
 	if err != nil {
 		return nil, err
 	}

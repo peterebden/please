@@ -15,6 +15,7 @@ type artifact struct {
 	GroupId    string `xml:"groupId"`
 	ArtifactId string `xml:"artifactId"`
 	Version    string `xml:"version"`
+	isParent   bool
 }
 
 // GroupPath returns the group ID as a path.
@@ -83,14 +84,16 @@ type pomXml struct {
 	HasSources    bool
 }
 
+type pomDependency struct {
+	artifact
+	Pom      *pomXml
+	Scope    string `xml:"scope"`
+	Optional bool   `xml:"optional"`
+	// TODO(pebers): Handle exclusions here.
+}
+
 type pomDependencies struct {
-	Dependency []struct {
-		artifact
-		Pom      *pomXml
-		Scope    string `xml:"scope"`
-		Optional bool   `xml:"optional"`
-		// TODO(pebers): Handle exclusions here.
-	} `xml:"dependency"`
+	Dependency []pomDependency `xml:"dependency"`
 }
 
 type mavenMetadataXml struct {
@@ -189,6 +192,7 @@ func (pom *pomXml) Unmarshal(f *Fetch, response []byte) {
 			log.Fatalf("Circular dependency: %s:%s:%s specifies itself as its own parent", pom.GroupId, pom.ArtifactId, pom.Version)
 		}
 		// Must inherit variables from the parent.
+		pom.Parent.isParent = true
 		parent := f.Pom(pom.Parent)
 		for _, prop := range parent.Properties.Property {
 			pom.AddProperty(prop)
@@ -205,46 +209,52 @@ func (pom *pomXml) Unmarshal(f *Fetch, response []byte) {
 	// Arbitrarily, some pom files have this different structure with the extra "dependencyManagement" level.
 	pom.Dependencies.Dependency = append(pom.Dependencies.Dependency, pom.DependencyManagement.Dependencies.Dependency...)
 	pom.HasSources = f.HasSources(pom.artifact)
-	for _, dep := range pom.Dependencies.Dependency {
-		// This is a bit of a hack; our build model doesn't distinguish these in the way Maven does.
-		// TODO(pebers): Consider allowing specifying these to this tool to produce test-only deps.
-		// Similarly system deps don't actually get fetched from Maven.
-		if dep.Scope == "test" || dep.Scope == "system" {
-			log.Debug("Not fetching %s:%s because of scope", dep.GroupId, dep.ArtifactId)
-			continue
+	if !pom.isParent {
+		for _, dep := range pom.Dependencies.Dependency {
+			pom.fetchDependency(f, &dep)
 		}
-		if dep.Optional && !f.ShouldInclude(dep.ArtifactId) {
-			log.Debug("Not fetching optional dependency %s:%s", dep.GroupId, dep.ArtifactId)
-			continue
-		}
-		log.Debug("Fetching %s (depended on by %s)", dep.Id(), pom.Id())
-		dep.GroupId = pom.replaceVariables(dep.GroupId)
-		dep.ArtifactId = pom.replaceVariables(dep.ArtifactId)
-		// Not sure what this is about; httpclient seems to do this. It seems completely unhelpful but
-		// no doubt there's some highly obscure case where it's considered useful.
-		pom.PropertiesMap[dep.ArtifactId+".version"] = ""
-		pom.PropertiesMap[strings.Replace(dep.ArtifactId, "-", ".", -1)+".version"] = ""
-		dep.Version = strings.Trim(pom.replaceVariables(dep.Version), "[]")
-		if strings.Contains(dep.Version, ",") {
-			log.Fatalf("Can't do dependency mediation for %s", dep.Id())
-		}
-		if f.IsExcluded(dep.ArtifactId) {
-			continue
-		}
-		if dep.Version == "" {
-			// Not 100% sure what the logic should really be here; for example, jacoco
-			// seems to leave these underspecified and expects the same version, but other
-			// things seem to expect the latest. Most likely it is some complex resolution
-			// logic, but we'll take a stab at the same if the group matches and the same
-			// version exists, otherwise we'll take the latest.
-			if metadata := f.Metadata(dep.artifact); dep.GroupId == pom.GroupId && metadata.HasVersion(pom.Version) {
-				dep.Version = pom.Version
-			} else {
-				dep.Version = metadata.LatestVersion()
-			}
-		}
-		dep.Pom = f.Pom(dep.artifact)
 	}
+}
+
+func (pom *pomXml) fetchDependency(f *Fetch, dep *pomDependency) {
+	// This is a bit of a hack; our build model doesn't distinguish these in the way Maven does.
+	// TODO(pebers): Consider allowing specifying these to this tool to produce test-only deps.
+	// Similarly system deps don't actually get fetched from Maven.
+	if dep.Scope == "test" || dep.Scope == "system" {
+		log.Debug("Not fetching %s:%s because of scope", dep.GroupId, dep.ArtifactId)
+		return
+	}
+	if dep.Optional && !f.ShouldInclude(dep.ArtifactId) {
+		log.Debug("Not fetching optional dependency %s:%s", dep.GroupId, dep.ArtifactId)
+		return
+	}
+	log.Debug("Fetching %s (depended on by %s)", dep.Id(), pom.Id())
+	dep.GroupId = pom.replaceVariables(dep.GroupId)
+	dep.ArtifactId = pom.replaceVariables(dep.ArtifactId)
+	// Not sure what this is about; httpclient seems to do this. It seems completely unhelpful but
+	// no doubt there's some highly obscure case where it's considered useful.
+	pom.PropertiesMap[dep.ArtifactId+".version"] = ""
+	pom.PropertiesMap[strings.Replace(dep.ArtifactId, "-", ".", -1)+".version"] = ""
+	dep.Version = strings.Trim(pom.replaceVariables(dep.Version), "[]")
+	if strings.Contains(dep.Version, ",") {
+		log.Fatalf("Can't do dependency mediation for %s", dep.Id())
+	}
+	if f.IsExcluded(dep.ArtifactId) {
+		return
+	}
+	if dep.Version == "" {
+		// Not 100% sure what the logic should really be here; for example, jacoco
+		// seems to leave these underspecified and expects the same version, but other
+		// things seem to expect the latest. Most likely it is some complex resolution
+		// logic, but we'll take a stab at the same if the group matches and the same
+		// version exists, otherwise we'll take the latest.
+		if metadata := f.Metadata(dep.artifact); dep.GroupId == pom.GroupId && metadata.HasVersion(pom.Version) {
+			dep.Version = pom.Version
+		} else {
+			dep.Version = metadata.LatestVersion()
+		}
+	}
+	dep.Pom = f.Pom(dep.artifact)
 }
 
 // AllDependencies returns all the dependencies for this package.

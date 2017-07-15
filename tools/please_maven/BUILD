@@ -17,3 +17,13 @@ go_binary(
     ],
     visibility = ['PUBLIC'],
 )
+
+go_test(
+    name = 'maven_test',
+    srcs = ['maven_test.go'],
+    data = ['test_data'],
+    deps = [
+        ':maven',
+        '//third_party/go:testify',
+    ],
+)
