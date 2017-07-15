@@ -1,9 +1,19 @@
+go_library(
+    name = 'maven',
+    srcs = [
+        'fetch.go',
+        'pom.go',
+        'print.go',
+    ],
+    deps = ['//third_party/go:logging'],
+)
+
 go_binary(
     name = 'please_maven',
-    srcs = ['please_maven.go'],
+    srcs = ['main.go'],
     deps = [
+        ':maven',
         '//src/cli',
-        '//third_party/go:logging',
     ],
     visibility = ['PUBLIC'],
 )
