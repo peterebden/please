@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/Workiva/go-datastructures/queue"
 	"gopkg.in/op/go-logging.v1"
@@ -95,6 +96,7 @@ type pomProperty struct {
 
 type pomXml struct {
 	Artifact
+	OriginalArtifact     Artifact
 	Dependencies         pomDependencies `xml:"dependencies"`
 	DependencyManagement struct {
 		Dependencies pomDependencies `xml:"dependencies"`
@@ -109,6 +111,8 @@ type pomXml struct {
 	} `xml:"licenses"`
 	Parent        Artifact `xml:"parent"`
 	PropertiesMap map[string]string
+	Dependors     []*pomXml
+	mutex         sync.Mutex
 	HasSources    bool
 }
 
@@ -191,6 +195,7 @@ func (pom *pomXml) replaceVariables(s string) string {
 
 // Unmarshal parses a downloaded pom.xml. This is of course less trivial than you would hope.
 func (pom *pomXml) Unmarshal(f *Fetch, response []byte) {
+	pom.OriginalArtifact = pom.Artifact // Keep a copy of this for later
 	decoder := xml.NewDecoder(bytes.NewReader(response))
 	// This is not beautiful; it assumes all inputs are utf-8 compatible, essentially, in order to handle
 	// ISO-8859-1 inputs. Possibly we should use a real conversion although it's a little unclear what the
@@ -282,6 +287,9 @@ func (dep *pomDependency) Resolve(f *Fetch) {
 		}
 	}
 	dep.Pom = f.Pom(&dep.Artifact)
+	dep.Pom.mutex.Lock()
+	defer dep.Pom.mutex.Unlock()
+	dep.Pom.Dependors = append(dep.Pom.Dependors, dep.Dependor)
 }
 
 // AllDependencies returns all the dependencies for this package.
@@ -333,6 +341,7 @@ func (dep *pomDependency) Compare(item queue.Item) int {
 type Version struct {
 	Min, Max  VersionPart
 	Raw, Path string
+	Parsed    bool
 }
 
 // A VersionPart forms part of a Version; it can be either an upper or lower bound.
@@ -340,6 +349,7 @@ type VersionPart struct {
 	Qualifier                 string
 	Major, Minor, Incremental int
 	Inclusive                 bool
+	Set                       bool
 }
 
 // Unmarshal parses a Version from a raw string.
@@ -354,13 +364,16 @@ func (v *Version) Unmarshal(in string) {
 		if submatches[1] == "[" || (submatches[1] == "" && submatches[6] == "") {
 			v.Min = versionPart(submatches[2:6], true)
 			v.Max.Major = 9999 // arbitrarily large
+			v.Parsed = true
 		}
 		if submatches[6] == "]" {
 			v.Max = versionPart(submatches[2:6], true)
+			v.Parsed = true
 		}
 	} else if submatches := doubleVersionRegex.FindStringSubmatch(in); len(submatches) == 11 {
 		v.Min = versionPart(submatches[2:6], submatches[1] == "[")
 		v.Max = versionPart(submatches[6:10], submatches[10] == "]")
+		v.Parsed = true
 	}
 }
 
@@ -369,7 +382,31 @@ func (v *Version) Unmarshal(in string) {
 // conversely it is false if this is 2.0 and ver is <= 1.0.
 // It further treats this version as exact using its Min attribute, since that's roughly how Maven does it.
 func (v *Version) Matches(ver *Version) bool {
-	return (v.Min.LessThan(ver.Max) && v.Min.GreaterThan(ver.Min)) || v.Raw == ver.Raw
+	if v.Parsed || ver.Parsed {
+		return (v.Min.LessThan(ver.Max) && v.Min.GreaterThan(ver.Min))
+	}
+	// If we fail to parse it, they are treated as strings.
+	return v.Raw >= ver.Raw
+}
+
+// LessThan returns true if this version is less than the given version.
+func (v *Version) LessThan(ver *Version) bool {
+	if v.Parsed {
+		return v.Min.LessThan(ver.Min)
+	}
+	return v.Raw < ver.Raw
+}
+
+// Intersect reduces v to the intersection of itself and v2.
+// It returns true if the resulting version is still conceptually satisfiable.
+func (v *Version) Intersect(v2 *Version) bool {
+	if v2.Min.Set && v2.Min.GreaterThan(v.Min) {
+		v.Min = v2.Min
+	}
+	if v2.Max.Set && v2.Max.LessThan(v.Max) {
+		v.Max = v2.Max
+	}
+	return v.Min.LessThan(v.Max)
 }
 
 // Equals returns true if the two versions are equal.
@@ -401,6 +438,7 @@ func versionPart(parts []string, inclusive bool) VersionPart {
 		Major:     mustInt(parts[0]),
 		Qualifier: parts[3],
 		Inclusive: inclusive,
+		Set:       true,
 	}
 	if parts[1] != "" {
 		v.Minor = mustInt(parts[1])

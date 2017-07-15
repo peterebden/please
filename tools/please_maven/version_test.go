@@ -87,3 +87,17 @@ func TestVersionsRangeExclusive(t *testing.T) {
 	assert.True(t, v("1.9.99").Matches(v("[1.0,2.0)")))
 	assert.False(t, v("2.0").Matches(v("[1.0,2.0)")))
 }
+
+func TestIntersect(t *testing.T) {
+	ver := v("[1.0,3.0]")
+	assert.True(t, ver.Intersect(v("[2.0,3.0]")))
+	assert.Equal(t, 2, ver.Min.Major)
+	assert.Equal(t, 0, ver.Min.Minor)
+	assert.Equal(t, 3, ver.Max.Major)
+	assert.Equal(t, 0, ver.Max.Minor)
+	assert.True(t, v("[2.0]").Matches(ver))
+	assert.False(t, v("[1.0]").Matches(ver))
+	assert.True(t, v("[2.5.4]").Matches(ver))
+	assert.True(t, v("[3.0]").Matches(ver))
+	assert.False(t, v("[3.1]").Matches(ver))
+}

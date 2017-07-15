@@ -27,6 +27,7 @@ const mavenJarTemplate = `maven_jar(
 func AllDependencies(f *Fetch, a *Artifact, concurrency int, indent, buildRules bool) []string {
 	pom := f.Pom(a)
 	f.Resolver.Run(concurrency)
+	f.Resolver.Mediate()
 	done := map[unversioned]bool{}
 
 	if buildRules {
