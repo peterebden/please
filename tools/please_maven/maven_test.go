@@ -1,3 +1,8 @@
+// This is a more or less end-to-end test with a fake web server on the whole package
+// as a black box. Expected outputs are taken from the older version of the tool, so
+// may not be 100% correct, but empirically they are pretty reasonable and so are
+// a good place to start for testing the new version.
+
 package maven
 
 import (
@@ -10,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"cli"
+	"sort"
 )
 
 var server *httptest.Server
@@ -341,8 +347,13 @@ maven_jar(
     ],
 )`
 	f := NewFetch(server.URL, nil, nil)
-	actual := strings.Join(AllDependencies(f, &errorProne, false, true), "\n\n")
-	assert.Equal(t, expected, actual)
+	actual := AllDependencies(f, &errorProne, false, true)
+	// The rules come out in a different order to the original tool; this doesn't
+	// really matter since order of rules in a BUILD file is unimportant.
+	expectedSlice := strings.Split(expected, "\n\n")
+	sort.Strings(actual)
+	sort.Strings(expectedSlice)
+	assert.Equal(t, expectedSlice, actual)
 }
 
 func TestBuildRulesGRPC(t *testing.T) {
@@ -775,8 +786,13 @@ maven_jar(
     ],
 )`
 	f := NewFetch(server.URL, nil, nil)
-	actual := strings.Join(AllDependencies(f, &grpc, false, true), "\n\n")
-	assert.Equal(t, expected, actual)
+	actual := AllDependencies(f, &grpc, false, true)
+	// The rules come out in a different order to the original tool; this doesn't
+	// really matter since order of rules in a BUILD file is unimportant.
+	expectedSlice := strings.Split(expected, "\n\n")
+	sort.Strings(actual)
+	sort.Strings(expectedSlice)
+	assert.Equal(t, expectedSlice, actual)
 }
 
 func TestMain(m *testing.M) {
