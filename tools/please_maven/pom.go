@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"gopkg.in/op/go-logging.v1"
@@ -18,8 +20,12 @@ type unversioned struct {
 
 type Artifact struct {
 	unversioned
-	Version  string `xml:"version"`
-	isParent bool
+	// Raw version as found in XML
+	Version string `xml:"version"`
+	// A full-blown Maven version spec. If the version is not parseable (which is allowed
+	// to happen :( ) then we just use Version to interpret it as a string.
+	ParsedVersion Version
+	isParent      bool
 }
 
 // GroupPath returns the group ID as a path.
@@ -245,7 +251,7 @@ func (pom *pomXml) fetchDependency(f *Fetch, dep *pomDependency) {
 	// no doubt there's some highly obscure case where it's considered useful.
 	pom.PropertiesMap[dep.ArtifactId+".version"] = ""
 	pom.PropertiesMap[strings.Replace(dep.ArtifactId, "-", ".", -1)+".version"] = ""
-	dep.Version = strings.Trim(pom.replaceVariables(dep.Version), "[]")
+	dep.Version = pom.replaceVariables(dep.Version)
 	if strings.Contains(dep.Version, ",") {
 		log.Fatalf("Can't do dependency mediation for %s", dep.Id())
 	}
@@ -292,3 +298,102 @@ func (pom *pomXml) AllLicences() []string {
 	}
 	return licences
 }
+
+// A Version is a Maven version spec (see https://docs.oracle.com/middleware/1212/core/MAVEN/maven_version.htm),
+// including range reference info (https://docs.oracle.com/middleware/1212/core/MAVEN/maven_version.htm)
+// The above is pretty light on detail unfortunately (like how do you know the difference between a BuildNumber
+// and a Qualifier) so we really are taking a bit of a guess here.
+// If only semver had existed back then...
+//
+// Note that we don't (yet?) support broken ranges like (,1.0],[1.2,).
+type Version struct {
+	Min, Max VersionPart
+	Raw      string
+}
+
+// A VersionPart forms part of a Version; it can be either an upper or lower bound.
+type VersionPart struct {
+	Qualifier                 string
+	Major, Minor, Incremental int
+	Inclusive                 bool
+}
+
+// Unmarshal parses a Version from a raw string.
+// Errors are not reported since literally anything can appear in a Maven version specifier;
+// an input like "thirty-five ham and cheese sandwiches" is simply treated as a string.
+func (v *Version) Unmarshal(in string) {
+	v.Raw = in // Always.
+	// Try to match the simple single versions first.
+	if submatches := singleVersionRegex.FindStringSubmatch(in); len(submatches) == 7 {
+		// Special case for no specifiers; that indicates >=
+		if submatches[1] == "[" || (submatches[1] == "" && submatches[6] == "") {
+			v.Min = versionPart(submatches[2:6], true)
+			v.Max.Major = 9999 // arbitrarily large
+		}
+		if submatches[6] == "]" {
+			v.Max = versionPart(submatches[2:6], true)
+		}
+	} else if submatches := doubleVersionRegex.FindStringSubmatch(in); len(submatches) == 11 {
+		v.Min = versionPart(submatches[2:6], submatches[1] == "[")
+		v.Max = versionPart(submatches[6:10], submatches[10] == "]")
+	}
+}
+
+// Matches returns true if this version matches the spec given by ver.
+// Note that this is not symmetric; if this version is 1.0 and ver is <= 2.0, this is true;
+// conversely it is false if this is 2.0 and ver is <= 1.0.
+// It further treats this version as exact using its Min attribute, since that's roughly how Maven does it.
+func (v *Version) Matches(ver *Version) bool {
+	log.Notice("%v %v", v, ver)
+	return v.Min.LessThan(ver.Max) && v.Min.GreaterThan(ver.Min)
+}
+
+// Equals returns true if the two versions are equal.
+func (v1 VersionPart) Equals(v2 VersionPart) bool {
+	return v1.Major == v2.Major && v1.Minor == v2.Minor && v1.Incremental == v2.Incremental && v1.Qualifier == v2.Qualifier
+}
+
+// LessThan returns true if v1 < v2 (or <= if v2.Inclusive)
+func (v1 VersionPart) LessThan(v2 VersionPart) bool {
+	return v1.Major < v2.Major ||
+		(v1.Major == v2.Major && v1.Minor < v2.Minor) ||
+		(v1.Major == v2.Major && v1.Minor == v2.Minor && v1.Incremental < v2.Incremental) ||
+		(v1.Major == v2.Major && v1.Minor == v2.Minor && v1.Incremental == v2.Incremental && v1.Qualifier < v2.Qualifier) ||
+		(v2.Inclusive && v1.Equals(v2))
+}
+
+// GreaterThan returns true if v1 > v2 (or >= if v2.Inclusive)
+func (v1 VersionPart) GreaterThan(v2 VersionPart) bool {
+	return v1.Major > v2.Major ||
+		(v1.Major == v2.Major && v1.Minor > v2.Minor) ||
+		(v1.Major == v2.Major && v1.Minor == v2.Minor && v1.Incremental > v2.Incremental) ||
+		(v1.Major == v2.Major && v1.Minor == v2.Minor && v1.Incremental == v2.Incremental && v1.Qualifier > v2.Qualifier) ||
+		(v2.Inclusive && v1.Equals(v2))
+}
+
+// versionPart returns a new VersionPart given some raw strings.
+func versionPart(parts []string, inclusive bool) VersionPart {
+	v := VersionPart{
+		Major:     mustInt(parts[0]),
+		Minor:     mustInt(parts[1]),
+		Qualifier: parts[3],
+		Inclusive: inclusive,
+	}
+	if parts[2] != "" {
+		v.Incremental = mustInt(parts[2])
+	}
+	return v
+}
+
+func mustInt(in string) int {
+	i, err := strconv.Atoi(in)
+	if err != nil {
+		log.Fatalf("Bad version number: %s", err)
+	}
+	return i
+}
+
+const versionRegex = `([0-9]+)\.([0-9]+)(?:\.([0-9]+))?(-[^\]\]]+)?`
+
+var singleVersionRegex = regexp.MustCompile(fmt.Sprintf(`^(\[|\(,)?%s(\]|,\))?$`, versionRegex))
+var doubleVersionRegex = regexp.MustCompile(fmt.Sprintf(`^(\[|\()%s,%s(\]|\))$`, versionRegex, versionRegex))

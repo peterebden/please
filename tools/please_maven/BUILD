@@ -29,3 +29,12 @@ go_test(
         '//third_party/go:testify',
     ],
 )
+
+go_test(
+    name = 'version_test',
+    srcs = ['version_test.go'],
+    deps = [
+        ':maven',
+        '//third_party/go:testify',
+    ],
+)

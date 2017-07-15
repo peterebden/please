@@ -34,8 +34,6 @@ func (r *Resolver) Pom(a *Artifact) *pomXml {
 	poms := r.poms[a.unversioned]
 	log.Debug("Resolving %s:%s: found %d candidates", a.GroupId, a.ArtifactId, len(poms))
 	for _, pom := range poms {
-		// TODO(peterebden): temporary hack that mimics older behaviour. Remove.
-		return pom
 		if r.VersionMatches(pom.Version, a.Version) {
 			log.Debug("Retrieving pom %s for %s", pom.Id(), a.Id())
 			return pom
