@@ -13,6 +13,7 @@ import (
 )
 
 var server *httptest.Server
+var errorProne, grpc Artifact
 
 func TestAllDependenciesGRPC(t *testing.T) {
 	f := NewFetch(server.URL, nil, nil)
@@ -54,7 +55,7 @@ func TestAllDependenciesGRPC(t *testing.T) {
 		"com.google.protobuf.nano:protobuf-javanano:3.0.0-alpha-5:src:New BSD license",
 		"io.grpc:grpc-stub:1.1.2:src:BSD 3-Clause",
 	}
-	actual := AllDependencies(f, "io.grpc:grpc-all:1.1.2", false)
+	actual := AllDependencies(f, &grpc, false, false)
 	assert.Equal(t, expected, actual)
 }
 
@@ -98,7 +99,7 @@ func TestAllDependenciesGRPCWithIndent(t *testing.T) {
 		"  com.google.protobuf.nano:protobuf-javanano:3.0.0-alpha-5:src:New BSD license",
 		"io.grpc:grpc-stub:1.1.2:src:BSD 3-Clause",
 	}
-	actual := AllDependencies(f, "io.grpc:grpc-all:1.1.2", true)
+	actual := AllDependencies(f, &grpc, true, false)
 	assert.Equal(t, expected, actual)
 }
 
@@ -122,7 +123,7 @@ func TestAllDependenciesErrorProne(t *testing.T) {
 		"com.google.auto:auto-common:0.7:src",
 		"com.google.code.findbugs:jFormatString:3.0.0:src:GNU Lesser Public License",
 	}
-	actual := AllDependencies(f, "com.google.errorprone:error_prone_core:2.0.14", false)
+	actual := AllDependencies(f, &errorProne, false, false)
 	assert.Equal(t, expected, actual)
 }
 
@@ -146,7 +147,7 @@ func TestAllDependenciesErrorProneWithIndent(t *testing.T) {
 		"com.google.auto:auto-common:0.7:src",
 		"com.google.code.findbugs:jFormatString:3.0.0:src:GNU Lesser Public License",
 	}
-	actual := AllDependencies(f, "com.google.errorprone:error_prone_core:2.0.14", true)
+	actual := AllDependencies(f, &errorProne, true, false)
 	assert.Equal(t, expected, actual)
 }
 
@@ -340,7 +341,7 @@ maven_jar(
     ],
 )`
 	f := NewFetch(server.URL, nil, nil)
-	actual := strings.Join(BuildRules(f, "com.google.errorprone:error_prone_core:2.0.14"), "\n\n")
+	actual := strings.Join(AllDependencies(f, &errorProne, false, true), "\n\n")
 	assert.Equal(t, expected, actual)
 }
 
@@ -774,12 +775,14 @@ maven_jar(
     ],
 )`
 	f := NewFetch(server.URL, nil, nil)
-	actual := strings.Join(BuildRules(f, "io.grpc:grpc-all:1.1.2"), "\n\n")
+	actual := strings.Join(AllDependencies(f, &grpc, false, true), "\n\n")
 	assert.Equal(t, expected, actual)
 }
 
 func TestMain(m *testing.M) {
 	cli.InitLogging(1) // Suppress informational messages which there can be an awful lot of
+	errorProne.FromId("com.google.errorprone:error_prone_core:2.0.14")
+	grpc.FromId("io.grpc:grpc-all:1.1.2")
 	server = httptest.NewServer(http.FileServer(http.Dir("tools/please_maven/test_data")))
 	ret := m.Run()
 	server.Close()

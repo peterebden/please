@@ -28,7 +28,7 @@ func NewResolver(f *Fetch) *Resolver {
 
 // Pom returns a pom for an artifact. The version doesn't have to be specified exactly.
 // If one doesn't currently exist it will return nil.
-func (r *Resolver) Pom(a artifact) *pomXml {
+func (r *Resolver) Pom(a *Artifact) *pomXml {
 	r.Lock()
 	defer r.Unlock()
 	poms := r.poms[a.unversioned]

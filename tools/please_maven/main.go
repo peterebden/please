@@ -10,8 +10,11 @@
 package main
 
 import (
+	"fmt"
+	"strings"
+
 	"cli"
-	"tools/please_maven"
+	"tools/please_maven/maven"
 )
 
 var opts = struct {
@@ -23,7 +26,7 @@ var opts = struct {
 	Optional   []string `short:"o" long:"optional" description:"Optional dependencies to fetch"`
 	BuildRules bool     `short:"b" long:"build_rules" description:"Print individual maven_jar build rules for each artifact"`
 	Args       struct {
-		Package []string
+		Artifacts []maven.Artifact `positional-arg-name:"ids" required:"yes" description:"Maven IDs to fetch (e.g. io.grpc:grpc-all:1.4.0)"`
 	} `positional-args:"yes" required:"yes"`
 }{
 	Usage: `
@@ -49,8 +52,8 @@ rule to make adding dependencies easier.
 func main() {
 	cli.ParseFlagsOrDie("please_maven", "8.2.5", &opts)
 	cli.InitLogging(opts.Verbosity)
-	for _, pkg := range opts.Args.Package {
-		pom := fetchAndParse(split[0], split[1], split[2])
-		process(pom, split[0], split[1], split[2])
+	f := maven.NewFetch(opts.Repository, opts.Exclude, opts.Optional)
+	for _, artifact := range opts.Args.Artifacts {
+		fmt.Println(strings.Join(maven.AllDependencies(f, &artifact, opts.Indent, opts.BuildRules), "\n"))
 	}
 }

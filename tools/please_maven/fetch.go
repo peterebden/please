@@ -56,11 +56,11 @@ func toMap(sl []string) map[string]bool {
 
 // Pom fetches the POM XML for a package.
 // Note that this may invoke itself recursively to fetch parent artifacts and dependencies.
-func (f *Fetch) Pom(a artifact) *pomXml {
+func (f *Fetch) Pom(a *Artifact) *pomXml {
 	if pom := f.Resolver.Pom(a); pom != nil {
 		return pom
 	}
-	pom := &pomXml{artifact: a}
+	pom := &pomXml{Artifact: *a}
 	f.Resolver.Store(pom)
 	pom.Unmarshal(f, f.mustFetch(a.PomPath()))
 	return pom
@@ -68,7 +68,7 @@ func (f *Fetch) Pom(a artifact) *pomXml {
 
 // Metadata returns the metadata XML for a package.
 // This contains some information, typically the main useful thing is the latest available version of the package.
-func (f *Fetch) Metadata(a artifact) *mavenMetadataXml {
+func (f *Fetch) Metadata(a *Artifact) *mavenMetadataXml {
 	metadata := &mavenMetadataXml{Group: a.GroupId, Artifact: a.ArtifactId}
 	metadata.Unmarshal(f.mustFetch(a.MetadataPath()))
 	return metadata
@@ -77,7 +77,7 @@ func (f *Fetch) Metadata(a artifact) *mavenMetadataXml {
 // HasSources returns true if the given artifact has any sources available.
 // Unfortunately there's no way of determining this other than making a request, and lots of servers
 // don't seem to support HEAD requests to just find out if the artifact is there.
-func (f *Fetch) HasSources(a artifact) bool {
+func (f *Fetch) HasSources(a *Artifact) bool {
 	_, err := f.fetch(a.SourcePath(), false)
 	return err == nil
 }

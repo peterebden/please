@@ -16,44 +16,44 @@ type unversioned struct {
 	ArtifactId string `xml:"artifactId"`
 }
 
-type artifact struct {
+type Artifact struct {
 	unversioned
 	Version  string `xml:"version"`
 	isParent bool
 }
 
 // GroupPath returns the group ID as a path.
-func (a artifact) GroupPath() string {
+func (a *Artifact) GroupPath() string {
 	return strings.Replace(a.GroupId, ".", "/", -1)
 }
 
 // MetadataPath returns the path to the metadata XML file for this artifact.
-func (a artifact) MetadataPath() string {
+func (a *Artifact) MetadataPath() string {
 	return a.GroupPath() + "/" + a.ArtifactId + "/maven-metadata.xml"
 }
 
 // Path returns the path to an artifact that we'd download.
-func (a artifact) Path(suffix string) string {
+func (a *Artifact) Path(suffix string) string {
 	return a.GroupPath() + "/" + a.ArtifactId + "/" + a.Version + "/" + a.ArtifactId + "-" + a.Version + suffix
 }
 
 // PomPath returns the path to the pom.xml for this artifact.
-func (a artifact) PomPath() string {
+func (a *Artifact) PomPath() string {
 	return a.Path(".pom")
 }
 
 // SourcePath returns the path to the sources jar for this artifact.
-func (a artifact) SourcePath() string {
+func (a *Artifact) SourcePath() string {
 	return a.Path("-sources.jar")
 }
 
 // Id returns a Maven identifier for this artifact (i.e. GroupId:ArtifactId:Version)
-func (a artifact) Id() string {
+func (a *Artifact) Id() string {
 	return a.GroupId + ":" + a.ArtifactId + ":" + a.Version
 }
 
 // FromId loads this artifact from a Maven id.
-func (a *artifact) FromId(id string) error {
+func (a *Artifact) FromId(id string) error {
 	split := strings.Split(id, ":")
 	if len(split) != 3 {
 		return fmt.Errorf("Invalid Maven artifact id %s; must be in the form group:artifact:version", id)
@@ -64,13 +64,19 @@ func (a *artifact) FromId(id string) error {
 	return nil
 }
 
+// UnmarshalFlag implements the flags.Unmarshaler interface.
+// This lets us use Artifact instances directly as flags.
+func (a *Artifact) UnmarshalFlag(value string) error {
+	return a.FromId(value)
+}
+
 type pomProperty struct {
 	XMLName xml.Name
 	Value   string `xml:",chardata"`
 }
 
 type pomXml struct {
-	artifact
+	Artifact
 	Dependencies         pomDependencies `xml:"dependencies"`
 	DependencyManagement struct {
 		Dependencies pomDependencies `xml:"dependencies"`
@@ -83,13 +89,13 @@ type pomXml struct {
 			Name string `xml:"name"`
 		} `xml:"license"`
 	} `xml:"licenses"`
-	Parent        artifact `xml:"parent"`
+	Parent        Artifact `xml:"parent"`
 	PropertiesMap map[string]string
 	HasSources    bool
 }
 
 type pomDependency struct {
-	artifact
+	Artifact
 	Pom      *pomXml
 	Scope    string `xml:"scope"`
 	Optional bool   `xml:"optional"`
@@ -166,7 +172,7 @@ func (pom *pomXml) replaceVariables(s string) string {
 
 // Unmarshal parses a downloaded pom.xml. This is of course less trivial than you would hope.
 func (pom *pomXml) Unmarshal(f *Fetch, response []byte) {
-	artifact := (*pom).artifact // Copy this for later
+	artifact := (*pom).Artifact // Copy this for later
 	// This is an absolutely awful hack; we should use a proper decoder, but that seems
 	// to be provoking a panic from the linker for reasons I don't fully understand right now.
 	response = bytes.Replace(response, []byte("encoding=\"ISO-8859-1\""), []byte{}, -1)
@@ -197,7 +203,7 @@ func (pom *pomXml) Unmarshal(f *Fetch, response []byte) {
 		}
 		// Must inherit variables from the parent.
 		pom.Parent.isParent = true
-		parent := f.Pom(pom.Parent)
+		parent := f.Pom(&pom.Parent)
 		for _, prop := range parent.Properties.Property {
 			pom.AddProperty(prop)
 		}
@@ -212,7 +218,7 @@ func (pom *pomXml) Unmarshal(f *Fetch, response []byte) {
 	}
 	// Arbitrarily, some pom files have this different structure with the extra "dependencyManagement" level.
 	pom.Dependencies.Dependency = append(pom.Dependencies.Dependency, pom.DependencyManagement.Dependencies.Dependency...)
-	pom.HasSources = f.HasSources(pom.artifact)
+	pom.HasSources = f.HasSources(&pom.Artifact)
 	if !pom.isParent {
 		for _, dep := range pom.Dependencies.Dependency {
 			pom.fetchDependency(f, dep)
@@ -248,7 +254,7 @@ func (pom *pomXml) fetchDependency(f *Fetch, dep *pomDependency) {
 	}
 	if dep.Version == "" {
 		// If no version is specified, we can take any version that we've already found.
-		if pom := f.Resolver.Pom(dep.artifact); pom != nil {
+		if pom := f.Resolver.Pom(&dep.Artifact); pom != nil {
 			dep.Pom = pom
 			return
 		}
@@ -258,13 +264,13 @@ func (pom *pomXml) fetchDependency(f *Fetch, dep *pomDependency) {
 		// things seem to expect the latest. Most likely it is some complex resolution
 		// logic, but we'll take a stab at the same if the group matches and the same
 		// version exists, otherwise we'll take the latest.
-		if metadata := f.Metadata(dep.artifact); dep.GroupId == pom.GroupId && metadata.HasVersion(pom.Version) {
+		if metadata := f.Metadata(&dep.Artifact); dep.GroupId == pom.GroupId && metadata.HasVersion(pom.Version) {
 			dep.Version = pom.Version
 		} else {
 			dep.Version = metadata.LatestVersion()
 		}
 	}
-	dep.Pom = f.Pom(dep.artifact)
+	dep.Pom = f.Pom(&dep.Artifact)
 }
 
 // AllDependencies returns all the dependencies for this package.

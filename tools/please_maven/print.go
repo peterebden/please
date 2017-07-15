@@ -21,13 +21,18 @@ const mavenJarTemplate = `maven_jar(
 // it an internal detail - it must agree between this and the maven_jars build rule that
 // consumes it, but we don't hold it stable between different Please versions. The format is:
 // group_id:artifact_id:version:{src|no_src}[:licence|licence|...]
-func AllDependencies(f *Fetch, id string, indent bool) []string {
-	a := artifact{}
-	if err := a.FromId(id); err != nil {
-		log.Fatalf("%s\n", err)
-	}
+//
+// Alternatively if buildRules is true, it will return a series of maven_jar rules
+// that could be pasted into a BUILD file.
+func AllDependencies(f *Fetch, a *Artifact, indent, buildRules bool) []string {
 	pom := f.Pom(a)
 	done := map[unversioned]bool{}
+
+	if buildRules {
+		tmpl := template.Must(template.New("maven_jar").Parse(mavenJarTemplate))
+		return allDependencies(pom, "", "", tmpl, done)
+	}
+
 	indentIncrement := ""
 	if indent {
 		indentIncrement = "  "
@@ -72,14 +77,4 @@ func source(pom *pomXml) string {
 		return "src"
 	}
 	return "no_src"
-}
-
-// BuildRules returns all the dependencies of this artifact as individual maven_jar build rules.
-func BuildRules(f *Fetch, id string) []string {
-	tmpl := template.Must(template.New("maven_jar").Parse(mavenJarTemplate))
-	a := artifact{}
-	if err := a.FromId(id); err != nil {
-		log.Fatalf("%s\n", err)
-	}
-	return allDependencies(f.Pom(a), "", "", tmpl, map[unversioned]bool{})
 }
