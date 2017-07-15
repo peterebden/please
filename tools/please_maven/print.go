@@ -28,10 +28,19 @@ func AllDependencies(f *Fetch, id string, indent bool) []string {
 	}
 	pom := f.Pom(a)
 	done := map[unversioned]bool{}
+	indentIncrement := ""
 	if indent {
-		return allDependencies(pom, "", "  ", nil, done)[1:]
+		indentIncrement = "  "
 	}
-	return allDependencies(pom, "", "", nil, done)[1:]
+	// Just run through dependencies here, not the top-level pom itself.
+	ret := []string{}
+	for _, dep := range pom.AllDependencies() {
+		if !done[dep.unversioned] {
+			done[dep.unversioned] = true
+			ret = append(ret, allDependencies(dep, "", indentIncrement, nil, done)...)
+		}
+	}
+	return ret
 }
 
 // allDependencies implements the logic of AllDependencies with indenting.

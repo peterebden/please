@@ -17,6 +17,7 @@ type Fetch struct {
 	// HTTP client to fetch with
 	client *http.Client
 	// Request cache
+	// TODO(peterebden): is this actually ever useful now we have Resolver?
 	cache map[string][]byte
 	mutex sync.Mutex
 	// Excluded & optional artifacts; this isn't a great place for them but they need to go somewhere.
