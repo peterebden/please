@@ -11,11 +11,15 @@ import (
 
 var log = logging.MustGetLogger("maven")
 
-type artifact struct {
+type unversioned struct {
 	GroupId    string `xml:"groupId"`
 	ArtifactId string `xml:"artifactId"`
-	Version    string `xml:"version"`
-	isParent   bool
+}
+
+type artifact struct {
+	unversioned
+	Version  string `xml:"version"`
+	isParent bool
 }
 
 // GroupPath returns the group ID as a path.
@@ -269,17 +273,6 @@ func (pom *pomXml) AllDependencies() []*pomXml {
 	for _, dep := range pom.Dependencies.Dependency {
 		if dep.Pom != nil {
 			deps = append(deps, dep.Pom)
-		}
-	}
-	return deps
-}
-
-// RecursiveDependencies returns all the recursive dependencies for this package (including itself)
-func (pom *pomXml) RecursiveDependencies() []*pomXml {
-	deps := []*pomXml{pom}
-	for _, dep := range pom.Dependencies.Dependency {
-		if dep.Pom != nil {
-			deps = append(deps, dep.Pom.AllDependencies()...)
 		}
 	}
 	return deps

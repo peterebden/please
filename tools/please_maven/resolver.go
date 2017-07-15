@@ -13,20 +13,15 @@ type Resolver struct {
 	// Contains all the poms we've fetched.
 	// Note that these are keyed by a subset of the artifact struct, so we
 	// can do version-independent lookups.
-	poms map[resolverKey][]*pomXml
+	poms map[unversioned][]*pomXml
 	// Reference to a thing that fetches for us.
 	fetch *Fetch
-}
-
-type resolverKey struct {
-	GroupId    string
-	ArtifactId string
 }
 
 // NewResolver constructs and returns a new Resolver instance.
 func NewResolver(f *Fetch) *Resolver {
 	return &Resolver{
-		poms:  map[resolverKey][]*pomXml{},
+		poms:  map[unversioned][]*pomXml{},
 		fetch: f,
 	}
 }
@@ -36,7 +31,7 @@ func NewResolver(f *Fetch) *Resolver {
 func (r *Resolver) Pom(a artifact) *pomXml {
 	r.Lock()
 	defer r.Unlock()
-	poms := r.poms[resolverKey{GroupId: a.GroupId, ArtifactId: a.ArtifactId}]
+	poms := r.poms[a.unversioned]
 	log.Debug("Resolving %s:%s: found %d candidates", a.GroupId, a.ArtifactId, len(poms))
 	for _, pom := range poms {
 		// TODO(peterebden): temporary hack that mimics older behaviour. Remove.
@@ -63,6 +58,5 @@ func (r *Resolver) Store(pom *pomXml) {
 	log.Debug("Storing pom %s", pom.Id())
 	r.Lock()
 	defer r.Unlock()
-	key := resolverKey{GroupId: pom.GroupId, ArtifactId: pom.ArtifactId}
-	r.poms[key] = append(r.poms[key], pom)
+	r.poms[pom.unversioned] = append(r.poms[pom.unversioned], pom)
 }

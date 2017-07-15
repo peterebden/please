@@ -27,22 +27,32 @@ func AllDependencies(f *Fetch, id string, indent bool) []string {
 		log.Fatalf("%s\n", err)
 	}
 	pom := f.Pom(a)
+	done := map[unversioned]bool{}
 	if indent {
-		return allDependencies(pom, "", "  ")
+		return allDependencies(pom, "", "  ", nil, done)
 	}
-	return allDependencies(pom, "", "")
+	return allDependencies(pom, "", "", nil, done)
 }
 
 // allDependencies implements the logic of AllDependencies with indenting.
-func allDependencies(pom *pomXml, currentIndent, indentIncrement string) []string {
+func allDependencies(pom *pomXml, currentIndent, indentIncrement string, tmpl *template.Template, done map[unversioned]bool) []string {
 	ret := []string{
 		fmt.Sprintf("%s%s:%s", currentIndent, pom.Id(), source(pom)),
 	}
-	if licences := pom.AllLicences(); len(licences) > 0 {
+	if tmpl != nil {
+		var buf bytes.Buffer
+		if err := tmpl.Execute(&buf, pom); err != nil {
+			log.Fatalf("%s\n", err)
+		}
+		ret[0] = buf.String()
+	} else if licences := pom.AllLicences(); len(licences) > 0 {
 		ret[0] += ":" + strings.Join(licences, ":")
 	}
 	for _, dep := range pom.AllDependencies() {
-		ret = append(ret, allDependencies(dep, currentIndent+indentIncrement, indentIncrement)...)
+		if !done[dep.unversioned] {
+			done[dep.unversioned] = true
+			ret = append(ret, allDependencies(dep, currentIndent+indentIncrement, indentIncrement, tmpl, done)...)
+		}
 	}
 	return ret
 }
@@ -62,14 +72,5 @@ func BuildRules(f *Fetch, id string) []string {
 	if err := a.FromId(id); err != nil {
 		log.Fatalf("%s\n", err)
 	}
-	deps := f.Pom(a).RecursiveDependencies()
-	ret := make([]string, len(deps))
-	for i, dep := range deps {
-		var buf bytes.Buffer
-		if err := tmpl.Execute(&buf, dep); err != nil {
-			log.Fatalf("%s\n", err)
-		}
-		ret[i] = buf.String()
-	}
-	return ret
+	return allDependencies(f.Pom(a), "", "", tmpl, map[unversioned]bool{})
 }
