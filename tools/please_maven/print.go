@@ -29,9 +29,9 @@ func AllDependencies(f *Fetch, id string, indent bool) []string {
 	pom := f.Pom(a)
 	done := map[unversioned]bool{}
 	if indent {
-		return allDependencies(pom, "", "  ", nil, done)
+		return allDependencies(pom, "", "  ", nil, done)[1:]
 	}
-	return allDependencies(pom, "", "", nil, done)
+	return allDependencies(pom, "", "", nil, done)[1:]
 }
 
 // allDependencies implements the logic of AllDependencies with indenting.

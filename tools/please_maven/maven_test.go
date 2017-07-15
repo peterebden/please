@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"cli"
 )
 
 var server *httptest.Server
@@ -100,6 +102,7 @@ func TestAllDependenciesGRPCWithIndent(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
+	cli.InitLogging(1) // Suppress informational messages which there can be an awful lot of
 	server = httptest.NewServer(http.FileServer(http.Dir("tools/please_maven/test_data")))
 	ret := m.Run()
 	server.Close()
