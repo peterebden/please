@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"gopkg.in/op/go-logging.v1"
 )
@@ -228,10 +229,16 @@ func (pom *pomXml) Unmarshal(f *Fetch, response []byte) {
 	// Arbitrarily, some pom files have this different structure with the extra "dependencyManagement" level.
 	pom.Dependencies.Dependency = append(pom.Dependencies.Dependency, pom.DependencyManagement.Dependencies.Dependency...)
 	pom.HasSources = f.HasSources(&pom.Artifact)
-	if !pom.isParent {
+	if !pom.isParent { // Don't fetch dependencies of parents, that just gets silly.
+		var wg sync.WaitGroup
+		wg.Add(len(pom.Dependencies.Dependency))
 		for _, dep := range pom.Dependencies.Dependency {
-			pom.fetchDependency(f, dep)
+			go func(dep *pomDependency) {
+				pom.fetchDependency(f, dep)
+				wg.Done()
+			}(dep)
 		}
+		wg.Wait()
 	}
 }
 
@@ -250,10 +257,6 @@ func (pom *pomXml) fetchDependency(f *Fetch, dep *pomDependency) {
 	log.Debug("Fetching %s (depended on by %s)", dep.Id(), pom.Id())
 	dep.GroupId = pom.replaceVariables(dep.GroupId)
 	dep.ArtifactId = pom.replaceVariables(dep.ArtifactId)
-	// Not sure what this is about; httpclient seems to do this. It seems completely unhelpful but
-	// no doubt there's some highly obscure case where it's considered useful.
-	pom.PropertiesMap[dep.ArtifactId+".version"] = ""
-	pom.PropertiesMap[strings.Replace(dep.ArtifactId, "-", ".", -1)+".version"] = ""
 	dep.SetVersion(pom.replaceVariables(dep.Version))
 	if f.IsExcluded(dep.ArtifactId) {
 		return
