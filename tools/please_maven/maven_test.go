@@ -101,6 +101,54 @@ func TestAllDependenciesGRPCWithIndent(t *testing.T) {
 	assert.Equal(t, expected, actual)
 }
 
+func TestAllDependenciesErrorProne(t *testing.T) {
+	f := NewFetch(server.URL, nil, nil)
+	expected := []string{
+		"com.google.errorprone:error_prone_annotation:2.0.14:src",
+		"com.google.guava:guava:22.0-android:src",
+		"com.google.code.findbugs:jsr305:3.0.2:src:The Apache Software License, Version 2.0",
+		"com.google.errorprone:error_prone_annotations:2.0.21:src",
+		"com.google.j2objc:j2objc-annotations:1.3:src:The Apache Software License, Version 2.0",
+		"org.codehaus.mojo:animal-sniffer-annotations:1.14:src",
+		"com.google.errorprone:error_prone_check_api:2.0.14:src",
+		"org.checkerframework:dataflow:1.8.10:src:GNU General Public License, version 2 (GPL2), with the classpath exception|The MIT License",
+		"org.checkerframework:javacutil:1.8.10:src:GNU General Public License, version 2 (GPL2), with the classpath exception|The MIT License",
+		"com.google.errorprone:javac:1.9.0-dev-r2973-2:src:GNU General Public License, version 2, with the Classpath Exception",
+		"com.googlecode.java-diff-utils:diffutils:1.3.0:src:The Apache Software License, Version 2.0",
+		"com.google.auto.value:auto-value:1.1:src",
+		"com.github.stephenc.jcip:jcip-annotations:1.0-1:src:Apache License, Version 2.0",
+		"org.pcollections:pcollections:2.1.2:src:The MIT License",
+		"com.google.auto:auto-common:0.7:src",
+		"com.google.code.findbugs:jFormatString:3.0.0:src:GNU Lesser Public License",
+	}
+	actual := AllDependencies(f, "com.google.errorprone:error_prone_core:2.0.14", false)
+	assert.Equal(t, expected, actual)
+}
+
+func TestAllDependenciesErrorProneWithIndent(t *testing.T) {
+	f := NewFetch(server.URL, nil, nil)
+	expected := []string{
+		"com.google.errorprone:error_prone_annotation:2.0.14:src",
+		"  com.google.guava:guava:22.0-android:src",
+		"    com.google.code.findbugs:jsr305:3.0.2:src:The Apache Software License, Version 2.0",
+		"    com.google.errorprone:error_prone_annotations:2.0.21:src",
+		"    com.google.j2objc:j2objc-annotations:1.3:src:The Apache Software License, Version 2.0",
+		"    org.codehaus.mojo:animal-sniffer-annotations:1.14:src",
+		"com.google.errorprone:error_prone_check_api:2.0.14:src",
+		"  org.checkerframework:dataflow:1.8.10:src:GNU General Public License, version 2 (GPL2), with the classpath exception|The MIT License",
+		"    org.checkerframework:javacutil:1.8.10:src:GNU General Public License, version 2 (GPL2), with the classpath exception|The MIT License",
+		"  com.google.errorprone:javac:1.9.0-dev-r2973-2:src:GNU General Public License, version 2, with the Classpath Exception",
+		"  com.googlecode.java-diff-utils:diffutils:1.3.0:src:The Apache Software License, Version 2.0",
+		"  com.google.auto.value:auto-value:1.1:src",
+		"com.github.stephenc.jcip:jcip-annotations:1.0-1:src:Apache License, Version 2.0",
+		"org.pcollections:pcollections:2.1.2:src:The MIT License",
+		"com.google.auto:auto-common:0.7:src",
+		"com.google.code.findbugs:jFormatString:3.0.0:src:GNU Lesser Public License",
+	}
+	actual := AllDependencies(f, "com.google.errorprone:error_prone_core:2.0.14", true)
+	assert.Equal(t, expected, actual)
+}
+
 func TestMain(m *testing.M) {
 	cli.InitLogging(1) // Suppress informational messages which there can be an awful lot of
 	server = httptest.NewServer(http.FileServer(http.Dir("tools/please_maven/test_data")))

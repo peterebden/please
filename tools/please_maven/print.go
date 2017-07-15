@@ -20,7 +20,7 @@ const mavenJarTemplate = `maven_jar(
 // that we consume later. The format is vaguely akin to a Maven id, although we consider
 // it an internal detail - it must agree between this and the maven_jars build rule that
 // consumes it, but we don't hold it stable between different Please versions. The format is:
-// group_id:artifact_id:version:{src|no_src}[:licence][:licence]...
+// group_id:artifact_id:version:{src|no_src}[:licence|licence|...]
 func AllDependencies(f *Fetch, id string, indent bool) []string {
 	a := artifact{}
 	if err := a.FromId(id); err != nil {
@@ -55,7 +55,7 @@ func allDependencies(pom *pomXml, currentIndent, indentIncrement string, tmpl *t
 		}
 		ret[0] = buf.String()
 	} else if licences := pom.AllLicences(); len(licences) > 0 {
-		ret[0] += ":" + strings.Join(licences, ":")
+		ret[0] += ":" + strings.Join(licences, "|")
 	}
 	for _, dep := range pom.AllDependencies() {
 		if !done[dep.unversioned] {
