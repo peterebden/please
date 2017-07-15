@@ -13,7 +13,12 @@ func v(s string) *Version {
 }
 
 func TestUnmarshal(t *testing.T) {
-	version := v("1.2.3")
+	version := v("7")
+	assert.Equal(t, 7, version.Min.Major)
+	assert.Equal(t, 0, version.Min.Minor)
+	assert.Equal(t, 0, version.Min.Incremental)
+
+	version = v("1.2.3")
 	assert.Equal(t, 1, version.Min.Major)
 	assert.Equal(t, 2, version.Min.Minor)
 	assert.Equal(t, 3, version.Min.Incremental)

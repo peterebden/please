@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -40,7 +41,7 @@ func (a *Artifact) MetadataPath() string {
 
 // Path returns the path to an artifact that we'd download.
 func (a *Artifact) Path(suffix string) string {
-	return a.GroupPath() + "/" + a.ArtifactId + "/" + a.Version + "/" + a.ArtifactId + "-" + a.Version + suffix
+	return a.GroupPath() + "/" + a.ArtifactId + "/" + a.ParsedVersion.Path + "/" + a.ArtifactId + "-" + a.ParsedVersion.Path + suffix
 }
 
 // PomPath returns the path to the pom.xml for this artifact.
@@ -55,7 +56,7 @@ func (a *Artifact) SourcePath() string {
 
 // Id returns a Maven identifier for this artifact (i.e. GroupId:ArtifactId:Version)
 func (a *Artifact) Id() string {
-	return a.GroupId + ":" + a.ArtifactId + ":" + a.Version
+	return a.GroupId + ":" + a.ArtifactId + ":" + a.ParsedVersion.Path
 }
 
 // FromId loads this artifact from a Maven id.
@@ -67,7 +68,14 @@ func (a *Artifact) FromId(id string) error {
 	a.GroupId = split[0]
 	a.ArtifactId = split[1]
 	a.Version = split[2]
+	a.ParsedVersion.Unmarshal(a.Version)
 	return nil
+}
+
+// SetVersion updates the version on this artifact.
+func (a *Artifact) SetVersion(ver string) {
+	a.ParsedVersion.Unmarshal(ver)
+	a.Version = a.ParsedVersion.Path
 }
 
 // UnmarshalFlag implements the flags.Unmarshaler interface.
@@ -178,17 +186,18 @@ func (pom *pomXml) replaceVariables(s string) string {
 
 // Unmarshal parses a downloaded pom.xml. This is of course less trivial than you would hope.
 func (pom *pomXml) Unmarshal(f *Fetch, response []byte) {
-	artifact := (*pom).Artifact // Copy this for later
-	// This is an absolutely awful hack; we should use a proper decoder, but that seems
-	// to be provoking a panic from the linker for reasons I don't fully understand right now.
-	response = bytes.Replace(response, []byte("encoding=\"ISO-8859-1\""), []byte{}, -1)
-	if err := xml.Unmarshal(response, pom); err != nil {
+	decoder := xml.NewDecoder(bytes.NewReader(response))
+	// This is not beautiful; it assumes all inputs are utf-8 compatible, essentially, in order to handle
+	// ISO-8859-1 inputs. Possibly we should use a real conversion although it's a little unclear what the
+	// suggested way of doing that or packages to use are.
+	decoder.CharsetReader = func(charset string, input io.Reader) (io.Reader, error) { return input, nil }
+	if err := decoder.Decode(pom); err != nil {
 		log.Fatalf("Error parsing XML response: %s\n", err)
 	}
 	// Clean up strings in case they have spaces
 	pom.GroupId = strings.TrimSpace(pom.GroupId)
 	pom.ArtifactId = strings.TrimSpace(pom.ArtifactId)
-	pom.Version = strings.TrimSpace(pom.Version)
+	pom.SetVersion(strings.TrimSpace(pom.Version))
 	for i, licence := range pom.Licences.Licence {
 		pom.Licences.Licence[i].Name = strings.TrimSpace(licence.Name)
 	}
@@ -209,19 +218,13 @@ func (pom *pomXml) Unmarshal(f *Fetch, response []byte) {
 		}
 		// Must inherit variables from the parent.
 		pom.Parent.isParent = true
+		pom.Parent.ParsedVersion.Unmarshal(pom.Parent.Version)
 		parent := f.Pom(&pom.Parent)
 		for _, prop := range parent.Properties.Property {
 			pom.AddProperty(prop)
 		}
 	}
 	pom.Version = pom.replaceVariables(pom.Version)
-	// Sanity check, but must happen after we resolve variables.
-	if (pom.GroupId != "" && artifact.GroupId != pom.GroupId) ||
-		(pom.ArtifactId != "" && artifact.ArtifactId != pom.ArtifactId) ||
-		(pom.Version != "" && artifact.Version != "" && artifact.Version != pom.Version) {
-		// These are a bit fiddly since inexplicably the fields are sometimes empty.
-		log.Fatalf("Bad artifact: expected %s:%s:%s, got %s:%s:%s\n", artifact.GroupId, artifact.ArtifactId, artifact.Version, pom.GroupId, pom.ArtifactId, pom.Version)
-	}
 	// Arbitrarily, some pom files have this different structure with the extra "dependencyManagement" level.
 	pom.Dependencies.Dependency = append(pom.Dependencies.Dependency, pom.DependencyManagement.Dependencies.Dependency...)
 	pom.HasSources = f.HasSources(&pom.Artifact)
@@ -251,10 +254,7 @@ func (pom *pomXml) fetchDependency(f *Fetch, dep *pomDependency) {
 	// no doubt there's some highly obscure case where it's considered useful.
 	pom.PropertiesMap[dep.ArtifactId+".version"] = ""
 	pom.PropertiesMap[strings.Replace(dep.ArtifactId, "-", ".", -1)+".version"] = ""
-	dep.Version = pom.replaceVariables(dep.Version)
-	if strings.Contains(dep.Version, ",") {
-		log.Fatalf("Can't do dependency mediation for %s", dep.Id())
-	}
+	dep.SetVersion(pom.replaceVariables(dep.Version))
 	if f.IsExcluded(dep.ArtifactId) {
 		return
 	}
@@ -271,9 +271,9 @@ func (pom *pomXml) fetchDependency(f *Fetch, dep *pomDependency) {
 		// logic, but we'll take a stab at the same if the group matches and the same
 		// version exists, otherwise we'll take the latest.
 		if metadata := f.Metadata(&dep.Artifact); dep.GroupId == pom.GroupId && metadata.HasVersion(pom.Version) {
-			dep.Version = pom.Version
+			dep.SetVersion(pom.Version)
 		} else {
-			dep.Version = metadata.LatestVersion()
+			dep.SetVersion(metadata.LatestVersion())
 		}
 	}
 	dep.Pom = f.Pom(&dep.Artifact)
@@ -307,8 +307,8 @@ func (pom *pomXml) AllLicences() []string {
 //
 // Note that we don't (yet?) support broken ranges like (,1.0],[1.2,).
 type Version struct {
-	Min, Max VersionPart
-	Raw      string
+	Min, Max  VersionPart
+	Raw, Path string
 }
 
 // A VersionPart forms part of a Version; it can be either an upper or lower bound.
@@ -322,7 +322,8 @@ type VersionPart struct {
 // Errors are not reported since literally anything can appear in a Maven version specifier;
 // an input like "thirty-five ham and cheese sandwiches" is simply treated as a string.
 func (v *Version) Unmarshal(in string) {
-	v.Raw = in // Always.
+	v.Raw = in                      // Always.
+	v.Path = strings.Trim(in, "[]") // needs more thought.
 	// Try to match the simple single versions first.
 	if submatches := singleVersionRegex.FindStringSubmatch(in); len(submatches) == 7 {
 		// Special case for no specifiers; that indicates >=
@@ -344,7 +345,6 @@ func (v *Version) Unmarshal(in string) {
 // conversely it is false if this is 2.0 and ver is <= 1.0.
 // It further treats this version as exact using its Min attribute, since that's roughly how Maven does it.
 func (v *Version) Matches(ver *Version) bool {
-	log.Notice("%v %v", v, ver)
 	return v.Min.LessThan(ver.Max) && v.Min.GreaterThan(ver.Min)
 }
 
@@ -375,9 +375,11 @@ func (v1 VersionPart) GreaterThan(v2 VersionPart) bool {
 func versionPart(parts []string, inclusive bool) VersionPart {
 	v := VersionPart{
 		Major:     mustInt(parts[0]),
-		Minor:     mustInt(parts[1]),
 		Qualifier: parts[3],
 		Inclusive: inclusive,
+	}
+	if parts[1] != "" {
+		v.Minor = mustInt(parts[1])
 	}
 	if parts[2] != "" {
 		v.Incremental = mustInt(parts[2])
@@ -393,7 +395,7 @@ func mustInt(in string) int {
 	return i
 }
 
-const versionRegex = `([0-9]+)\.([0-9]+)(?:\.([0-9]+))?(-[^\]\]]+)?`
+const versionRegex = `([0-9]+)(?:\.([0-9]+))?(?:\.([0-9]+))?(-[^\]\]]+)?`
 
 var singleVersionRegex = regexp.MustCompile(fmt.Sprintf(`^(\[|\(,)?%s(\]|,\))?$`, versionRegex))
 var doubleVersionRegex = regexp.MustCompile(fmt.Sprintf(`^(\[|\()%s,%s(\]|\))$`, versionRegex, versionRegex))
