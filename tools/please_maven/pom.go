@@ -93,7 +93,7 @@ type pomDependency struct {
 }
 
 type pomDependencies struct {
-	Dependency []pomDependency `xml:"dependency"`
+	Dependency []*pomDependency `xml:"dependency"`
 }
 
 type mavenMetadataXml struct {
@@ -211,7 +211,7 @@ func (pom *pomXml) Unmarshal(f *Fetch, response []byte) {
 	pom.HasSources = f.HasSources(pom.artifact)
 	if !pom.isParent {
 		for _, dep := range pom.Dependencies.Dependency {
-			pom.fetchDependency(f, &dep)
+			pom.fetchDependency(f, dep)
 		}
 	}
 }
@@ -243,6 +243,12 @@ func (pom *pomXml) fetchDependency(f *Fetch, dep *pomDependency) {
 		return
 	}
 	if dep.Version == "" {
+		// If no version is specified, we can take any version that we've already found.
+		if pom := f.Resolver.Pom(dep.artifact); pom != nil {
+			dep.Pom = pom
+			return
+		}
+
 		// Not 100% sure what the logic should really be here; for example, jacoco
 		// seems to leave these underspecified and expects the same version, but other
 		// things seem to expect the latest. Most likely it is some complex resolution
@@ -259,9 +265,11 @@ func (pom *pomXml) fetchDependency(f *Fetch, dep *pomDependency) {
 
 // AllDependencies returns all the dependencies for this package.
 func (pom *pomXml) AllDependencies() []*pomXml {
-	deps := make([]*pomXml, len(pom.Dependencies.Dependency))
-	for i, dep := range pom.Dependencies.Dependency {
-		deps[i] = dep.Pom
+	deps := make([]*pomXml, 0, len(pom.Dependencies.Dependency))
+	for _, dep := range pom.Dependencies.Dependency {
+		if dep.Pom != nil {
+			deps = append(deps, dep.Pom)
+		}
 	}
 	return deps
 }
@@ -270,7 +278,9 @@ func (pom *pomXml) AllDependencies() []*pomXml {
 func (pom *pomXml) RecursiveDependencies() []*pomXml {
 	deps := []*pomXml{pom}
 	for _, dep := range pom.Dependencies.Dependency {
-		deps = append(deps, dep.Pom.AllDependencies()...)
+		if dep.Pom != nil {
+			deps = append(deps, dep.Pom.AllDependencies()...)
+		}
 	}
 	return deps
 }

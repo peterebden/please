@@ -4,6 +4,7 @@ go_library(
         'fetch.go',
         'pom.go',
         'print.go',
+        'resolver.go',
     ],
     deps = ['//third_party/go:logging'],
 )

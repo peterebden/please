@@ -21,6 +21,8 @@ type Fetch struct {
 	mutex sync.Mutex
 	// Excluded & optional artifacts; this isn't a great place for them but they need to go somewhere.
 	exclude, optional map[string]bool
+	// Version resolver.
+	Resolver *Resolver
 }
 
 // NewFetch constructs & returns a new Fetch instance.
@@ -31,13 +33,15 @@ func NewFetch(url string, exclude, optional []string) *Fetch {
 	if strings.HasPrefix(url, "http:") {
 		log.Warning("Repo URL is not secure, you should really be using https")
 	}
-	return &Fetch{
+	f := &Fetch{
 		url:      url,
 		client:   &http.Client{Timeout: 30 * time.Second},
 		cache:    map[string][]byte{},
 		exclude:  toMap(exclude),
 		optional: toMap(optional),
 	}
+	f.Resolver = NewResolver(f)
+	return f
 }
 
 // toMap converts a slice of strings to a map.
@@ -52,7 +56,11 @@ func toMap(sl []string) map[string]bool {
 // Pom fetches the POM XML for a package.
 // Note that this may invoke itself recursively to fetch parent artifacts and dependencies.
 func (f *Fetch) Pom(a artifact) *pomXml {
+	if pom := f.Resolver.Pom(a); pom != nil {
+		return pom
+	}
 	pom := &pomXml{artifact: a}
+	f.Resolver.Store(pom)
 	pom.Unmarshal(f, f.mustFetch(a.PomPath()))
 	return pom
 }
@@ -81,16 +89,6 @@ func (f *Fetch) IsExcluded(artifact string) bool {
 // ShouldInclude returns true if we should include an optional dependency.
 func (f *Fetch) ShouldInclude(artifact string) bool {
 	return f.optional[artifact]
-}
-
-// buildURL returns a URL for the given artifact.
-func (f *Fetch) buildURL(a artifact, suffix string) string {
-	if a.Version == "" {
-		// This is kind of exciting - we just assume the latest version if one isn't available.
-		a.Version = f.Metadata(a).LatestVersion()
-		log.Notice("Version not specified for %s:%s, decided to use %s", a.GroupId, a.ArtifactId, a.Version)
-	}
-	return a.PomPath()
 }
 
 // mustFetch fetches a URL and returns the content, dying if it can't be downloaded.
