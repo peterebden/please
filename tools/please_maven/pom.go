@@ -228,8 +228,8 @@ func (pom *pomXml) Unmarshal(f *Fetch, response []byte) {
 	pom.Version = pom.replaceVariables(pom.Version)
 	// Arbitrarily, some pom files have this different structure with the extra "dependencyManagement" level.
 	pom.Dependencies.Dependency = append(pom.Dependencies.Dependency, pom.DependencyManagement.Dependencies.Dependency...)
-	pom.HasSources = f.HasSources(&pom.Artifact)
 	if !pom.isParent { // Don't fetch dependencies of parents, that just gets silly.
+		pom.HasSources = f.HasSources(&pom.Artifact)
 		var wg sync.WaitGroup
 		wg.Add(len(pom.Dependencies.Dependency))
 		for _, dep := range pom.Dependencies.Dependency {
