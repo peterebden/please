@@ -57,11 +57,10 @@ func toMap(sl []string) map[string]bool {
 // Pom fetches the POM XML for a package.
 // Note that this may invoke itself recursively to fetch parent artifacts and dependencies.
 func (f *Fetch) Pom(a *Artifact) *pomXml {
-	if pom := f.Resolver.Pom(a); pom != nil {
+	pom, created := f.Resolver.CreatePom(a)
+	if !created {
 		return pom
 	}
-	pom := &pomXml{Artifact: *a}
-	f.Resolver.Store(pom)
 	pom.Unmarshal(f, f.mustFetch(a.PomPath()))
 	return pom
 }

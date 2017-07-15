@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 
+	"github.com/Workiva/go-datastructures/queue"
 	"gopkg.in/op/go-logging.v1"
 )
 
@@ -28,6 +28,9 @@ type Artifact struct {
 	// to happen :( ) then we just use Version to interpret it as a string.
 	ParsedVersion Version
 	isParent      bool
+	// A "soft version", for dependencies that don't have one specified and we want to
+	// provide a hint about what to do in that case.
+	SoftVersion string
 }
 
 // GroupPath returns the group ID as a path.
@@ -55,8 +58,8 @@ func (a *Artifact) SourcePath() string {
 	return a.Path("-sources.jar")
 }
 
-// Id returns a Maven identifier for this artifact (i.e. GroupId:ArtifactId:Version)
-func (a *Artifact) Id() string {
+// String prints this artifact as a Maven identifier (i.e. GroupId:ArtifactId:Version)
+func (a Artifact) String() string {
 	return a.GroupId + ":" + a.ArtifactId + ":" + a.ParsedVersion.Path
 }
 
@@ -112,6 +115,7 @@ type pomXml struct {
 type pomDependency struct {
 	Artifact
 	Pom      *pomXml
+	Dependor *pomXml
 	Scope    string `xml:"scope"`
 	Optional bool   `xml:"optional"`
 	// TODO(pebers): Handle exclusions here.
@@ -230,37 +234,35 @@ func (pom *pomXml) Unmarshal(f *Fetch, response []byte) {
 	pom.Dependencies.Dependency = append(pom.Dependencies.Dependency, pom.DependencyManagement.Dependencies.Dependency...)
 	if !pom.isParent { // Don't fetch dependencies of parents, that just gets silly.
 		pom.HasSources = f.HasSources(&pom.Artifact)
-		var wg sync.WaitGroup
-		wg.Add(len(pom.Dependencies.Dependency))
 		for _, dep := range pom.Dependencies.Dependency {
-			go func(dep *pomDependency) {
-				pom.fetchDependency(f, dep)
-				wg.Done()
-			}(dep)
+			pom.handleDependency(f, dep)
 		}
-		wg.Wait()
 	}
 }
 
-func (pom *pomXml) fetchDependency(f *Fetch, dep *pomDependency) {
+func (pom *pomXml) handleDependency(f *Fetch, dep *pomDependency) {
 	// This is a bit of a hack; our build model doesn't distinguish these in the way Maven does.
 	// TODO(pebers): Consider allowing specifying these to this tool to produce test-only deps.
 	// Similarly system deps don't actually get fetched from Maven.
 	if dep.Scope == "test" || dep.Scope == "system" {
-		log.Debug("Not fetching %s:%s because of scope", dep.GroupId, dep.ArtifactId)
+		log.Info("Not fetching %s:%s because of scope", dep.GroupId, dep.ArtifactId)
 		return
 	}
 	if dep.Optional && !f.ShouldInclude(dep.ArtifactId) {
-		log.Debug("Not fetching optional dependency %s:%s", dep.GroupId, dep.ArtifactId)
+		log.Info("Not fetching optional dependency %s:%s", dep.GroupId, dep.ArtifactId)
 		return
 	}
-	log.Debug("Fetching %s (depended on by %s)", dep.Id(), pom.Id())
 	dep.GroupId = pom.replaceVariables(dep.GroupId)
 	dep.ArtifactId = pom.replaceVariables(dep.ArtifactId)
+	log.Debug("Fetching %s (depended on by %s)", dep.Artifact, pom.Artifact)
 	dep.SetVersion(pom.replaceVariables(dep.Version))
-	if f.IsExcluded(dep.ArtifactId) {
-		return
+	dep.Dependor = pom
+	if !f.IsExcluded(dep.ArtifactId) {
+		f.Resolver.Submit(dep)
 	}
+}
+
+func (dep *pomDependency) Resolve(f *Fetch) {
 	if dep.Version == "" {
 		// If no version is specified, we can take any version that we've already found.
 		if pom := f.Resolver.Pom(&dep.Artifact); pom != nil {
@@ -273,10 +275,10 @@ func (pom *pomXml) fetchDependency(f *Fetch, dep *pomDependency) {
 		// things seem to expect the latest. Most likely it is some complex resolution
 		// logic, but we'll take a stab at the same if the group matches and the same
 		// version exists, otherwise we'll take the latest.
-		if metadata := f.Metadata(&dep.Artifact); dep.GroupId == pom.GroupId && metadata.HasVersion(pom.Version) {
-			dep.SetVersion(pom.Version)
+		if metadata := f.Metadata(&dep.Artifact); dep.GroupId == dep.Dependor.GroupId && metadata.HasVersion(dep.Dependor.Version) {
+			dep.SoftVersion = dep.Dependor.Version
 		} else {
-			dep.SetVersion(metadata.LatestVersion())
+			dep.SoftVersion = metadata.LatestVersion()
 		}
 	}
 	dep.Pom = f.Pom(&dep.Artifact)
@@ -300,6 +302,25 @@ func (pom *pomXml) AllLicences() []string {
 		licences[i] = licence.Name
 	}
 	return licences
+}
+
+// Compare implements the queue.Item interface to define the order we resolve dependencies in.
+func (dep *pomDependency) Compare(item queue.Item) int {
+	dep2 := item.(*pomDependency)
+	// Primarily we order by versions; if the version is not given, it comes after one that does.
+	if dep.Version == "" && dep2.Version != "" {
+		return 1
+	} else if dep.Version != "" && dep2.Version == "" {
+		return -1
+	}
+	id1 := dep.String()
+	id2 := dep2.String()
+	if id1 < id2 {
+		return -1
+	} else if id1 > id2 {
+		return 1
+	}
+	return 0
 }
 
 // A Version is a Maven version spec (see https://docs.oracle.com/middleware/1212/core/MAVEN/maven_version.htm),
@@ -348,7 +369,7 @@ func (v *Version) Unmarshal(in string) {
 // conversely it is false if this is 2.0 and ver is <= 1.0.
 // It further treats this version as exact using its Min attribute, since that's roughly how Maven does it.
 func (v *Version) Matches(ver *Version) bool {
-	return v.Min.LessThan(ver.Max) && v.Min.GreaterThan(ver.Min)
+	return (v.Min.LessThan(ver.Max) && v.Min.GreaterThan(ver.Min)) || v.Raw == ver.Raw
 }
 
 // Equals returns true if the two versions are equal.

@@ -18,6 +18,10 @@ import (
 	"sort"
 )
 
+// concurrency is the number of concurrent goroutines we use during the test.
+// TODO(peterebden): Make this configurable so we test with different numbers.
+const concurrency = 10
+
 var server *httptest.Server
 var errorProne, grpc Artifact
 
@@ -61,7 +65,7 @@ func TestAllDependenciesGRPC(t *testing.T) {
 		"com.google.protobuf.nano:protobuf-javanano:3.0.0-alpha-5:src:New BSD license",
 		"io.grpc:grpc-stub:1.1.2:src:BSD 3-Clause",
 	}
-	actual := AllDependencies(f, &grpc, false, false)
+	actual := AllDependencies(f, &grpc, concurrency, false, false)
 	assert.Equal(t, expected, actual)
 }
 
@@ -105,7 +109,7 @@ func TestAllDependenciesGRPCWithIndent(t *testing.T) {
 		"  com.google.protobuf.nano:protobuf-javanano:3.0.0-alpha-5:src:New BSD license",
 		"io.grpc:grpc-stub:1.1.2:src:BSD 3-Clause",
 	}
-	actual := AllDependencies(f, &grpc, true, false)
+	actual := AllDependencies(f, &grpc, concurrency, true, false)
 	assert.Equal(t, expected, actual)
 }
 
@@ -127,7 +131,7 @@ func TestAllDependenciesErrorProne(t *testing.T) {
 		"com.google.auto:auto-common:0.7:src",
 		"com.google.code.findbugs:jFormatString:3.0.0:src:GNU Lesser Public License",
 	}
-	actual := AllDependencies(f, &errorProne, false, false)
+	actual := AllDependencies(f, &errorProne, concurrency, false, false)
 	assert.Equal(t, expected, actual)
 }
 
@@ -149,7 +153,7 @@ func TestAllDependenciesErrorProneWithIndent(t *testing.T) {
 		"com.google.auto:auto-common:0.7:src",
 		"com.google.code.findbugs:jFormatString:3.0.0:src:GNU Lesser Public License",
 	}
-	actual := AllDependencies(f, &errorProne, true, false)
+	actual := AllDependencies(f, &errorProne, concurrency, true, false)
 	assert.Equal(t, expected, actual)
 }
 
@@ -344,7 +348,7 @@ maven_jar(
     ],
 )`
 	f := NewFetch(server.URL, nil, nil)
-	actual := AllDependencies(f, &errorProne, false, true)
+	actual := AllDependencies(f, &errorProne, concurrency, false, true)
 	// The rules come out in a different order to the original tool; this doesn't
 	// really matter since order of rules in a BUILD file is unimportant.
 	expectedSlice := strings.Split(expected, "\n\n")
@@ -782,7 +786,7 @@ maven_jar(
     ],
 )`
 	f := NewFetch(server.URL, nil, nil)
-	actual := AllDependencies(f, &grpc, false, true)
+	actual := AllDependencies(f, &grpc, concurrency, false, true)
 	// The rules come out in a different order to the original tool; this doesn't
 	// really matter since order of rules in a BUILD file is unimportant.
 	expectedSlice := strings.Split(expected, "\n\n")

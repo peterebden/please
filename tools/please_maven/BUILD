@@ -6,7 +6,10 @@ go_library(
         'print.go',
         'resolver.go',
     ],
-    deps = ['//third_party/go:logging'],
+    deps = [
+        '//third_party/go:logging',
+        '//third_party/go:queue',
+    ],
 )
 
 go_binary(

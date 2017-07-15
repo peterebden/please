@@ -24,8 +24,9 @@ const mavenJarTemplate = `maven_jar(
 //
 // Alternatively if buildRules is true, it will return a series of maven_jar rules
 // that could be pasted into a BUILD file.
-func AllDependencies(f *Fetch, a *Artifact, indent, buildRules bool) []string {
+func AllDependencies(f *Fetch, a *Artifact, concurrency int, indent, buildRules bool) []string {
 	pom := f.Pom(a)
+	f.Resolver.Run(concurrency)
 	done := map[unversioned]bool{}
 
 	if buildRules {
@@ -51,7 +52,7 @@ func AllDependencies(f *Fetch, a *Artifact, indent, buildRules bool) []string {
 // allDependencies implements the logic of AllDependencies with indenting.
 func allDependencies(pom *pomXml, currentIndent, indentIncrement string, tmpl *template.Template, done map[unversioned]bool) []string {
 	ret := []string{
-		fmt.Sprintf("%s%s:%s", currentIndent, pom.Id(), source(pom)),
+		fmt.Sprintf("%s%s:%s", currentIndent, pom.Artifact, source(pom)),
 	}
 	if tmpl != nil {
 		var buf bytes.Buffer

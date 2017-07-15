@@ -25,6 +25,7 @@ var opts = struct {
 	Indent     bool     `short:"i" long:"indent" description:"Indent stdout lines appropriately"`
 	Optional   []string `short:"o" long:"optional" description:"Optional dependencies to fetch"`
 	BuildRules bool     `short:"b" long:"build_rules" description:"Print individual maven_jar build rules for each artifact"`
+	NumThreads int      `short:"n" long:"num_threads" description:"Number of concurrent fetches to perform"`
 	Args       struct {
 		Artifacts []maven.Artifact `positional-arg-name:"ids" required:"yes" description:"Maven IDs to fetch (e.g. io.grpc:grpc-all:1.4.0)"`
 	} `positional-args:"yes" required:"yes"`
@@ -54,6 +55,6 @@ func main() {
 	cli.InitLogging(opts.Verbosity)
 	f := maven.NewFetch(opts.Repository, opts.Exclude, opts.Optional)
 	for _, artifact := range opts.Args.Artifacts {
-		fmt.Println(strings.Join(maven.AllDependencies(f, &artifact, opts.Indent, opts.BuildRules), "\n"))
+		fmt.Println(strings.Join(maven.AllDependencies(f, &artifact, opts.NumThreads, opts.Indent, opts.BuildRules), "\n"))
 	}
 }
