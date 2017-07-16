@@ -32,6 +32,8 @@ type Artifact struct {
 	// A "soft version", for dependencies that don't have one specified and we want to
 	// provide a hint about what to do in that case.
 	SoftVersion string
+	// somewhat awkward, we use this to pass through excluded artifacts from above.
+	Exclusions []Artifact `xml:"exclusions>exclusion"`
 }
 
 // GroupPath returns the group ID as a path.
@@ -89,6 +91,16 @@ func (a *Artifact) UnmarshalFlag(value string) error {
 	return a.FromId(value)
 }
 
+// IsExcluded returns true if the given artifact is in this one's list of exclusions.
+func (a *Artifact) IsExcluded(a2 *Artifact) bool {
+	for _, excl := range a.Exclusions {
+		if excl.GroupId == a2.GroupId && excl.ArtifactId == a2.ArtifactId {
+			return true
+		}
+	}
+	return false
+}
+
 type pomProperty struct {
 	XMLName xml.Name
 	Value   string `xml:",chardata"`
@@ -122,7 +134,6 @@ type pomDependency struct {
 	Dependor *pomXml
 	Scope    string `xml:"scope"`
 	Optional bool   `xml:"optional"`
-	// TODO(pebers): Handle exclusions here.
 }
 
 type pomDependencies struct {
@@ -261,10 +272,15 @@ func (pom *pomXml) handleDependency(f *Fetch, dep *pomDependency) {
 	dep.ArtifactId = pom.replaceVariables(dep.ArtifactId)
 	dep.SetVersion(pom.replaceVariables(dep.Version))
 	dep.Dependor = pom
-	if !f.IsExcluded(dep.ArtifactId) {
-		log.Info("Fetching %s (depended on by %s)", dep.Artifact, pom.Artifact)
-		f.Resolver.Submit(dep)
+	if f.IsExcluded(dep.ArtifactId) {
+		log.Info("Not fetching %s, is excluded by command-line parameter", dep.Artifact)
+		return
+	} else if pom.OriginalArtifact.IsExcluded(&dep.Artifact) {
+		log.Info("Not fetching %s, is excluded by its parent", dep.Artifact)
+		return
 	}
+	log.Info("Fetching %s (depended on by %s)", dep.Artifact, pom.Artifact)
+	f.Resolver.Submit(dep)
 }
 
 func (dep *pomDependency) Resolve(f *Fetch) {
