@@ -54,7 +54,5 @@ func main() {
 	cli.ParseFlagsOrDie("please_maven", "8.2.5", &opts)
 	cli.InitLogging(opts.Verbosity)
 	f := maven.NewFetch(opts.Repository, opts.Exclude, opts.Optional)
-	for _, artifact := range opts.Args.Artifacts {
-		fmt.Println(strings.Join(maven.AllDependencies(f, &artifact, opts.NumThreads, opts.Indent, opts.BuildRules), "\n"))
-	}
+	fmt.Println(strings.Join(maven.AllDependencies(f, opts.Args.Artifacts, opts.NumThreads, opts.Indent, opts.BuildRules), "\n"))
 }

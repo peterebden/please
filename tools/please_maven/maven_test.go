@@ -26,7 +26,7 @@ const concurrency = 10
 var excludes = []string{"junit", "easymock", "easymockclassextension"}
 
 var server *httptest.Server
-var errorProne, grpc Artifact
+var errorProne, grpc []Artifact
 
 func TestAllDependenciesGRPC(t *testing.T) {
 	f := NewFetch(server.URL, excludes, nil)
@@ -63,7 +63,7 @@ func TestAllDependenciesGRPC(t *testing.T) {
 		"com.google.protobuf.nano:protobuf-javanano:3.0.0-alpha-5:src:New BSD license",
 		"io.grpc:grpc-stub:1.1.2:src:BSD 3-Clause",
 	}
-	actual := AllDependencies(f, &grpc, concurrency, false, false)
+	actual := AllDependencies(f, grpc, concurrency, false, false)
 	assert.Equal(t, expected, actual)
 }
 
@@ -102,7 +102,7 @@ func TestAllDependenciesGRPCWithIndent(t *testing.T) {
 		"  com.google.protobuf.nano:protobuf-javanano:3.0.0-alpha-5:src:New BSD license",
 		"io.grpc:grpc-stub:1.1.2:src:BSD 3-Clause",
 	}
-	actual := AllDependencies(f, &grpc, concurrency, true, false)
+	actual := AllDependencies(f, grpc, concurrency, true, false)
 	assert.Equal(t, expected, actual)
 }
 
@@ -124,7 +124,7 @@ func TestAllDependenciesErrorProne(t *testing.T) {
 		"com.google.auto:auto-common:0.7:src",
 		"com.google.code.findbugs:jFormatString:3.0.0:src:GNU Lesser Public License",
 	}
-	actual := AllDependencies(f, &errorProne, concurrency, false, false)
+	actual := AllDependencies(f, errorProne, concurrency, false, false)
 	assert.Equal(t, expected, actual)
 }
 
@@ -146,7 +146,7 @@ func TestAllDependenciesErrorProneWithIndent(t *testing.T) {
 		"com.google.auto:auto-common:0.7:src",
 		"com.google.code.findbugs:jFormatString:3.0.0:src:GNU Lesser Public License",
 	}
-	actual := AllDependencies(f, &errorProne, concurrency, true, false)
+	actual := AllDependencies(f, errorProne, concurrency, true, false)
 	assert.Equal(t, expected, actual)
 }
 
@@ -328,7 +328,7 @@ maven_jar(
     ],
 )`
 	f := NewFetch(server.URL, nil, nil)
-	actual := AllDependencies(f, &errorProne, concurrency, false, true)
+	actual := AllDependencies(f, errorProne, concurrency, false, true)
 	// The rules come out in a different order to the original tool; this doesn't
 	// really matter since order of rules in a BUILD file is unimportant.
 	expectedSlice := strings.Split(expected, "\n\n")
@@ -725,7 +725,7 @@ maven_jar(
     ],
 )`
 	f := NewFetch(server.URL, excludes, nil)
-	actual := AllDependencies(f, &grpc, concurrency, false, true)
+	actual := AllDependencies(f, grpc, concurrency, false, true)
 	// The rules come out in a different order to the original tool; this doesn't
 	// really matter since order of rules in a BUILD file is unimportant.
 	expectedSlice := strings.Split(expected, "\n\n")
@@ -736,8 +736,10 @@ maven_jar(
 
 func TestMain(m *testing.M) {
 	cli.InitLogging(1) // Suppress informational messages which there can be an awful lot of
-	errorProne.FromId("com.google.errorprone:error_prone_core:2.0.14")
-	grpc.FromId("io.grpc:grpc-all:1.1.2")
+	errorProne = []Artifact{{}}
+	grpc = []Artifact{{}}
+	errorProne[0].FromId("com.google.errorprone:error_prone_core:2.0.14")
+	grpc[0].FromId("io.grpc:grpc-all:1.1.2")
 	server = httptest.NewServer(http.FileServer(http.Dir("tools/please_maven/test_data")))
 	ret := m.Run()
 	server.Close()

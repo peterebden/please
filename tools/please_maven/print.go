@@ -16,7 +16,7 @@ const mavenJarTemplate = `maven_jar(
 {{ end }}    ],{{ end }}
 )`
 
-// AllDependencies returns all the dependencies of this artifact in a short format
+// AllDependencies returns all the dependencies of these artifacts in a short format
 // that we consume later. The format is vaguely akin to a Maven id, although we consider
 // it an internal detail - it must agree between this and the maven_jars build rule that
 // consumes it, but we don't hold it stable between different Please versions. The format is:
@@ -24,12 +24,23 @@ const mavenJarTemplate = `maven_jar(
 //
 // Alternatively if buildRules is true, it will return a series of maven_jar rules
 // that could be pasted into a BUILD file.
-func AllDependencies(f *Fetch, a *Artifact, concurrency int, indent, buildRules bool) []string {
-	pom := f.Pom(a)
+func AllDependencies(f *Fetch, artifacts []Artifact, concurrency int, indent, buildRules bool) []string {
+	// Run these in parallel so we don't wait for them.
+	for _, a := range artifacts {
+		go f.Pom(&a)
+	}
 	f.Resolver.Run(concurrency)
 	f.Resolver.Mediate()
-	done := map[unversioned]bool{}
 
+	done := map[unversioned]bool{}
+	ret := []string{}
+	for _, a := range artifacts {
+		ret = append(ret, allDeps(f.Pom(&a), indent, buildRules, done)...)
+	}
+	return ret
+}
+
+func allDeps(pom *pomXml, indent, buildRules bool, done map[unversioned]bool) []string {
 	if buildRules {
 		tmpl := template.Must(template.New("maven_jar").Parse(mavenJarTemplate))
 		return allDependencies(pom, "", "", tmpl, done)
