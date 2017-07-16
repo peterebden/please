@@ -79,6 +79,13 @@ func (r *Resolver) pom(a *Artifact) *pomXml {
 	poms := r.poms[a.unversioned]
 	log.Debug("Resolving %s:%s: found %d candidates", a.GroupId, a.ArtifactId, len(poms))
 	for _, pom := range poms {
+		if pom.SoftVersion != "" && a.SoftVersion == "" {
+			// Unfortunately we can't reuse these if we downloaded as a 'soft' version and
+			// we have a request for a real one now; otherwise we might end up using the
+			// latest because of this 'soft' guess and never fetch the requested one, but
+			// that depends on the order we run the two in which isn't always determinate.
+			continue
+		}
 		if a.Version == "" || pom.ParsedVersion.Matches(&a.ParsedVersion) {
 			log.Debug("Retrieving pom %s for %s", pom.Artifact, a)
 			return pom

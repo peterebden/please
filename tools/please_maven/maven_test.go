@@ -22,11 +22,14 @@ import (
 // TODO(peterebden): Make this configurable so we test with different numbers.
 const concurrency = 10
 
+// Packages that we exclude (they should be test-only dependencies but aren't marked as such)
+var excludes = []string{"junit", "easymock", "easymockclassextension"}
+
 var server *httptest.Server
 var errorProne, grpc Artifact
 
 func TestAllDependenciesGRPC(t *testing.T) {
-	f := NewFetch(server.URL, nil, nil)
+	f := NewFetch(server.URL, excludes, nil)
 	expected := []string{
 		"io.grpc:grpc-auth:1.1.2:src:BSD 3-Clause",
 		"io.grpc:grpc-core:1.1.2:src:BSD 3-Clause",
@@ -53,11 +56,6 @@ func TestAllDependenciesGRPC(t *testing.T) {
 		"com.squareup.okio:okio:1.6.0:no_src",
 		"io.grpc:grpc-protobuf:1.1.2:src:BSD 3-Clause",
 		"com.google.protobuf:protobuf-java:3.1.0:src",
-		"junit:junit:4.12:src:Eclipse Public License 1.0",
-		"org.hamcrest:hamcrest-core:1.3:src",
-		"org.easymock:easymock:3.4:src",
-		"org.objenesis:objenesis:2.2:src",
-		"org.easymock:easymockclassextension:3.2:src",
 		"com.google.protobuf:protobuf-java-util:3.1.0:src",
 		"io.grpc:grpc-protobuf-lite:1.1.2:src:BSD 3-Clause",
 		"com.google.protobuf:protobuf-lite:3.0.1:src",
@@ -70,7 +68,7 @@ func TestAllDependenciesGRPC(t *testing.T) {
 }
 
 func TestAllDependenciesGRPCWithIndent(t *testing.T) {
-	f := NewFetch(server.URL, nil, nil)
+	f := NewFetch(server.URL, excludes, nil)
 	expected := []string{
 		"io.grpc:grpc-auth:1.1.2:src:BSD 3-Clause",
 		"  io.grpc:grpc-core:1.1.2:src:BSD 3-Clause",
@@ -97,11 +95,6 @@ func TestAllDependenciesGRPCWithIndent(t *testing.T) {
 		"    com.squareup.okio:okio:1.6.0:no_src",
 		"io.grpc:grpc-protobuf:1.1.2:src:BSD 3-Clause",
 		"  com.google.protobuf:protobuf-java:3.1.0:src",
-		"    junit:junit:4.12:src:Eclipse Public License 1.0",
-		"      org.hamcrest:hamcrest-core:1.3:src",
-		"    org.easymock:easymock:3.4:src",
-		"      org.objenesis:objenesis:2.2:src",
-		"    org.easymock:easymockclassextension:3.2:src",
 		"  com.google.protobuf:protobuf-java-util:3.1.0:src",
 		"  io.grpc:grpc-protobuf-lite:1.1.2:src:BSD 3-Clause",
 		"    com.google.protobuf:protobuf-lite:3.0.1:src",
@@ -158,7 +151,6 @@ func TestAllDependenciesErrorProneWithIndent(t *testing.T) {
 }
 
 func TestBuildRulesErrorProne(t *testing.T) {
-	t.Skip("not sure what the right answer is here yet")
 	const expected = `maven_jar(
     name = 'jsr305',
     id = 'com.google.code.findbugs:jsr305:3.0.0',
@@ -172,18 +164,6 @@ maven_jar(
     deps = [
         ':junit-dep',
     ],
-)
-
-maven_jar(
-    name = 'j2objc-annotations',
-    id = 'com.google.j2objc:j2objc-annotations:1.3',
-    hash = '',
-)
-
-maven_jar(
-    name = 'animal-sniffer-annotations',
-    id = 'org.codehaus.mojo:animal-sniffer-annotations:1.14',
-    hash = '',
 )
 
 maven_jar(
@@ -626,47 +606,6 @@ maven_jar(
 )
 
 maven_jar(
-    name = 'hamcrest-core',
-    id = 'org.hamcrest:hamcrest-core:1.3',
-    hash = '',
-)
-
-maven_jar(
-    name = 'junit',
-    id = 'junit:junit:4.12',
-    hash = '',
-    deps = [
-        ':hamcrest-core',
-    ],
-)
-
-maven_jar(
-    name = 'objenesis',
-    id = 'org.objenesis:objenesis:2.2',
-    hash = '',
-)
-
-maven_jar(
-    name = 'easymock',
-    id = 'org.easymock:easymock:3.4',
-    hash = '',
-    deps = [
-        ':objenesis',
-        ':dexmaker',
-        ':junit',
-    ],
-)
-
-maven_jar(
-    name = 'easymockclassextension',
-    id = 'org.easymock:easymockclassextension:3.2',
-    hash = '',
-    deps = [
-        ':easymock',
-    ],
-)
-
-maven_jar(
     name = 'protobuf-java',
     id = 'com.google.protobuf:protobuf-java:3.1.0',
     hash = '',
@@ -785,7 +724,7 @@ maven_jar(
         ':mockito-core',
     ],
 )`
-	f := NewFetch(server.URL, nil, nil)
+	f := NewFetch(server.URL, excludes, nil)
 	actual := AllDependencies(f, &grpc, concurrency, false, true)
 	// The rules come out in a different order to the original tool; this doesn't
 	// really matter since order of rules in a BUILD file is unimportant.

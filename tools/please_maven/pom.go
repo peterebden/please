@@ -259,10 +259,10 @@ func (pom *pomXml) handleDependency(f *Fetch, dep *pomDependency) {
 	}
 	dep.GroupId = pom.replaceVariables(dep.GroupId)
 	dep.ArtifactId = pom.replaceVariables(dep.ArtifactId)
-	log.Debug("Fetching %s (depended on by %s)", dep.Artifact, pom.Artifact)
 	dep.SetVersion(pom.replaceVariables(dep.Version))
 	dep.Dependor = pom
 	if !f.IsExcluded(dep.ArtifactId) {
+		log.Info("Fetching %s (depended on by %s)", dep.Artifact, pom.Artifact)
 		f.Resolver.Submit(dep)
 	}
 }
