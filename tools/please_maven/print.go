@@ -25,12 +25,7 @@ const mavenJarTemplate = `maven_jar(
 // Alternatively if buildRules is true, it will return a series of maven_jar rules
 // that could be pasted into a BUILD file.
 func AllDependencies(f *Fetch, artifacts []Artifact, concurrency int, indent, buildRules bool) []string {
-	// TODO(peterebden): Would be better if we parallelised these, but we need to guarantee that they're
-	//                   all submitted before we call Run(), otherwise that might exit early.
-	for _, a := range artifacts {
-		f.Pom(&a)
-	}
-	f.Resolver.Run(concurrency)
+	f.Resolver.Run(artifacts, concurrency)
 	f.Resolver.Mediate()
 
 	done := map[unversioned]bool{}

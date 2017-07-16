@@ -37,7 +37,12 @@ func NewResolver(f *Fetch) *Resolver {
 }
 
 // Run runs the given number of worker threads until everything is resolved.
-func (r *Resolver) Run(concurrency int) {
+func (r *Resolver) Run(artifacts []Artifact, concurrency int) {
+	// Kick off original artifacts
+	for _, a := range artifacts {
+		r.Submit(&pomDependency{Artifact: a})
+	}
+
 	// We use this channel as a slightly overblown semaphore; when any one
 	// of the goroutines finishes, we're done. At least one will return but
 	// not necessarily more than that.

@@ -307,9 +307,11 @@ func (dep *pomDependency) Resolve(f *Fetch) {
 		}
 	}
 	dep.Pom = f.Pom(&dep.Artifact)
-	dep.Pom.mutex.Lock()
-	defer dep.Pom.mutex.Unlock()
-	dep.Pom.Dependors = append(dep.Pom.Dependors, dep.Dependor)
+	if dep.Dependor != nil {
+		dep.Pom.mutex.Lock()
+		defer dep.Pom.mutex.Unlock()
+		dep.Pom.Dependors = append(dep.Pom.Dependors, dep.Dependor)
+	}
 }
 
 // AllDependencies returns all the dependencies for this package.
