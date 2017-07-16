@@ -7,6 +7,7 @@ go_library(
         'resolver.go',
     ],
     deps = [
+        '//third_party/go:go-flags',
         '//third_party/go:logging',
         '//third_party/go:queue',
     ],

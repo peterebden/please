@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/Workiva/go-datastructures/queue"
+	"github.com/jessevdk/go-flags"
 	"gopkg.in/op/go-logging.v1"
 )
 
@@ -88,7 +89,10 @@ func (a *Artifact) SetVersion(ver string) {
 // UnmarshalFlag implements the flags.Unmarshaler interface.
 // This lets us use Artifact instances directly as flags.
 func (a *Artifact) UnmarshalFlag(value string) error {
-	return a.FromId(value)
+	if err := a.FromId(value); err != nil {
+		return &flags.Error{Type: flags.ErrMarshal, Message: err.Error()}
+	}
+	return nil
 }
 
 // IsExcluded returns true if the given artifact is in this one's list of exclusions.
