@@ -58,6 +58,8 @@ func toMap(sl []string) map[string]bool {
 // Note that this may invoke itself recursively to fetch parent artifacts and dependencies.
 func (f *Fetch) Pom(a *Artifact) *pomXml {
 	pom, created := f.Resolver.CreatePom(a)
+	pom.Lock()
+	defer pom.Unlock()
 	if !created {
 		return pom
 	}

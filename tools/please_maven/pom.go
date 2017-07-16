@@ -112,6 +112,7 @@ type pomProperty struct {
 
 type pomXml struct {
 	Artifact
+	sync.Mutex
 	OriginalArtifact     Artifact
 	Dependencies         pomDependencies `xml:"dependencies"`
 	DependencyManagement struct {
@@ -128,7 +129,6 @@ type pomXml struct {
 	Parent        Artifact `xml:"parent"`
 	PropertiesMap map[string]string
 	Dependors     []*pomXml
-	mutex         sync.Mutex
 	HasSources    bool
 }
 
@@ -308,8 +308,8 @@ func (dep *pomDependency) Resolve(f *Fetch) {
 	}
 	dep.Pom = f.Pom(&dep.Artifact)
 	if dep.Dependor != nil {
-		dep.Pom.mutex.Lock()
-		defer dep.Pom.mutex.Unlock()
+		dep.Pom.Lock()
+		defer dep.Pom.Unlock()
 		dep.Pom.Dependors = append(dep.Pom.Dependors, dep.Dependor)
 	}
 }
