@@ -150,6 +150,57 @@ func TestAllDependenciesErrorProneWithIndent(t *testing.T) {
 	assert.Equal(t, expected, actual)
 }
 
+func TestAllDependenciesTogether(t *testing.T) {
+	f := NewFetch(server.URL, excludes, nil)
+	expected := []string{
+		"com.google.errorprone:error_prone_annotation:2.0.14:src",
+		"com.google.guava:guava:20.0:src",
+		"com.google.errorprone:error_prone_check_api:2.0.14:src",
+		"com.google.code.findbugs:jsr305:3.0.0:src:The Apache Software License, Version 2.0",
+		"org.checkerframework:dataflow:1.8.10:src:GNU General Public License, version 2 (GPL2), with the classpath exception|The MIT License",
+		"org.checkerframework:javacutil:1.8.10:src:GNU General Public License, version 2 (GPL2), with the classpath exception|The MIT License",
+		"com.google.errorprone:javac:1.9.0-dev-r2973-2:src:GNU General Public License, version 2, with the Classpath Exception",
+		"com.googlecode.java-diff-utils:diffutils:1.3.0:src:The Apache Software License, Version 2.0",
+		"com.google.auto.value:auto-value:1.1:src",
+		"com.google.errorprone:error_prone_annotations:2.0.14:no_src",
+		"com.github.stephenc.jcip:jcip-annotations:1.0-1:src:Apache License, Version 2.0",
+		"org.pcollections:pcollections:2.1.2:src:The MIT License",
+		"com.google.auto:auto-common:0.7:src",
+		"com.google.code.findbugs:jFormatString:3.0.0:src:GNU Lesser Public License",
+		"io.grpc:grpc-auth:1.1.2:src:BSD 3-Clause",
+		"io.grpc:grpc-core:1.1.2:src:BSD 3-Clause",
+		"io.grpc:grpc-context:1.1.2:src:BSD 3-Clause",
+		"com.google.instrumentation:instrumentation-api:0.3.0:src:Apache License, Version 2.0",
+		"com.google.auth:google-auth-library-credentials:0.4.0:src",
+		"io.grpc:grpc-netty:1.1.2:src:BSD 3-Clause",
+		"io.netty:netty-codec-http2:4.1.8.Final:src",
+		"io.netty:netty-codec-http:4.1.8.Final:src",
+		"io.netty:netty-codec:4.1.8.Final:src",
+		"io.netty:netty-transport:4.1.8.Final:src",
+		"io.netty:netty-buffer:4.1.8.Final:src",
+		"io.netty:netty-common:4.1.8.Final:src",
+		"io.netty:netty-resolver:4.1.8.Final:src",
+		"io.netty:netty-handler:4.1.8.Final:src",
+		"com.google.code.gson:gson:2.7:no_src",
+		"io.netty:netty-handler-proxy:4.1.8.Final:src",
+		"io.netty:netty-codec-socks:4.1.8.Final:src",
+		"io.grpc:grpc-okhttp:1.1.2:src:BSD 3-Clause",
+		"com.squareup.okhttp:okhttp:2.5.0:src",
+		"com.squareup.okio:okio:1.6.0:no_src",
+		"io.grpc:grpc-protobuf:1.1.2:src:BSD 3-Clause",
+		"com.google.protobuf:protobuf-java:3.1.0:src",
+		"com.google.protobuf:protobuf-java-util:3.1.0:src",
+		"io.grpc:grpc-protobuf-lite:1.1.2:src:BSD 3-Clause",
+		"com.google.protobuf:protobuf-lite:3.0.1:src",
+		"io.grpc:grpc-protobuf-nano:1.1.2:src:BSD 3-Clause",
+		"com.google.protobuf.nano:protobuf-javanano:3.0.0-alpha-5:src:New BSD license",
+		"io.grpc:grpc-stub:1.1.2:src:BSD 3-Clause",
+	}
+	both := append(errorProne, grpc...)
+	actual := AllDependencies(f, both, concurrency, false, false)
+	assert.Equal(t, expected, actual)
+}
+
 func TestBuildRulesErrorProne(t *testing.T) {
 	const expected = `maven_jar(
     name = 'jsr305',
