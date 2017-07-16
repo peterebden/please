@@ -2,6 +2,7 @@ package maven
 
 import (
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -178,7 +179,7 @@ func (r *Resolver) mediate(poms []*pomXml) {
 	for _, pom := range hard[1:] {
 		if !ver.Intersect(&pom.OriginalArtifact.ParsedVersion) {
 			// TODO(peterebden): Should really give some more detail here about what we can't satisfy
-			log.Fatalf("Unsatisfiable version constraints for %s:%s", pom.GroupId, pom.ArtifactId)
+			log.Fatalf("Unsatisfiable version constraints for %s:%s: %s", pom.GroupId, pom.ArtifactId, strings.Join(r.allVersions(hard), " "))
 		}
 	}
 	// Find the first one that satisfies this version & use that.
@@ -202,4 +203,13 @@ func (r *Resolver) updateDeps(poms []*pomXml, winner *pomXml) {
 			}
 		}
 	}
+}
+
+// allVersions returns all the version descriptors in the given set of poms.
+func (r *Resolver) allVersions(poms []*pomXml) []string {
+	ret := make([]string, len(poms))
+	for i, pom := range poms {
+		ret[i] = pom.OriginalArtifact.ParsedVersion.Raw
+	}
+	return ret
 }

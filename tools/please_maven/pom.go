@@ -416,6 +416,15 @@ func (v *Version) LessThan(ver *Version) bool {
 // Intersect reduces v to the intersection of itself and v2.
 // It returns true if the resulting version is still conceptually satisfiable.
 func (v *Version) Intersect(v2 *Version) bool {
+	if !v.Parsed || !v2.Parsed {
+		// Fallback logic; one or both versions aren't parsed, so we do string comparisons.
+		if strings.HasPrefix(v.Raw, "[") || strings.HasPrefix(v2.Raw, "[") {
+			return false // No intersection if one specified an exact version
+		} else if v2.Raw > v.Raw {
+			*v = *v2
+		}
+		return true // still OK, we take the highest of the two.
+	}
 	if v2.Min.Set && v2.Min.GreaterThan(v.Min) {
 		v.Min = v2.Min
 	}

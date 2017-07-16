@@ -101,3 +101,12 @@ func TestIntersect(t *testing.T) {
 	assert.True(t, v("[3.0]").Matches(ver))
 	assert.False(t, v("[3.1]").Matches(ver))
 }
+
+func TestIntersectUnparseable(t *testing.T) {
+	ver := v("1.0.1B")
+	assert.True(t, ver.Intersect(v("1.1")))
+	assert.Equal(t, 1, ver.Min.Major)
+	assert.Equal(t, 1, ver.Min.Minor)
+	assert.Equal(t, 0, ver.Min.Incremental)
+	assert.Equal(t, "", ver.Min.Qualifier)
+}
