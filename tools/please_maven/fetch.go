@@ -110,7 +110,7 @@ func (f *Fetch) fetch(url string, readBody bool) ([]byte, error) {
 		return contents, nil
 	}
 	fullUrl := f.url + url
-	log.Notice("Downloading %s...", fullUrl)
+	log.Notice("%s %s...", f.description(readBody), fullUrl)
 	req, err := http.NewRequest(http.MethodGet, fullUrl, nil)
 	if err != nil {
 		return nil, err
@@ -132,4 +132,12 @@ func (f *Fetch) fetch(url string, readBody bool) ([]byte, error) {
 	defer f.mutex.Unlock()
 	f.cache[url] = contents
 	return contents, nil
+}
+
+// description returns the log description we'll use for a download.
+func (f *Fetch) description(readBody bool) string {
+	if readBody {
+		return "Downloading"
+	}
+	return "Checking"
 }
