@@ -99,7 +99,9 @@ func activateTarget(state *core.BuildState, pkg *core.Package, label, dependor c
 				// Must always do this for coverage because we need to calculate sources of
 				// non-test targets later on.
 				if !state.NeedTests || target.IsTest || state.NeedCoverage {
-					addDep(state, target.Label, dependor, false, dependor.IsAllTargets())
+					l := target.Label
+					l.Arch = label.Arch
+					addDep(state, l, dependor, false, dependor.IsAllTargets())
 				}
 			}
 		}
