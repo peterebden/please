@@ -2,7 +2,7 @@ FROM ubuntu:xenial
 MAINTAINER peter.ebden@gmail.com
 
 # Basic dependencies, Python and Java
-RUN apt-get update && apt-get install -y python2.7 python3.5 python-pip python3-pip openjdk-8-jdk curl unzip git
+RUN apt-get update && apt-get install -y python2.7 python3.5 python-pip python3-pip openjdk-8-jdk curl unzip git locales
 RUN pip install cffi
 RUN pip3 install cffi
 
@@ -30,6 +30,10 @@ RUN unzip /tmp/protoc.zip -x readme.txt -d /usr
 
 # Locale
 RUN locale-gen en_GB.UTF-8
+
+# Ruby (for fpm)
+RUN apt-get install -y ruby ruby-dev rubygems
+RUN gem install --no-ri --no-rdoc fpm
 
 # Welcome message
 COPY /motd.txt /etc/motd

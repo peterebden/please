@@ -4,6 +4,7 @@ package build
 import (
 	"bytes"
 	"crypto/sha1"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -108,6 +109,9 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		}
 		return stopTarget
 	}
+	if target.IsHashFilegroup {
+		updateHashFilegroupPaths(state, target)
+	}
 	if !needsBuilding(state, target, false) {
 		log.Debug("Not rebuilding %s, nothing's changed", target.Label)
 		if postBuildOutput, err = runPostBuildFunctionIfNeeded(tid, state, target); err != nil {
@@ -116,6 +120,10 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 			// If a post-build function ran it may modify the rule definition. In that case we
 			// need to check again whether the rule needs building.
 			if target.PostBuildFunction == 0 || !needsBuilding(state, target, true) {
+				if target.IsFilegroup {
+					// Small optimisation to ensure we don't need to rehash things unnecessarily.
+					copyFilegroupHashes(state, target)
+				}
 				target.SetState(core.Reused)
 				state.LogBuildResult(tid, target.Label, core.TargetCached, "Unchanged")
 				return nil // Nothing needs to be done.
@@ -178,6 +186,9 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		} else if retrieveArtifacts() {
 			return nil
 		}
+	}
+	if err := target.CheckSecrets(); err != nil {
+		return err
 	}
 	if err := prepareSources(state.Graph, target); err != nil {
 		return fmt.Errorf("Error preparing sources for %s: %s", target.Label, err)
@@ -453,11 +464,19 @@ func OutputHash(target *core.BuildTarget) ([]byte, error) {
 		// NB. Always force a recalculation of the output hashes here. Memoisation is not
 		//     useful because by definition we are rebuilding a target, and can actively hurt
 		//     in cases where we compare the retrieved cache artifacts with what was there before.
-		h2, err := pathHash(path.Join(target.OutDir(), output), true)
+		filename := path.Join(target.OutDir(), output)
+		h2, err := pathHash(filename, true)
 		if err != nil {
 			return nil, err
 		}
 		h.Write(h2)
+		// Record the name of the file too, but not if the rule has hash verification
+		// (because this will change the hashes, and the cases it fixes are relatively rare
+		// and generally involve things like hash_filegroup that doesn't have hashes set).
+		// TODO(pebers): Find some more elegant way of unifying this behaviour.
+		if len(target.Hashes) == 0 {
+			h.Write([]byte(filename))
+		}
 	}
 	return h.Sum(nil), nil
 }
@@ -540,7 +559,8 @@ func buildFilegroup(tid int, state *core.BuildState, target *core.BuildTarget) e
 	outDir := target.OutDir()
 	localSources := target.AllLocalSourcePaths(state.Graph)
 	for i, source := range target.AllFullSourcePaths(state.Graph) {
-		c, err := buildFilegroupFile(target, source, path.Join(outDir, localSources[i]))
+		out, _ := filegroupOutputPath(target, outDir, localSources[i], source)
+		c, err := buildFilegroupFile(target, source, out)
 		if err != nil {
 			return err
 		}
@@ -551,7 +571,10 @@ func buildFilegroup(tid int, state *core.BuildState, target *core.BuildTarget) e
 		// It's a bit cheeky to do non-essential language-specific logic but this enables
 		// a lot of relatively normal Python workflows.
 		// Errors are deliberately ignored.
-		createInitPy(outDir)
+		if pkg := state.Graph.Package(target.Label.PackageName); pkg == nil || !pkg.HasOutput("__init__.py") {
+			// Don't create this if someone else is going to create this in the package.
+			createInitPy(outDir)
+		}
 	}
 	if _, err := calculateAndCheckRuleHash(state, target); err != nil {
 		return err
@@ -581,11 +604,51 @@ func buildFilegroupFile(target *core.BuildTarget, fromPath, toPath string) (bool
 	return changed, err
 }
 
+// copyFilegroupHashes copies the hashes of the inputs of this filegroup to their outputs.
+// This is a small optimisation to ensure we don't need to recalculate them unnecessarily.
+func copyFilegroupHashes(state *core.BuildState, target *core.BuildTarget) {
+	outDir := target.OutDir()
+	localSources := target.AllLocalSourcePaths(state.Graph)
+	for i, source := range target.AllFullSourcePaths(state.Graph) {
+		if out, _ := filegroupOutputPath(target, outDir, localSources[i], source); out != source {
+			movePathHash(source, out, true)
+		}
+	}
+}
+
+// updateHashFilegroupPaths sets the output paths on a hash_filegroup rule.
+// Unlike normal filegroups, hash filegroups can't calculate these themselves very readily.
+func updateHashFilegroupPaths(state *core.BuildState, target *core.BuildTarget) {
+	outDir := target.OutDir()
+	localSources := target.AllLocalSourcePaths(state.Graph)
+	for i, source := range target.AllFullSourcePaths(state.Graph) {
+		_, relOut := filegroupOutputPath(target, outDir, localSources[i], source)
+		target.AddOutput(relOut)
+	}
+}
+
+// filegroupOutputPath returns the output path for a single filegroup source.
+func filegroupOutputPath(target *core.BuildTarget, outDir, source, full string) (string, string) {
+	if !target.IsHashFilegroup {
+		return path.Join(outDir, source), source
+	}
+	// Hash filegroups have a hash embedded into the output name.
+	ext := path.Ext(source)
+	before := source[:len(source)-len(ext)]
+	hash, err := pathHash(full, false)
+	if err != nil {
+		panic(err)
+	}
+	out := before + "-" + base64.RawURLEncoding.EncodeToString(hash) + ext
+	return path.Join(outDir, out), out
+}
+
 func createInitPy(dir string) {
-	if core.PathExists(path.Join(dir, "__init__.py")) {
+	initPy := path.Join(dir, "__init__.py")
+	if core.PathExists(initPy) {
 		return
 	}
-	if f, err := os.OpenFile(path.Join(dir, "__init__.py"), os.O_RDONLY|os.O_CREATE, 0444); err == nil {
+	if f, err := os.OpenFile(initPy, os.O_RDONLY|os.O_CREATE, 0444); err == nil {
 		f.Close()
 	}
 	dir = path.Dir(dir)

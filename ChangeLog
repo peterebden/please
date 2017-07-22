@@ -1,7 +1,186 @@
+Version 8.2.6
+-------------
+
+    * Fix to dependency cycle detection which could sometimes take a very long time.
+
+
+Version 8.2.5
+-------------
+
+    * Some changes to how source hashes of other rules are calculated; fixes
+      some subtle cases related to file names changing when contents don't.
+
+
+Version 8.2.4
+-------------
+
+    * Internal improvements to hash_filegroup; it is now a known internal rule
+      and operates more like normal filegroups (e.g. outputs are links and are
+      never cached etc).
+
+
+Version 8.2.3
+-------------
+
+    * Another fairly subtle fix to cc rules.
+
+
+Version 8.2.2
+-------------
+
+    * Fairly subtle fix; add a missing `require` on `cc_static_library`.
+
+
+Version 8.2.1
+-------------
+
+    * Leave the Python interpreter as given in the shebang of the pex, don't
+      turn it into an absolute path.
+
+
+Version 8.2.0
+-------------
+
+    * Rewrite of parts of Python rules for better performance
+    * Added `static` argument to `go_test` rule, analogous to `go_binary`.
+
+
+Version 8.1.1
+-------------
+
+    * Minor completion fixes to suppress warnings when version differs.
+
+
+Version 8.1.0
+-------------
+
+    * Rewritten completion script; is now activated using
+      `source <(plz --completion_script)` which works for both bash and zsh.
+      It should also be more robust for more subtle flag combinations.
+
+
+Version 8.0.5
+-------------
+
+    * Potential fix for a rare issue with rules like `hash_filegroup` that sometimes
+      weren't marked as rebuilt correctly.
+
+
+Version 8.0.4
+-------------
+
+    * Fix some tool-related errors in `proto_library` and `grpc_library`.
+
+
+Version 8.0.3
+-------------
+
+    * Fix to cgo_library for cases where some of the sources are produced by a genrule.
+
+
+Version 8.0.2
+-------------
+
+    * Small fix to jarcat to add __init__.py files in a couple more cases.
+    * Subtle require/provide fix.
+
+
+Version 8.0.1
+-------------
+
+    * Small fix to secrets in previous version which were causing some targets to rebuild
+      more often than they should.
+
+
+Version 8.0.0
+-------------
+
+    * The `tarball` rule has been rewritten to be more deterministic. As a consequence it now
+      only supports gzip compression; the previous `compression` argument has been removed.
+      This is obviously a breaking change for anything that was setting that argument.
+    * Build rules with `needs_transitive_deps = True` no longer receive transitive deps of
+      their `srcs`, only their `deps`.
+      This is again a breaking change although a relatively subtle case that doesn't affect
+      many rules; most cases that were using `srcs` and `deps` semantically correctly won't notice.
+    * `plz query print` now accepts a `--fields` argument to print only the given fields.
+    * `plz run` now has two new subcommands, `sequential` and `parallel` that allow passing
+      multiple targets to be run either consecutively or concurrently.
+    * Go 1.8 is now required to build the Please repo. Support for targeted Go versions is
+      unchanged.
+
+
+Version 7.12.0
+--------------
+
+    * Support for named output groups on rules. Outs can now optionally be specified as
+      a dict of name -> outputs, and other rules can collect just the group they want.
+      Resolves a few long-standing TODOs around the place.
+
+
+Version 7.11.4
+--------------
+
+    * Fixed some indeterminacy in Go rules to do with the infamous symlinking malarkey.
+
+
+Version 7.11.3
+--------------
+
+    * Fixed bug in RPC server that failed to load certificates from a directory.
+
+
+Version 7.11.2
+--------------
+
+    * Tarballs are now correctly marked as `output_is_complete` so downstream rules don't
+      fetch their transitive dependencies as well. Fixes some subtle interactions between
+      `tarball` and `sh_binary`.
+
+
+Version 7.11.1
+--------------
+
+    * Fix for performance regression of some setups (mostly large Java trees) introduced
+      in previous version.
+
+
+Version 7.11.0
+--------------
+
+    * `pkg_config_libs` is now applied transitively for `cc_library` and `c_library` rules.
+    * Fixed a bug in pex writing where the output was not always deterministic.
+    * Linter now detects deprecated & missing arguments and for duplicate third-party artifacts.
+
+
+Version 7.10.3
+--------------
+
+    * Disabling tracing on RPC cache server, possible fix for aforementioned
+      memory leak.
+    * Fix for #208, whereby some C++ settings were not being honoured properly.
+
+
+Version 7.10.2
+--------------
+
+    * Protobuf / gRPC update, testing to see if this helps an apparent memory leak in
+      RPC cache server.
+
+
+Version 7.10.1
+--------------
+
+    * Fix to go_get change in 7.10 to make it BSD-compatible.
+
+
 Version 7.10.0
 --------------
 
     * Add support for classifiers on `maven_jar`.
+    * Automatic creation of `plz-out/go`, which contains some symlinks making it
+      suitable for setting your GOPATH to to find some things in plz-out/gen (e.g.
+      generated code).
+    * Fix go_get with dependencies when in declared in repo root
 
 
 Version 7.9.2

@@ -3,7 +3,9 @@ package core
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -314,9 +316,10 @@ func IterSources(graph *BuildGraph, target *BuildTarget) <-chan sourcePair {
 	tmpDir := target.TmpDir()
 	var inner func(dependency *BuildTarget)
 	inner = func(dependency *BuildTarget) {
+		sources := dependency.AllSources()
 		if target == dependency {
 			// This is the current build rule, so link its sources.
-			for _, source := range dependency.AllSources() {
+			for _, source := range sources {
 				for _, providedSource := range recursivelyProvideSource(graph, target, source) {
 					fullPaths := providedSource.FullPaths(graph)
 					for i, sourcePath := range providedSource.Paths(graph) {
@@ -345,6 +348,13 @@ func IterSources(graph *BuildGraph, target *BuildTarget) <-chan sourcePair {
 				}
 			}
 		}
+		// All the sources of this rule now count as done.
+		for _, source := range sources {
+			if label := source.Label(); label != nil {
+				done[*label] = true
+			}
+		}
+
 		done[dependency.Label] = true
 		if target == dependency || (target.NeedsTransitiveDependencies && !dependency.OutputIsComplete) {
 			for _, dep := range dependency.Dependencies() {
@@ -395,11 +405,11 @@ func recursivelyProvideFor(graph *BuildGraph, target, dependency *BuildTarget, d
 	return ret2
 }
 
-// maybeRecursivelyProvideFor is similar to recursivelyProvideFor but operates on a BuildInput.
+// recursivelyProvideSource is similar to recursivelyProvideFor but operates on a BuildInput.
 func recursivelyProvideSource(graph *BuildGraph, target *BuildTarget, src BuildInput) []BuildInput {
-	if label := src.Label(); label != nil {
+	if label := src.nonOutputLabel(); label != nil {
 		dep := graph.TargetOrDie(*label)
-		provided := recursivelyProvideFor(graph, target, dep, dep.Label)
+		provided := recursivelyProvideFor(graph, target, target, dep.Label)
 		ret := make([]BuildInput, len(provided))
 		for i, p := range provided {
 			ret[i] = p
@@ -467,13 +477,12 @@ func IterInputPaths(graph *BuildGraph, target *BuildTarget) <-chan string {
 	ch := make(chan string)
 	var inner func(*BuildTarget)
 	inner = func(target *BuildTarget) {
-
 		if !doneTargets[target] {
 			// First yield all the sources of the target only ever pushing declared paths to
 			// the channel to prevent us outputting any intermediate files.
 			for _, source := range target.AllSources() {
 				// If the label is nil add any input paths contained here.
-				if label := source.Label(); label == nil {
+				if label := source.nonOutputLabel(); label == nil {
 					for _, sourcePath := range source.FullPaths(graph) {
 						if !donePaths[sourcePath] {
 							ch <- sourcePath
@@ -571,4 +580,36 @@ func LookPath(filename string, paths []string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("%s not found in PATH %s", filename, strings.Join(paths, ":"))
+}
+
+// AsyncDeleteDir deletes a directory asynchronously.
+// First it renames the directory to something temporary and then forks to delete it.
+// The rename is done synchronously but the actual deletion is async (after fork) so
+// you don't have to wait for large directories to be removed.
+// Conversely there is obviously no guarantee about at what point it will actually cease to
+// be on disk any more.
+func AsyncDeleteDir(dir string) error {
+	rm, err := exec.LookPath("rm")
+	if err != nil {
+		return err
+	} else if !PathExists(dir) {
+		return nil // not an error, just don't need to do anything.
+	}
+	newDir, err := moveDir(dir)
+	if err != nil {
+		return err
+	}
+	// Note that we can't fork() directly and continue running Go code, but ForkExec() works okay.
+	// Hence why we're using rm rather than fork() + os.RemoveAll.
+	_, err = syscall.ForkExec(rm, []string{rm, "-rf", newDir}, nil)
+	return err
+}
+
+// moveDir moves a directory to a new location and returns that new location.
+func moveDir(dir string) (string, error) {
+	b := make([]byte, 16)
+	rand.Read(b)
+	name := path.Join(path.Dir(dir), ".plz_clean_"+hex.EncodeToString(b))
+	log.Notice("Moving %s to %s", dir, name)
+	return name, os.Rename(dir, name)
 }

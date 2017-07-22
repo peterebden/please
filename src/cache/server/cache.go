@@ -57,6 +57,16 @@ func newCache(path string) *Cache {
 	return cache
 }
 
+// TotalSize returns the current total size monitored by the cache, in bytes.
+func (cache *Cache) TotalSize() int64 {
+	return cache.totalSize
+}
+
+// NumFiles returns the number of files currently monitored by the cache.
+func (cache *Cache) NumFiles() int {
+	return cache.cachedFiles.Count()
+}
+
 // scan scans the directory tree for files.
 func (cache *Cache) scan() {
 	cache.cachedFiles = cmap.New()
@@ -262,14 +272,10 @@ func (cache *Cache) DeleteArtifact(artPath string) error {
 // The function will return the first error found in the process, or nil if the process is successful.
 func (cache *Cache) DeleteAllArtifacts() error {
 	// Empty entire cache now.
+	log.Warning("Deleting entire cache")
 	cache.cachedFiles = cmap.New()
 	cache.totalSize = 0
-	// Move directory somewhere else
-	tempPath := cache.rootPath + "_deleting"
-	if err := os.Rename(cache.rootPath, tempPath); err != nil {
-		return err
-	}
-	return os.RemoveAll(tempPath)
+	return core.AsyncDeleteDir(cache.rootPath)
 }
 
 // clean implements a periodic clean of the cache to remove old artifacts.
@@ -294,9 +300,7 @@ func (cache *Cache) cleanOldFiles(maxArtifactAge time.Duration) bool {
 			cleaned++
 		}
 	}
-	if cleaned > 0 {
-		log.Notice("Removed %d old files", cleaned)
-	}
+	log.Notice("Removed %d old files, new size: %d, %d files", cleaned, cache.totalSize, cache.cachedFiles.Count())
 	return cleaned > 0
 }
 

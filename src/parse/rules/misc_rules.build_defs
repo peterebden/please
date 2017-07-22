@@ -3,7 +3,7 @@
 
 def genrule(name, cmd, srcs=None, out=None, outs=None, deps=None, visibility=None, arch=None,
             building_description='Building...', hashes=None, timeout=0, binary=False,
-            needs_transitive_deps=False, output_is_complete=True, test_only=False,
+            needs_transitive_deps=False, output_is_complete=True, test_only=False, secrets=None,
             requires=None, provides=None, pre_build=None, post_build=None, tools=None):
     """A general build rule which allows the user to specify a command.
 
@@ -34,14 +34,29 @@ def genrule(name, cmd, srcs=None, out=None, outs=None, deps=None, visibility=Non
       srcs (list | dict): Sources of this rule. Can be a list of files or rules, or a dict of names
                           to lists. In the latter case they can be accessed separately which is useful
                           to be able to refer to them distinctly in the command.
-      outs (list): Outputs of this rule.
+      outs (list | dict): Outputs of this rule. All are files relative to this package.
+                          If given as a dict, it declares a series of named outputs which work
+                          similarly to named srcs; they have separate environment variables and
+                          can be accessed directly by other rules.
       out (str): A single output of this rule, as a string. Discouraged in favour of 'outs'.
       deps (list): Dependencies of this rule.
-      tools (list): Tools used to build this rule; similar to srcs but are not copied to the temporary
-                    build directory. Should be accessed via $(exe //path/to:tool) or similar.
-                    Entries that are not build labels are assumed to be system-level commands and
-                    resolved within the path given in the config file (note that the value of $PATH
-                    in the outside environment is not propagated to the build rule).
+      tools (list | dict): Tools used to build this rule; similar to srcs but are not copied to the
+                           temporary build directory. Should be accessed via $(exe //path/to:tool)
+                           or similar.
+                           Entries that are not build labels are assumed to be system-level commands
+                           and resolved within the path given in the config file (note that the
+                           value of $PATH in the outside environment is not propagated to the build
+                           rule).
+                           If tools is given as a dict then the keys of the dict name the various
+                           tools and they can be accessed with $TOOLS_KEY.
+      secrets (list): Files containing secrets (credentials etc) used to build this rule. These are
+                      all absolute paths (beginning with / or ~) and are not copied to the build
+                      directory. They can be accessed through the environment variable $SECRETS.
+                      They don't contribute to the key used to retrieve outputs from the cache; this
+                      means it's possible for one machine to build a target with the secret and then
+                      share the output with others. That also implies that secrets are things like
+                      credentials or signing keys and shouldn't be copied directly to outputs, otherwise
+                      they might become more widely known.
       visibility (list): Visibility declaration of this rule
       arch (str): Architecture that this rule requires, e.g. "linux_amd64".
                   Typically this is left empty for most rules, it is only normally set for rules
@@ -93,6 +108,7 @@ def genrule(name, cmd, srcs=None, out=None, outs=None, deps=None, visibility=Non
         arch=arch,
         deps=deps,
         tools=tools,
+        secrets=secrets,
         visibility = visibility,
         output_is_complete=output_is_complete,
         building_description=building_description,
@@ -108,7 +124,7 @@ def genrule(name, cmd, srcs=None, out=None, outs=None, deps=None, visibility=Non
 
 
 def gentest(name, test_cmd, labels=None, cmd=None, srcs=None, outs=None, deps=None, tools=None,
-            data=None, visibility=None, timeout=0, needs_transitive_deps=False, flaky=0,
+            data=None, visibility=None, timeout=0, needs_transitive_deps=False, flaky=0, secrets=None,
             no_test_output=False, output_is_complete=True, requires=None, container=False):
     """A rule which creates a test with an arbitrary command.
 
@@ -127,6 +143,7 @@ def gentest(name, test_cmd, labels=None, cmd=None, srcs=None, outs=None, deps=No
       deps (list): Dependencies of this rule.
       tools (list): Tools used to build this rule; similar to srcs but are not copied to the temporary
                     build directory. Should be accessed via $(exe //path/to:tool) or similar.
+      secrets (list): Secrets available to this rule while building.
       data (list): Runtime data files for the test.
       visibility (list): Visibility declaration of this rule.
       timeout (int): Length of time in seconds to allow the test to run for before killing it.
@@ -147,6 +164,7 @@ def gentest(name, test_cmd, labels=None, cmd=None, srcs=None, outs=None, deps=No
         deps=deps,
         data=data,
         tools=tools,
+        secrets=secrets,
         test_cmd = test_cmd,
         cmd=cmd or 'true',  # By default, do nothing
         visibility=visibility,
@@ -247,15 +265,11 @@ def hash_filegroup(name, srcs=None, deps=None, exported_deps=None, visibility=No
       test_only (bool): If true the exported file can only be used by test targets.
       requires (list): Kinds of output from other rules that this one requires.
     """
-    build_rule(
+    return build_rule(
         name=name,
         srcs=srcs,
+        cmd='',
         deps=deps,
-        cmd = '; '.join('for FILE in $(locations %s); do BN=$(basename $FILE); '
-                        'BASE="${BN%%.*}"; EXT="${BN:${#BASE} + 1}"; '
-                        'OUT="${BASE}-$(hash %s)"; '
-                        '[ -n "$EXT" ] && OUT="${OUT}.${EXT}"; '
-                        'mv $FILE $OUT; echo $OUT; done' % (src, src) for src in srcs),
         exported_deps=exported_deps,
         visibility=visibility,
         building_description='Copying...',
@@ -263,8 +277,7 @@ def hash_filegroup(name, srcs=None, deps=None, exported_deps=None, visibility=No
         test_only=test_only,
         labels=labels,
         requires=requires,
-        post_build=lambda name, output: [add_out(name, out) for out in output],
-        stamp=True,
+        _hash_filegroup=True,
     )
 
 
@@ -514,8 +527,8 @@ def _deb_deps(cmd, current_label):
     return _find_deb_deps
 
 
-def tarball(name, srcs, out=None, deps=None, subdir=None,
-            compression='gzip', visibility=None, labels=None):
+def tarball(name, srcs, out=None, deps=None, subdir=None, gzip=True,
+            visibility=None, labels=None):
     """Defines a rule to create a tarball containing outputs of other rules.
 
     File mode and ownership are preserved. However, the atime and mtime of all
@@ -525,62 +538,30 @@ def tarball(name, srcs, out=None, deps=None, subdir=None,
       name (str): Rule name
       srcs (list): Source files to include in the tarball
       out (str): Name of output tarball (defaults to `name`.tar.gz, but see below re compression)
-      subdir (str): Subdirectory to create in (defaults to 'name')
-      compression (str): Kind of compression to use. Either one of {gzip, bzip2, xz, lzma}
-                         to filter through known tar methods, an explicit flag, or None for
-                         no compression.
+      subdir (str): Subdirectory to create in. All files will be flattened into this directory.
+      gzip (bool): If True, the output will be gzipped. If False, it will just be a tarball.
       deps (list): Dependencies
       visibility (list): Visibility specification.
       labels (list): Labels associated with this rule.
     """
-    # A filegroup is a nice easy way to move all these files locally.
-    filegroup(
-        name = '_%s#files' % name,
-        srcs = srcs,
-    )
-    deps = deps or []
-    deps.append(':_%s#files' % name)
-    subdir = subdir or name
-    if compression is not None and compression.startswith('-'):
-        if not out:
-            raise ValueError('Must pass "out" argument to tarball() if you pass an '
-                             'explicit flag for "compression"')
-    else:
-        compression, extension = _COMPRESSION.get(compression, ('-a', ''))
-
-    out = out or name + '.tar' + extension
-    # Unlike the rest of the compressions, gzip preserves the file's (the tar)
-    # timestamp by default, making the output unreproducible.
-    # Hence the compression is done with the -n flag in a separate step
-    if extension == '.gz' or out.endswith('.gz'):
-        archive_cmd = 'tar -c * | gzip -n > $OUT'
-    else:
-        archive_cmd = 'tar %s -cf $OUT *' % compression
+    out = out or (name + ('.tar.gz' if gzip else '.tar'))
+    cmd = '$TOOL --tar -i .'
+    if gzip:
+        cmd += ' -z'
+    if subdir:
+        cmd += ' --prefix ' + subdir
 
     build_rule(
-        name=name,
-        cmd=' && '.join([
-            'mkdir -p _tmp/' + subdir,
-            'cp -pr $(locations :_%s#files) _tmp/%s' % (name, subdir),
-            'cd _tmp',
-            # not using tar's --mtime because it's only available in GNU tar
-            'find . -exec touch -t 200001010000.00 {} +',
-            archive_cmd
-        ]),
-        outs=[out],
-        deps=deps,
-        visibility=visibility,
-        labels=(labels or []) + ['tar'],
+        name = name,
+        cmd = cmd,
+        srcs = srcs,
+        tools = [CONFIG.JARCAT_TOOL],
+        outs = [out],
+        deps = deps,
+        visibility = visibility,
+        labels = (labels or []) + ['tar'],
+        output_is_complete = True,
     )
-
-
-_COMPRESSION = {
-    'gzip': ('-z', '.gz'),
-    'bzip2': ('-j', '.bz2'),
-    'xz': ('-J', '.xz'),
-    'lzma': ('--lzma', '.lzma'),
-    'compress': ('-Z', '.Z'),
-}
 
 
 def _tool_path(tool, tools=None, binary=True, worker=False):

@@ -12,7 +12,10 @@ proto_library(
 python_test(
     name = 'system_dep_test',
     srcs = ['system_dep_test.py'],
-    labels = ['proto'],
+    labels = [
+        'proto',
+        'manual',
+    ],
     deps = [
         ':source_context',
     ],

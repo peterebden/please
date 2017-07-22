@@ -24,7 +24,9 @@ import (
 // If 'noDeps' is true, then no new packages will be added and no new targets queued.
 // 'include' and 'exclude' refer to the labels of targets to be added. If 'include' is non-empty then only
 // targets with at least one matching label are added. Any targets with a label in 'exclude' are not added.
-func Parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, noDeps bool, include, exclude []string) {
+// 'forSubinclude' is set when the parse is required for a subinclude target so should proceed
+// even when we're not otherwise building targets.
+func Parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, noDeps bool, include, exclude []string, forSubinclude bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			state.LogBuildError(tid, label, core.ParseFailed, fmt.Errorf("%s", r), "Failed to parse package")
@@ -34,16 +36,22 @@ func Parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, noD
 	pkg := state.Graph.Package(label.PackageName)
 	if pkg != nil {
 		// Does exist, all we need to do is toggle on this target
-		activateTarget(state, pkg, label, dependor, noDeps, include, exclude)
+		activateTarget(state, pkg, label, dependor, noDeps, forSubinclude, include, exclude)
 		return
 	}
 	// We use the name here to signal undeferring of a package. If we get that we need to retry the package regardless.
 	if dependor.Name != "_UNDEFER_" && !firstToParse(label, dependor) {
 		// Check this again to avoid a potential race
 		if pkg = state.Graph.Package(label.PackageName); pkg != nil {
-			activateTarget(state, pkg, label, dependor, noDeps, include, exclude)
+			activateTarget(state, pkg, label, dependor, noDeps, forSubinclude, include, exclude)
+		} else if forSubinclude {
+			// Need to make sure this guy happens, so re-add him to the queue.
+			// It should be essentially idempotent but we need to make sure that the task with
+			// forSubinclude = true is processed at some point, not just ones where it's false.
+			log.Debug("Re-adding pending parse for %s", label)
+			core.State.AddPendingParse(label, dependor, true)
 		} else {
-			log.Debug("Adding pending parse for %s", label)
+			log.Debug("Skipping pending parse for %s", label)
 		}
 		return
 	}
@@ -54,17 +62,20 @@ func Parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, noD
 		state.LogBuildResult(tid, label, core.PackageParsed, "Deferred")
 		return
 	}
-	activateTarget(state, pkg, label, dependor, noDeps, include, exclude)
+	activateTarget(state, pkg, label, dependor, noDeps, forSubinclude, include, exclude)
 
 	// Now add any lurking pending targets for this package.
 	pendingTargetMutex.Lock()
-	pending := pendingTargets[label.PackageName]                                // Must be present.
-	pendingTargets[label.PackageName] = map[core.BuildLabel][]core.BuildLabel{} // Empty this to free memory, but leave a sentinel
-	pendingTargetMutex.Unlock()                                                 // Nothing will look up this package in the map again.
+	pending := pendingTargets[label.PackageName] // Must be present.
+	pendingTargets[label.PackageName] = nil      // Empty this to free memory, but leave a sentinel
+	log.Debug("Retrieved %d pending targets for %s", len(pending), label)
+	pendingTargetMutex.Unlock() // Nothing will look up this package in the map again.
 	for target, dependors := range pending {
-		for _, dependor := range dependors {
-			if target.Name != label.Name {
-				activateTarget(state, pkg, target, dependor, noDeps, include, exclude)
+		if target.Name != label.Name {
+			for _, dependor := range dependors {
+				log.Debug("Undeferring pending target %s now we've got %s", dependor, target.Name)
+				lbl := core.BuildLabel{PackageName: label.PackageName, Name: target.Name}
+				activateTarget(state, pkg, lbl, dependor, noDeps, forSubinclude, include, exclude)
 			}
 		}
 	}
@@ -72,7 +83,7 @@ func Parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, noD
 }
 
 // activateTarget marks a target as active (ie. to be built) and adds its dependencies as pending parses.
-func activateTarget(state *core.BuildState, pkg *core.Package, label, dependor core.BuildLabel, noDeps bool, include, exclude []string) {
+func activateTarget(state *core.BuildState, pkg *core.Package, label, dependor core.BuildLabel, noDeps, forSubinclude bool, include, exclude []string) {
 	if !label.IsAllTargets() && state.Graph.Target(label) == nil {
 		msg := fmt.Sprintf("Parsed build file %s/BUILD but it doesn't contain target %s", label.PackageName, label.Name)
 		if dependor != core.OriginalTarget {
@@ -95,7 +106,7 @@ func activateTarget(state *core.BuildState, pkg *core.Package, label, dependor c
 	} else {
 		for _, l := range state.Graph.DependentTargets(dependor, label) {
 			// We use :all to indicate a dependency needed for parse.
-			addDep(state, l, dependor, false, dependor.IsAllTargets())
+			addDep(state, l, dependor, false, forSubinclude || dependor.IsAllTargets())
 		}
 	}
 }
@@ -137,6 +148,7 @@ func deferParse(label core.BuildLabel, pkg *core.Package) bool {
 	} else {
 		deferredParses[label.PackageName] = map[core.BuildLabel][]string{label: {pkg.Name}}
 	}
+	log.Debug("Adding pending parse for %s", label)
 	core.State.AddPendingParse(label, core.BuildLabel{PackageName: pkg.Name, Name: "all"}, true)
 	return true
 }
@@ -243,12 +255,18 @@ func buildFileName(state *core.BuildState, pkgName string) string {
 func addDep(state *core.BuildState, label, dependor core.BuildLabel, rescan, forceBuild bool) {
 	// Stop at any package that's not loaded yet
 	if state.Graph.Package(label.PackageName) == nil {
-		state.AddPendingParse(label, dependor, false)
+		if forceBuild {
+			log.Debug("Adding forced pending parse of %s", label)
+		}
+		state.AddPendingParse(label, dependor, forceBuild)
 		return
 	}
 	target := state.Graph.Target(label)
 	if target == nil {
 		log.Fatalf("Target %s (referenced by %s) doesn't exist\n", label, dependor)
+	}
+	if forceBuild {
+		log.Debug("Forcing build of %s", label)
 	}
 	if target.State() >= core.Active && !rescan && !forceBuild {
 		return // Target is already tagged to be built and likely on the queue.
@@ -284,6 +302,9 @@ func addDep(state *core.BuildState, label, dependor core.BuildLabel, rescan, for
 				}
 				continue
 			}
+		}
+		if forceBuild {
+			log.Debug("Forcing build of dep %s -> %s", label, dep)
 		}
 		addDep(state, dep, label, false, forceBuild)
 	}

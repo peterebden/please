@@ -58,13 +58,16 @@ int InitialiseInterpreter(char* parser_location) {
     return 3;  // This happens if Python is available but cffi isn't.
   }
   reg("_add_target", "size_t (*)(size_t, char*, char*, char*, char*, uint8, uint8, uint8, uint8, "
-      "uint8, uint8, uint8, uint8, uint8, int64, int64, int64, char*)", AddTarget);
+      "uint8, uint8, uint8, uint8, uint8, uint8, int64, int64, int64, char*)", AddTarget);
   reg("_add_src", "char* (*)(size_t, char*)", AddSource);
   reg("_add_data", "char* (*)(size_t, char*)", AddData);
   reg("_add_dep", "char* (*)(size_t, char*)", AddDep);
   reg("_add_exported_dep", "char* (*)(size_t, char*)", AddExportedDep);
+  reg("_add_secret", "char* (*)(size_t, char*)", AddSecret);
   reg("_add_tool", "char* (*)(size_t, char*)", AddTool);
+  reg("_add_named_tool", "char* (*)(size_t, char*, char*)", AddNamedTool);
   reg("_add_out", "char* (*)(size_t, char*)", AddOutput);
+  reg("_add_named_out", "char* (*)(size_t, char*, char*)", AddNamedOutput);
   reg("_add_optional_out", "char* (*)(size_t, char*)", AddOptionalOutput);
   reg("_add_vis", "char* (*)(size_t, char*)", AddVis);
   reg("_add_label", "char* (*)(size_t, char*)", AddLabel);
@@ -85,6 +88,7 @@ int InitialiseInterpreter(char* parser_location) {
   reg("_set_post_build_callback", "char** (*)(void*, char*, size_t)", SetPostBuildFunction);
   reg("_add_dependency", "char* (*)(size_t, char*, char*, uint8)", AddDependency);
   reg("_add_output", "char* (*)(size_t, char*, char*)", AddOutputPost);
+  reg("_add_named_output", "char* (*)(size_t, char*, char*, char*)", AddNamedOutputPost);
   reg("_add_licence_post", "char* (*)(size_t, char*, char*)", AddLicencePost);
   reg("_get_command", "char* (*)(size_t, char*, char*)", GetCommand);
   reg("_set_command", "char* (*)(size_t, char*, char*, char*)", SetCommand);

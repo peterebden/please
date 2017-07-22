@@ -287,7 +287,7 @@ func printTempDirs(state *core.BuildState, duration float64) {
 			fmt.Printf("   Expanded: %s\n", os.Expand(cmd, core.ReplaceEnvironment(env)))
 		} else {
 			fmt.Printf("\n")
-			cmd := exec.Command("bash", "--noprofile", "--norc") // plz requires bash, some commands contain bashisms.
+			cmd := exec.Command("bash", "--noprofile", "--norc", "-o", "pipefail") // plz requires bash, some commands contain bashisms.
 			cmd.Dir = target.TmpDir()
 			cmd.Env = env
 			cmd.Stdin = os.Stdin
@@ -533,7 +533,7 @@ func colouriseError(err error) error {
 }
 
 // errorMessageRe is a regex to find lines that look like they're specifying a file.
-var errorMessageRe = regexp.MustCompile(`^([^ ]+\.[^ /]+):([0-9]+):(?:([0-9]+):)? *(?:([a-z-_ ]+):)? (.*)$`)
+var errorMessageRe = regexp.MustCompile(`^([^ ]+\.[^: /]+):([0-9]+):(?:([0-9]+):)? *(?:([a-z-_ ]+):)? (.*)$`)
 
 // graphCycleMessage attempts to detect graph cycles and produces a readable message from it.
 func graphCycleMessage(graph *core.BuildGraph, target *core.BuildTarget) string {
@@ -561,11 +561,15 @@ func findGraphCycle(graph *core.BuildGraph, target *core.BuildTarget) []*core.Bu
 		return -1
 	}
 
+	done := map[core.BuildLabel]bool{}
 	var detectCycle func(*core.BuildTarget, []*core.BuildTarget) []*core.BuildTarget
 	detectCycle = func(target *core.BuildTarget, deps []*core.BuildTarget) []*core.BuildTarget {
 		if i := index(deps, target); i != -1 {
 			return deps[i:]
+		} else if done[target.Label] {
+			return nil
 		}
+		done[target.Label] = true
 		deps = append(deps, target)
 		for _, dep := range target.Dependencies() {
 			if cycle := detectCycle(dep, deps); len(cycle) > 0 {

@@ -25,8 +25,14 @@ import (
 
 // maxMsgSize is the maximum message size our gRPC server accepts.
 // We deliberately set this to something high since we don't want to limit artifact size here.
-// TODO(pebers): we should limit it on the client side though.
 const maxMsgSize = 200 * 1024 * 1024
+
+func init() {
+	// When tracing is enabled, it appears to keep references to messages alive, possibly indefinitely (?).
+	// This is very bad for us since our messages are large, it can result in leaking memory very quickly
+	// and ultimately OOM errors. Disabling tracing appears to alleviate the problem.
+	grpc.EnableTracing = false
+}
 
 type RpcCacheServer struct {
 	cache        *Cache
@@ -153,17 +159,17 @@ func loadKeys(filename string) map[string]*x509.Certificate {
 		if err != nil {
 			return err
 		} else if !info.IsDir() {
-			data, err := ioutil.ReadFile(filename)
+			data, err := ioutil.ReadFile(name)
 			if err != nil {
-				log.Fatalf("Failed to read cert from %s: %s", filename, err)
+				log.Fatalf("Failed to read cert from %s: %s", name, err)
 			}
 			p, _ := pem.Decode(data)
 			if p == nil {
-				log.Fatalf("Couldn't decode PEM data from %s: %s", filename, err)
+				log.Fatalf("Couldn't decode PEM data from %s: %s", name, err)
 			}
 			cert, err := x509.ParseCertificate(p.Bytes)
 			if err != nil {
-				log.Fatalf("Couldn't parse certificate from %s: %s", filename, err)
+				log.Fatalf("Couldn't parse certificate from %s: %s", name, err)
 			}
 			ret[string(cert.RawSubject)] = cert
 		}

@@ -35,7 +35,8 @@ go_get(
 go_get(
     name = 'go-flags',
     get = 'github.com/jessevdk/go-flags',
-    revision = '0a28dbe50f23d8fce6b016975b964cfe7b97a20a',
+    patch = 'flags_subcommand.patch',
+    revision = '5695738f733662da3e9afc2283bba6f3c879002d',
 )
 
 go_get(
@@ -70,21 +71,21 @@ go_get(
     exported_deps = [':context'],
     get = 'google.golang.org/grpc',
     install = ['google.golang.org/grpc/health'],
-    revision = 'v1.0.1-GA',
+    revision = 'v1.2.1',
     deps = [':protobuf'],
 )
 
 go_get(
     name = 'protobuf',
     get = 'github.com/golang/protobuf/proto',
-    revision = 'f592bd283e9ef86337a432eb50e592278c3d534d',
+    revision = '2bba0603135d7d7f5cb73b2125beeda19c09f4ef',
 )
 
 go_get(
     name = 'protoc-gen-go',
     binary = True,
     get = 'github.com/golang/protobuf/protoc-gen-go',
-    revision = 'f592bd283e9ef86337a432eb50e592278c3d534d',
+    revision = '2bba0603135d7d7f5cb73b2125beeda19c09f4ef',
     deps = [
         ':protobuf',
     ],
@@ -93,6 +94,7 @@ go_get(
 go_get(
     name = 'testify',
     get = 'github.com/stretchr/testify',
+    install = ['github.com/stretchr/testify/require'],
     revision = 'f390dcf405f7b83c997eac1b06768bb9f44dec18',
 )
 
@@ -183,4 +185,11 @@ go_get(
     name = 'atime',
     get = 'github.com/djherbis/atime',
     revision = '89517e96e10b93292169a79fd4523807bdc5d5fa',
+)
+
+go_get(
+    name = 'errgroup',
+    get = 'golang.org/x/sync/errgroup',
+    revision = '457c5828408160d6a47e17645169cf8fa20218c4',
+    deps = [':context'],
 )

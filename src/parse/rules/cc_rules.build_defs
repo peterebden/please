@@ -79,7 +79,6 @@ def cc_library(name, srcs=None, hdrs=None, private_hdrs=None, deps=None, visibil
         return filegroup(
             name=name,
             srcs=hdrs,
-            requires=['cc_hdrs'],
             exported_deps=deps,
             labels=labels,
             test_only=test_only,
@@ -93,9 +92,10 @@ def cc_library(name, srcs=None, hdrs=None, private_hdrs=None, deps=None, visibil
         tag = 'hdrs',
         srcs=hdrs,
         requires=['cc_hdrs'],
-        exported_deps=deps,
+        deps=deps,
         test_only=test_only,
         labels=labels,
+        output_is_complete=False,
     )
 
     cmds, tools = _library_cmds(_c, compiler_flags, pkg_config_libs)
@@ -104,7 +104,7 @@ def cc_library(name, srcs=None, hdrs=None, private_hdrs=None, deps=None, visibil
         # than giving them all to gcc in one invocation.
         a_rules = []
         for src in srcs:
-            a_name = '_%s#%s' % (name, src.replace('/', '_').replace('.', '_').replace(':', '_'))
+            a_name = '_%s#%s' % (name, src.replace('/', '_').replace('.', '_').replace(':', '_').replace('|', '_'))
             build_rule(
                 name=a_name,
                 srcs={'srcs': [src], 'hdrs': hdrs, 'priv': private_hdrs},
@@ -119,6 +119,7 @@ def cc_library(name, srcs=None, hdrs=None, private_hdrs=None, deps=None, visibil
                 tools=tools,
                 # TODO(pebers): handle includes and defines in _library_cmds as well.
                 pre_build=_library_transitive_labels(_c, compiler_flags, pkg_config_libs) if (deps or includes or defines) else None,
+                needs_transitive_deps=True,
             )
             a_rules.append(':' + a_name)
 
@@ -169,6 +170,7 @@ def cc_library(name, srcs=None, hdrs=None, private_hdrs=None, deps=None, visibil
             labels=labels,
             tools=tools,
             pre_build=_library_transitive_labels(_c, compiler_flags, pkg_config_libs) if deps else None,
+            needs_transitive_deps=True,
         )
         if alwayslink:
             labels.append('cc:al:%s/%s.a' % (get_base_path(), name))
@@ -251,6 +253,7 @@ def cc_static_library(name, srcs=None, hdrs=None, compiler_flags=None, linker_fl
         test_only = test_only,
         building_description = 'Archiving...',
         provides = provides,
+        requires = ['cc'],
         tools = tools,
     )
 
@@ -715,6 +718,7 @@ def _library_transitive_labels(c, compiler_flags, pkg_config_libs):
         labels = get_labels(name, 'cc:')
         flags = ['-isystem %s' % l[4:] for l in labels if l.startswith('inc:')]
         flags.extend('-D' + l[4:] for l in labels if l.startswith('def:'))
+        pkg_config_libs.extend(l[3:] for l in labels if l.startswith('pc:') and l[3:] not in pkg_config_libs)
         if flags:  # Don't update if there aren't any relevant labels
             cmds, _ = _library_cmds(c, compiler_flags, pkg_config_libs, ' '.join(flags))
             for k, v in cmds.items():

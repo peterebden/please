@@ -324,11 +324,14 @@ func parsePackageFile(state *core.BuildState, filename string, pkg *core.Package
 	defer C.free(unsafe.Pointer(cFilename))
 	defer C.free(unsafe.Pointer(cPackageName))
 	ret := C.GoString(C.ParseFile(cFilename, cPackageName, sizep(pkg)))
-	if ret != "" && ret != pyDeferParse {
+	if ret == pyDeferParse {
+		log.Debug("Deferred parse of package file %s in %0.3f seconds", filename, time.Since(start).Seconds())
+		return true
+	} else if ret != "" {
 		panic(fmt.Sprintf("Failed to parse file %s: %s", filename, ret))
 	}
 	log.Debug("Parsed package file %s in %0.3f seconds", filename, time.Since(start).Seconds())
-	return ret == pyDeferParse
+	return false
 }
 
 // parseSystemPackage is analogous to parsePackageFile but only for system packages.
@@ -360,7 +363,7 @@ func IsValidTargetName(name *C.char) bool {
 
 //export AddTarget
 func AddTarget(pkgPtr uintptr, cName, cCmd, cTestCmd, cArch *C.char, binary, test, needsTransitiveDeps,
-	outputIsComplete, containerise, noTestOutput, testOnly, stamp, filegroup bool,
+	outputIsComplete, containerise, noTestOutput, testOnly, stamp, filegroup, hashFilegroup bool,
 	flakiness, buildTimeout, testTimeout int, cBuildingDescription *C.char) (ret C.size_t) {
 	buildingDescription := ""
 	if cBuildingDescription != nil {
@@ -368,13 +371,13 @@ func AddTarget(pkgPtr uintptr, cName, cCmd, cTestCmd, cArch *C.char, binary, tes
 	}
 	return sizet(addTarget(pkgPtr, C.GoString(cName), C.GoString(cCmd), C.GoString(cTestCmd), C.GoString(cArch),
 		binary, test, needsTransitiveDeps, outputIsComplete, containerise, noTestOutput,
-		testOnly, stamp, filegroup, flakiness, buildTimeout, testTimeout, buildingDescription))
+		testOnly, stamp, filegroup, hashFilegroup, flakiness, buildTimeout, testTimeout, buildingDescription))
 }
 
 // addTarget adds a new build target to the graph.
 // Separated from AddTarget to make it possible to test (since you can't mix cgo and go test).
 func addTarget(pkgPtr uintptr, name, cmd, testCmd, arch string, binary, test, needsTransitiveDeps,
-	outputIsComplete, containerise, noTestOutput, testOnly, stamp, filegroup bool,
+	outputIsComplete, containerise, noTestOutput, testOnly, stamp, filegroup, hashFilegroup bool,
 	flakiness, buildTimeout, testTimeout int, buildingDescription string) *core.BuildTarget {
 	pkg := unsizep(pkgPtr)
 	target := core.NewBuildTarget(core.NewBuildLabel(pkg.Name, name))
@@ -390,7 +393,8 @@ func addTarget(pkgPtr uintptr, name, cmd, testCmd, arch string, binary, test, ne
 	target.BuildTimeout = time.Duration(buildTimeout) * time.Second
 	target.TestTimeout = time.Duration(testTimeout) * time.Second
 	target.Stamp = stamp
-	target.IsFilegroup = filegroup
+	target.IsFilegroup = filegroup || hashFilegroup
+	target.IsHashFilegroup = hashFilegroup
 	// Automatically label containerised tests.
 	if containerise {
 		target.AddLabel("container")
@@ -458,7 +462,7 @@ func AddDependency(cPackage uintptr, cTarget *C.char, cDep *C.char, exported boo
 }
 
 //export AddOutputPost
-func AddOutputPost(cPackage uintptr, cTarget *C.char, cOut *C.char) *C.char {
+func AddOutputPost(cPackage uintptr, cTarget, cOut *C.char) *C.char {
 	target, err := getTargetPost(cPackage, cTarget)
 	if err != nil {
 		return C.CString(err.Error())
@@ -469,6 +473,21 @@ func AddOutputPost(cPackage uintptr, cTarget *C.char, cOut *C.char) *C.char {
 		return C.CString(err.Error())
 	}
 	target.AddOutput(out)
+	return nil
+}
+
+//export AddNamedOutputPost
+func AddNamedOutputPost(cPackage uintptr, cTarget, cName, cOut *C.char) *C.char {
+	target, err := getTargetPost(cPackage, cTarget)
+	if err != nil {
+		return C.CString(err.Error())
+	}
+	out := C.GoString(cOut)
+	pkg := unsizep(cPackage)
+	if err := pkg.RegisterOutput(out, target); err != nil {
+		return C.CString(err.Error())
+	}
+	target.AddNamedOutput(C.GoString(cName), out)
 	return nil
 }
 
@@ -546,7 +565,7 @@ func AddSource(cTarget uintptr, cSource *C.char) *C.char {
 // Identifies if the file is owned by this package and returns an error if not.
 func parseSource(src, packageName string, systemAllowed bool) (core.BuildInput, error) {
 	if core.LooksLikeABuildLabel(src) {
-		return core.TryParseBuildLabel(src, packageName)
+		return core.TryParseNamedOutputLabel(src, packageName)
 	} else if src == "" {
 		return nil, fmt.Errorf("Empty source path (in package %s)", packageName)
 	} else if strings.Contains(src, "../") {
@@ -596,6 +615,13 @@ func AddTestCommand(cTarget uintptr, cConfig *C.char, cCommand *C.char) *C.char 
 	return nil
 }
 
+//export AddSecret
+func AddSecret(cTarget uintptr, cSecret *C.char) *C.char {
+	target := unsizet(cTarget)
+	target.Secrets = append(target.Secrets, C.GoString(cSecret))
+	return nil
+}
+
 //export AddData
 func AddData(cTarget uintptr, cData *C.char) *C.char {
 	target := unsizet(cTarget)
@@ -614,6 +640,13 @@ func AddData(cTarget uintptr, cData *C.char) *C.char {
 func AddOutput(cTarget uintptr, cOutput *C.char) *C.char {
 	target := unsizet(cTarget)
 	target.AddOutput(C.GoString(cOutput))
+	return nil
+}
+
+//export AddNamedOutput
+func AddNamedOutput(cTarget uintptr, cName *C.char, cOutput *C.char) *C.char {
+	target := unsizet(cTarget)
+	target.AddNamedOutput(C.GoString(cName), C.GoString(cOutput))
 	return nil
 }
 
@@ -649,23 +682,38 @@ func AddExportedDep(cTarget uintptr, cDep *C.char) *C.char {
 //export AddTool
 func AddTool(cTarget uintptr, cTool *C.char) *C.char {
 	target := unsizet(cTarget)
-	src := C.GoString(cTool)
-	if !core.LooksLikeABuildLabel(src) && !strings.Contains(src, "/") {
-		// non-specified paths like "bash" are turned into absolute ones based on plz's PATH.
-		// awkwardly this means we can't use the builtin exec.LookPath because the current
-		// environment variable isn't necessarily the same as what's in our config.
-		var err error
-		src, err = core.LookPath(src, core.State.Config.Build.Path)
-		if err != nil {
-			return C.CString(err.Error())
-		}
-	}
-	tool, err := parseSource(src, target.Label.PackageName, true)
+	tool, err := parseTool(target, C.GoString(cTool))
 	if err != nil {
 		return C.CString(err.Error())
 	}
 	target.AddTool(tool)
 	return nil
+}
+
+//export AddNamedTool
+func AddNamedTool(cTarget uintptr, cName *C.char, cTool *C.char) *C.char {
+	target := unsizet(cTarget)
+	tool, err := parseTool(target, C.GoString(cTool))
+	if err != nil {
+		return C.CString(err.Error())
+	}
+	target.AddNamedTool(C.GoString(cName), tool)
+	return nil
+}
+
+// parseTool parses a string into a tool; it's similar to sources but has slightly different semantics.
+func parseTool(target *core.BuildTarget, tool string) (core.BuildInput, error) {
+	if !core.LooksLikeABuildLabel(tool) && !strings.Contains(tool, "/") {
+		// non-specified paths like "bash" are turned into absolute ones based on plz's PATH.
+		// awkwardly this means we can't use the builtin exec.LookPath because the current
+		// environment variable isn't necessarily the same as what's in our config.
+		tool, err := core.LookPath(tool, core.State.Config.Build.Path)
+		if err != nil {
+			return nil, err
+		}
+		return parseSource(tool, target.Label.PackageName, true)
+	}
+	return parseSource(tool, target.Label.PackageName, true)
 }
 
 //export AddVis

@@ -34,7 +34,14 @@ import (
 const hashLength = sha1.Size
 
 // Length of the hash file we write
-const hashFileLength = 4 * hashLength
+const hashFileLength = 5 * hashLength
+
+// Length of old hash files that don't include secrets.
+// Because that's basically everything we're going to keep compatibility for a while.
+const oldHashFileLength = 4 * hashLength
+
+// noSecrets is the thing we write when a rule doesn't have any secrets defined.
+var noSecrets = []byte{45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45}
 
 // Used to write something when we need to indicate a boolean in a hash. Can be essentially
 // any value as long as they're different from one another.
@@ -56,7 +63,7 @@ func needsBuilding(state *core.BuildState, target *core.BuildTarget, postBuild b
 			}
 		}
 	}
-	oldRuleHash, oldConfigHash, oldSourceHash := readRuleHashFile(ruleHashFileName(target), postBuild)
+	oldRuleHash, oldConfigHash, oldSourceHash, oldSecretHash := readRuleHashFile(ruleHashFileName(target), postBuild)
 	if !bytes.Equal(oldConfigHash, state.Hashes.Config) {
 		if len(oldConfigHash) == 0 {
 			// Small nicety to make it a bit clearer what's going on.
@@ -76,6 +83,12 @@ func needsBuilding(state *core.BuildState, target *core.BuildTarget, postBuild b
 		log.Debug("Need to rebuild %s, sources have changed (was %s, need %s)", target.Label, b64(oldSourceHash), b64(newSourceHash))
 		return true
 	}
+	newSecretHash, err := secretHash(target)
+	if err != nil || !bytes.Equal(oldSecretHash, newSecretHash) {
+		log.Debug("Need to rebuild %s, secrets have changed (was %s, need %s)", target.Label, b64(oldSecretHash), b64(newSecretHash))
+		return true
+	}
+
 	// Check the outputs of this rule exist. This would only happen if the user had
 	// removed them but it's incredibly aggravating if you remove an output and the
 	// rule won't rebuild itself.
@@ -138,8 +151,9 @@ func sourceHash(graph *core.BuildGraph, target *core.BuildTarget) ([]byte, error
 			return nil, err
 		}
 		h.Write(result)
+		h.Write([]byte(source.Src))
 	}
-	for _, tool := range target.Tools {
+	for _, tool := range target.AllTools() {
 		if label := tool.Label(); label != nil {
 			// Note that really it would be more correct to hash the outputs of these rules
 			// in the same way we calculate a hash of sources for the rule, but that is
@@ -307,6 +321,13 @@ func ruleHash(target *core.BuildTarget, runtime bool) []byte {
 	for _, out := range target.DeclaredOutputs() {
 		h.Write([]byte(out))
 	}
+	outs := target.DeclaredNamedOutputs()
+	for _, name := range target.DeclaredOutputNames() {
+		h.Write([]byte(name))
+		for _, out := range outs[name] {
+			h.Write([]byte(out))
+		}
+	}
 	for _, licence := range target.Licences {
 		h.Write([]byte(licence))
 	}
@@ -318,6 +339,9 @@ func ruleHash(target *core.BuildTarget, runtime bool) []byte {
 	}
 	for _, label := range target.Labels {
 		h.Write([]byte(label))
+	}
+	for _, secret := range target.Secrets {
+		h.Write([]byte(secret))
 	}
 	hashBool(h, target.IsBinary)
 	hashBool(h, target.IsTest)
@@ -356,6 +380,9 @@ func ruleHash(target *core.BuildTarget, runtime bool) []byte {
 	if target.IsFilegroup {
 		hashBool(h, target.IsFilegroup)
 	}
+	if target.IsHashFilegroup {
+		hashBool(h, target.IsHashFilegroup)
+	}
 	for _, require := range target.Requires {
 		h.Write([]byte(require))
 	}
@@ -386,27 +413,30 @@ func hashBool(writer hash.Hash, b bool) {
 // readRuleHashFile reads the contents of a rule hash file into separate byte arrays
 // Arrays will be empty if there's an error reading the file.
 // If postBuild is true then the rule hash will be the post-build one if present.
-func readRuleHashFile(filename string, postBuild bool) ([]byte, []byte, []byte) {
+func readRuleHashFile(filename string, postBuild bool) ([]byte, []byte, []byte, []byte) {
 	contents := make([]byte, hashFileLength, hashFileLength)
 	file, err := os.Open(filename)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			log.Warning("Failed to read rule hash file %s: %s", filename, err)
 		}
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	defer file.Close()
 	if n, err := file.Read(contents); err != nil {
 		log.Warning("Error reading rule hash file %s: %s", filename, err)
-		return nil, nil, nil
+		return nil, nil, nil, nil
+	} else if n == oldHashFileLength {
+		// Handle older hash files that don't have secrets in them.
+		copy(contents[4*hashLength:hashFileLength], noSecrets)
 	} else if n != hashFileLength {
 		log.Warning("Unexpected rule hash file length: expected %d bytes, was %d", hashFileLength, n)
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	if postBuild {
-		return contents[hashLength : 2*hashLength], contents[2*hashLength : 3*hashLength], contents[3*hashLength : hashFileLength]
+		return contents[hashLength : 2*hashLength], contents[2*hashLength : 3*hashLength], contents[3*hashLength : 4*hashLength], contents[4*hashLength : hashFileLength]
 	}
-	return contents[0:hashLength], contents[2*hashLength : 3*hashLength], contents[3*hashLength : hashFileLength]
+	return contents[0:hashLength], contents[2*hashLength : 3*hashLength], contents[3*hashLength : 4*hashLength], contents[4*hashLength : hashFileLength]
 }
 
 // Writes the contents of the rule hash file
@@ -415,12 +445,16 @@ func writeRuleHashFile(state *core.BuildState, target *core.BuildTarget) error {
 	if err != nil {
 		return err
 	}
+	secretHash, err := secretHash(target)
+	if err != nil {
+		return err
+	}
 	file, err := os.Create(ruleHashFileName(target))
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-	n, err := file.Write(hash)
+	n, err := file.Write(append(hash, secretHash...))
 	if err != nil {
 		return err
 	} else if n != hashFileLength {
@@ -522,11 +556,29 @@ func PrintHashes(state *core.BuildState, target *core.BuildTarget) {
 	for source := range core.IterSources(state.Graph, target) {
 		fmt.Printf("  Source: %s: %s\n", source.Src, b64(mustPathHash(source.Src)))
 	}
-	for _, tool := range target.Tools {
+	for _, tool := range target.AllTools() {
 		if label := tool.Label(); label != nil {
 			fmt.Printf("    Tool: %s: %s\n", *label, b64(mustShortTargetHash(state, state.Graph.TargetOrDie(*label))))
 		} else {
 			fmt.Printf("    Tool: %s: %s\n", tool, b64(mustPathHash(tool.FullPaths(state.Graph)[0])))
 		}
 	}
+}
+
+// secretHash calculates a hash for any secrets of a target.
+func secretHash(target *core.BuildTarget) ([]byte, error) {
+	if len(target.Secrets) == 0 {
+		return noSecrets, nil
+	}
+	h := sha1.New()
+	for _, secret := range target.Secrets {
+		ph, err := pathHash(secret, false)
+		if err != nil && os.IsNotExist(err) {
+			return noSecrets, nil // Not having the secrets is not an error yet.
+		} else if err != nil {
+			return nil, err
+		}
+		h.Write(ph)
+	}
+	return h.Sum(nil), nil
 }

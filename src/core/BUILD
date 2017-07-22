@@ -17,6 +17,7 @@ go_library(
     deps = [
         '//src/cli',
         '//third_party/go:gcfg',
+        '//third_party/go:go-flags',
         '//third_party/go:logging',
         '//third_party/go:queue',
         '//third_party/go:semver',
@@ -129,6 +130,15 @@ go_test(
 go_test(
     name = 'test_results_test',
     srcs = ['test_results_test.go'],
+    deps = [
+        ':core',
+        '//third_party/go:testify',
+    ],
+)
+
+go_test(
+    name = 'build_input_test',
+    srcs = ['build_input_test.go'],
     deps = [
         ':core',
         '//third_party/go:testify',

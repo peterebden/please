@@ -136,25 +136,24 @@ func AddInitPyFiles(w *zip.Writer) error {
 	}
 	sort.Strings(s)
 	for _, p := range s {
-		d := filepath.Dir(p)
-		if filepath.Base(d) == "__pycache__" {
-			continue // Don't need to add an __init__.py here.
-		}
-		initPyPath := path.Join(d, "__init__.py")
-		if _, present := m[initPyPath]; !present {
-			// If we already have a pyc / pyo we don't need the __init__.py as well.
-			if _, present := m[initPyPath+"c"]; present {
-				continue
-			} else if _, present := m[initPyPath+"o"]; present {
-				continue
+		for d := filepath.Dir(p); d != "."; d = filepath.Dir(d) {
+			if filepath.Base(d) == "__pycache__" {
+				break // Don't need to add an __init__.py here.
 			}
+			initPyPath := path.Join(d, "__init__.py")
 			// Don't write one at the root, it's not necessary.
-			if initPyPath != "__init__.py" {
-				log.Debug("Adding %s", initPyPath)
-				m[initPyPath] = fileRecord{}
-				if err := WriteFile(w, initPyPath, []byte{}); err != nil {
-					return err
-				}
+			if _, present := m[initPyPath]; present || initPyPath == "__init__.py" {
+				break
+			} else if _, present := m[initPyPath+"c"]; present {
+				// If we already have a pyc / pyo we don't need the __init__.py as well.
+				break
+			} else if _, present := m[initPyPath+"o"]; present {
+				break
+			}
+			log.Debug("Adding %s", initPyPath)
+			m[initPyPath] = fileRecord{}
+			if err := WriteFile(w, initPyPath, []byte{}); err != nil {
+				return err
 			}
 		}
 	}
@@ -290,11 +289,15 @@ func StripBytecodeTimestamp(filename string, contents []byte) error {
 		} else {
 			// The .pyc format starts with a two-byte magic number, a \r\n, then a four-byte
 			// timestamp. It is that timestamp we are interested in; we overwrite it with
-			// 2000-01-01 so it's deterministic.
-			contents[4] = 92
-			contents[5] = 120
-			contents[6] = 56
-			contents[7] = 48
+			// the same mtime we use in the zipfile directory (it's important that it is
+			// deterministic, but also that it matches, otherwise zipimport complains).
+			var buf bytes.Buffer
+			binary.Write(&buf, binary.LittleEndian, modTime.Unix())
+			b := buf.Bytes()
+			contents[4] = b[0]
+			contents[5] = b[1]
+			contents[6] = b[2]
+			contents[7] = b[3]
 		}
 	}
 	return nil

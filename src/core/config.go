@@ -23,7 +23,7 @@ import (
 const ConfigFileName string = ".plzconfig"
 
 // Architecture-specific config file which overrides the repo one. Also normally checked in if needed.
-var ArchConfigFileName string = fmt.Sprintf(".plzconfig_%s_%s", runtime.GOOS, runtime.GOARCH)
+const ArchConfigFileName string = ".plzconfig_" + runtime.GOOS + "_" + runtime.GOARCH
 
 // File name for the local repo config - this is not normally checked in and used to
 // override settings on the local machine.
@@ -80,6 +80,7 @@ func setDefaults(config *Configuration) *Configuration {
 	defaultPath(&config.Java.JarCatTool, config.Please.Location, "jarcat")
 	defaultPath(&config.Java.PleaseMavenTool, config.Please.Location, "please_maven")
 	defaultPath(&config.Java.JUnitRunner, config.Please.Location, "junit_runner.jar")
+	defaultPath(&config.Please.LintTool, config.Please.Location, "please_build_linter")
 	return config
 }
 
@@ -187,6 +188,7 @@ type Configuration struct {
 		Nonce            string      `help:"This is an arbitrary string that is added to the hash of every build target. It provides a way to force a rebuild of everything when it's changed.\nWe will bump the default of this whenever we think it's required - although it's been a pretty long time now and we hope that'll continue."`
 		NumThreads       int         `help:"Number of parallel build operations to run.\nIs overridden by the equivalent command-line flag, if that's passed." example:"6"`
 		ExperimentalDir  string      `help:"Directory containing experimental code. This is subject to some extra restrictions:\n - Code in the experimental dir can override normal visibility constraints\n - Code outside the experimental dir can never depend on code inside it\n - Tests are excluded from general detection." example:"experimental"`
+		LintTool         string      `help:"Location of the lint tool for BUILD files."`
 	} `help:"The [please] section in the config contains non-language-specific settings defining how Please should operate."`
 	Display struct {
 		UpdateTitle bool `help:"Updates the title bar of the shell window Please is running in as the build progresses. This isn't on by default because not everyone's shell is configured to reset it again after and we don't want to alter it forever."`
@@ -265,7 +267,7 @@ type Configuration struct {
 		JarCatTool         string  `help:"Defines the tool used to concatenate .jar files which we use to build the output of java_binary, java_test and various other rules. Defaults to jarcat in the Please install directory." var:"JARCAT_TOOL"`
 		PleaseMavenTool    string  `help:"Defines the tool used to fetch information from Maven in maven_jars rules.\nDefaults to please_maven in the Please install directory." var:"PLEASE_MAVEN_TOOL"`
 		JUnitRunner        string  `help:"Defines the .jar containing the JUnit runner. This is built into all java_test rules since it's necessary to make JUnit do anything useful.\nDefaults to junit_runner.jar in the Please install directory." var:"JUNIT_RUNNER"`
-		DefaultTestPackage string  `help:"The Java classpath to search for functions annotated with @Test." var:"DEFAULT_TEST_PACKAGE"`
+		DefaultTestPackage string  `help:"The Java classpath to search for functions annotated with @Test." If not specified the compiled sources will be searched for files named *Test.java." var:"DEFAULT_TEST_PACKAGE"`
 		SourceLevel        string  `help:"The default Java source level when compiling. Defaults to 8." var:"JAVA_SOURCE_LEVEL"`
 		TargetLevel        string  `help:"The default Java bytecode level to target. Defaults to 8." var:"JAVA_TARGET_LEVEL"`
 		JavacFlags         string  `help:"Additional flags to pass to javac when compiling libraries." example:"-Xmx1200M" var:"JAVAC_FLAGS"`
@@ -285,6 +287,7 @@ type Configuration struct {
 		DefaultDbgCppflags string `help:"Compiler rules passed to all C++ rules during dbg builds.\nDefaults to --std=c++11 -g3 -DDEBUG -Wall -Wextra -Werror." var:"DEFAULT_DBG_CPPFLAGS"`
 		DefaultLdflags     string `help:"Linker flags passed to all C++ rules.\nBy default this is empty." var:"DEFAULT_LDFLAGS"`
 		DefaultNamespace   string `help:"Namespace passed to all cc_embed_binary rules when not overridden by the namespace argument to that rule.\nNot set by default, if you want to use those rules you'll need to set it or pass it explicitly to each one." var:"DEFAULT_NAMESPACE"`
+		PkgConfigPath      string `help:"Custom PKG_CONFIG_PATH for pkg-config.\nBy default this is empty." var:"PKG_CONFIG_PATH"`
 		Coverage           bool   `help:"If true (the default), coverage will be available for C and C++ build rules.\nThis is still a little experimental but should work for GCC. Right now it does not work for Clang (it likely will in Clang 4.0 which will likely support --fprofile-dir) and so this can be useful to disable it.\nIt's also useful in some cases for CI systems etc if you'd prefer to avoid the overhead, since the tests have to be compiled with extra instrumentation and without optimisation." var:"CPP_COVERAGE"`
 	} `help:"Please has built-in support for compiling C and C++ code. We don't support every possible nuance of compilation for these languages, but aim to provide something fairly straightforward.\nTypically there is little problem compiling & linking against system libraries although Please has no insight into those libraries and when they change, so cannot rebuild targets appropriately.\n\nThe C and C++ rules are very similar and simply take a different set of tools and flags to facilitate side-by-side usage."`
 	Proto struct {
@@ -368,7 +371,11 @@ func (config *Configuration) ApplyOverrides(overrides map[string]string) error {
 		}
 		switch field.Kind() {
 		case reflect.String:
-			field.Set(reflect.ValueOf(v))
+			if field.Type().Name() == "URL" {
+				field.Set(reflect.ValueOf(cli.URL(v)))
+			} else {
+				field.Set(reflect.ValueOf(v))
+			}
 		case reflect.Bool:
 			v = strings.ToLower(v)
 			// Mimics the set of truthy things gcfg accepts in our config file.

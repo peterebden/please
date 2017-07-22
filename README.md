@@ -1,4 +1,4 @@
-# Please [![Build Status](https://travis-ci.org/thought-machine/please.svg?branch=master)](https://travis-ci.org/thought-machine/please) [![Go Report Card](https://goreportcard.com/badge/github.com/thought-machine/please)](https://goreportcard.com/report/github.com/thought-machine/please)
+# Please [![Build Status](https://circleci.com/gh/thought-machine/please.svg?style=shield)](https://circleci.com/gh/thought-machine/please) [![Go Report Card](https://goreportcard.com/badge/github.com/thought-machine/please)](https://goreportcard.com/report/github.com/thought-machine/please)
 
 Please is a cross-language build system with an emphasis on
 high performance, extensibility and reproduceability.
@@ -39,7 +39,7 @@ Building Please
 To build Please yourself, run `./bootstrap.sh` in the repo root.
 This will set up the minimal environment needed to build Please,
 build it once manually and then rebuild it again using itself.
-You'll need to have Go 1.7+ installed to build Please (we use some
+You'll need to have Go 1.8+ installed to build Please (we use some
 new standard library features like context) although once built it
 can target Go 1.4+.
 
@@ -56,6 +56,11 @@ Optional dependencies for various tests include unittest++
 (`sudo apt-get install libunittest++-dev`), clang, gold and docker - none
 of those are required to build components so their tests will be excluded
 if they aren't available.
+
+If you'd rather not worry about installing the dependencies, we provide
+a prebuilt Docker image based on Ubuntu which is capable of building
+the whole thing for you:
+[`docker run -it thoughtmachine/please`](https://hub.docker.com/r/thoughtmachine/please)
 
 
 Contributors

@@ -328,6 +328,16 @@ func TestDependencies(t *testing.T) {
 	assert.Equal(t, []*BuildTarget{target1, target2}, target3.Dependencies())
 }
 
+func TestDeclaredDependenciesStrict(t *testing.T) {
+	target1 := makeTarget("//src/core:target1", "")
+	target2 := makeTarget("//src/core:target2", "", target1)
+	target3 := makeTarget("//src/core:target3", "", target2)
+	target3.AddMaybeExportedDependency(target1.Label, true)
+	assert.Equal(t, []BuildLabel{}, target1.DeclaredDependenciesStrict())
+	assert.Equal(t, []BuildLabel{target1.Label}, target2.DeclaredDependenciesStrict())
+	assert.Equal(t, []BuildLabel{target2.Label}, target3.DeclaredDependenciesStrict())
+}
+
 func TestAddDependency(t *testing.T) {
 	target1 := makeTarget("//src/core:target1", "")
 	target2 := makeTarget("//src/core:target2", "")
@@ -411,7 +421,7 @@ func TestOutMode(t *testing.T) {
 
 func TestOutputOrdering(t *testing.T) {
 	// Check that outputs come out ordered, this is important for hash stability; previously
-	// we preseved the original order, but tools like buildifier may reorder them assuming
+	// we preserved the original order, but tools like buildifier may reorder them assuming
 	// that the order of arguments is not important.
 	target1 := makeTarget("//src/core:target1", "")
 	target1.AddOutput("file1.txt")
@@ -421,6 +431,24 @@ func TestOutputOrdering(t *testing.T) {
 	target2.AddOutput("file1.txt")
 	assert.Equal(t, target1.DeclaredOutputs(), target2.DeclaredOutputs())
 	assert.Equal(t, target1.Outputs(), target2.Outputs())
+}
+
+func TestNamedOutputs(t *testing.T) {
+	target := makeTarget("//src/core:target1", "")
+	target.AddOutput("a.txt")
+	target.AddOutput("z.txt")
+	target.AddNamedOutput("srcs", "src1.c")
+	target.AddNamedOutput("srcs", "src2.c")
+	target.AddNamedOutput("hdrs", "hdr1.h")
+	target.AddNamedOutput("hdrs", "hdr2.h")
+	target.AddNamedOutput("hdrs", "hdr2.h") // deliberate duplicate
+	assert.Equal(t, []string{"a.txt", "hdr1.h", "hdr2.h", "src1.c", "src2.c", "z.txt"}, target.Outputs())
+	assert.Equal(t, []string{"a.txt", "z.txt"}, target.DeclaredOutputs())
+	assert.Equal(t, map[string][]string{"srcs": {"src1.c", "src2.c"}, "hdrs": {"hdr1.h", "hdr2.h"}}, target.DeclaredNamedOutputs())
+	assert.Equal(t, []string{"hdr1.h", "hdr2.h"}, target.NamedOutputs("hdrs"))
+	assert.Equal(t, []string{"src1.c", "src2.c"}, target.NamedOutputs("srcs"))
+	assert.Equal(t, 0, len(target.NamedOutputs("go_srcs")))
+	assert.Equal(t, []string{"hdrs", "srcs"}, target.DeclaredOutputNames())
 }
 
 func TestAllLocalSources(t *testing.T) {
@@ -459,6 +487,59 @@ func TestOutDir(t *testing.T) {
 	assert.Equal(t, "plz-out/test_x86/bin/src/core", target.OutDir())
 	target.IsBinary = false
 	assert.Equal(t, "plz-out/test_x86/gen/src/core", target.OutDir())
+}
+
+func TestCheckSecrets(t *testing.T) {
+	target := makeTarget("//src/core:target1", "")
+	assert.NoError(t, target.CheckSecrets())
+	target.Secrets = append(target.Secrets, "/bin/sh")
+	assert.NoError(t, target.CheckSecrets())
+	// Checking for files in the home directory is awkward because nothing is really
+	// guaranteed to exist. We just check the directory itself for now.
+	target.Secrets = append(target.Secrets, "~/")
+	assert.NoError(t, target.CheckSecrets())
+	target.Secrets = append(target.Secrets, "/doesnt_exist")
+	assert.Error(t, target.CheckSecrets())
+}
+
+func TestAddTool(t *testing.T) {
+	target1 := makeTarget("//src/core:target1", "")
+	target2 := makeTarget("//src/core:target2", "")
+	target1.AddTool(target2.Label)
+	assert.Equal(t, []BuildInput{target2.Label}, target1.Tools)
+	assert.True(t, target1.HasDependency(target2.Label))
+}
+
+func TestAddNamedTool(t *testing.T) {
+	target1 := makeTarget("//src/core:target1", "")
+	target2 := makeTarget("//src/core:target2", "")
+	target1.AddNamedTool("test", target2.Label)
+	assert.Equal(t, 0, len(target1.Tools))
+	assert.Equal(t, []BuildInput{target2.Label}, target1.NamedTools("test"))
+	assert.True(t, target1.HasDependency(target2.Label))
+}
+
+func TestAllTools(t *testing.T) {
+	target1 := makeTarget("//src/core:target1", "")
+	target2 := makeTarget("//src/core:target2", "")
+	target3 := makeTarget("//src/core:target3", "")
+	target4 := makeTarget("//src/core:target4", "")
+	target1.AddTool(target2.Label)
+	target1.AddNamedTool("test1", target4.Label)
+	target1.AddNamedTool("test2", target3.Label)
+	assert.Equal(t, []BuildInput{target2.Label, target4.Label, target3.Label}, target1.AllTools())
+}
+
+func TestContainerSettingsToMap(t *testing.T) {
+	s := TargetContainerSettings{
+		DockerImage: "alpine:3.5",
+		DockerUser:  "test",
+	}
+	expected := map[string]string{
+		"docker_image": "alpine:3.5",
+		"docker_user":  "test",
+	}
+	assert.Equal(t, expected, s.ToMap())
 }
 
 func makeTarget(label, visibility string, deps ...*BuildTarget) *BuildTarget {

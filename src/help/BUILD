@@ -19,6 +19,7 @@ go_bindata(
     srcs = [
         'misc.json',
         ':config_json',
+        ':help_json',
         ':rule_defs',
     ],
     compress = True,
@@ -27,12 +28,14 @@ go_bindata(
 go_library(
     name = 'help',
     srcs = [
+        'completion.go',
         'help.go',
         ':data',
     ],
     deps = [
         '//src/cli',
         '//src/utils',
+        '//third_party/go:go-flags',
         '//third_party/go:logging',
     ],
     visibility = ['PUBLIC'],
@@ -52,4 +55,9 @@ genrule(
     outs = ['config.json'],
     cmd = '$TOOL > $OUTS',
     tools = ['//src/help/config:config_help'],
+)
+
+filegroup(
+    name = 'help_json',
+    srcs = ['//tools/linter:help_topics'],
 )

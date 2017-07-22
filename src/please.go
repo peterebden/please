@@ -29,6 +29,7 @@ import (
 	"run"
 	"sync"
 	"test"
+	"tool"
 	"update"
 	"utils"
 	"watch"
@@ -61,6 +62,7 @@ var opts struct {
 		NoColour          bool   `long:"nocolour" description:"Forces colourless output from logging & other shell output."`
 		TraceFile         string `long:"trace_file" description:"File to write Chrome tracing output into"`
 		ShowAllOutput     bool   `long:"show_all_output" description:"Show all output live from all commands. Implies --plain_output."`
+		CompletionScript  bool   `long:"completion_script" description:"Prints the bash / zsh completion script to stdout"`
 		Version           bool   `long:"version" description:"Print the version of the tool"`
 	} `group:"Options controlling output & logging"`
 
@@ -75,6 +77,8 @@ var opts struct {
 	Profile          string `long:"profile" hidden:"true" description:"Write profiling output to this file"`
 	ParsePackageOnly bool   `description:"Parses a single package only. All that's necessary for some commands." no-flag:"true"`
 	NoCacheCleaner   bool   `description:"Don't start a cleaning process for the directory cache" no-flag:"true"`
+	Complete         string `long:"complete" hidden:"true" env:"PLZ_COMPLETE" description:"Provide completion options for this build target."`
+	VisibilityParse  bool   `description:"Parse all targets that the original targets are visible to. Used for some query steps." no-flag:"true"`
 
 	Build struct {
 		Prepare    bool     `long:"prepare" description:"Prepare build directory for these targets but don't build them."`
@@ -130,14 +134,27 @@ var opts struct {
 	} `command:"cover" description:"Builds and tests one or more targets, and calculates coverage."`
 
 	Run struct {
+		Parallel struct {
+			PositionalArgs struct {
+				Targets []core.BuildLabel `positional-arg-name:"target" description:"Targets to run"`
+			} `positional-args:"true" required:"true"`
+			Args []string `short:"a" long:"arg" description:"Arguments to pass to the called processes."`
+		} `command:"parallel" description:"Runs a sequence of targets in parallel"`
+		Sequential struct {
+			PositionalArgs struct {
+				Targets []core.BuildLabel `positional-arg-name:"target" description:"Targets to run"`
+			} `positional-args:"true" required:"true"`
+			Args []string `short:"a" long:"arg" description:"Arguments to pass to the called processes."`
+		} `command:"sequential" description:"Runs a sequence of targets sequentially."`
 		Args struct {
-			Target core.BuildLabel `positional-arg-name:"target" description:"Target to run"`
+			Target core.BuildLabel `positional-arg-name:"target" required:"true" description:"Target to run"`
 			Args   []string        `positional-arg-name:"arguments" description:"Arguments to pass to target when running (to pass flags to the target, put -- before them)"`
-		} `positional-args:"true" required:"true"`
-	} `command:"run" description:"Builds and runs a single target"`
+		} `positional-args:"true"`
+	} `command:"run" subcommands-optional:"true" description:"Builds and runs a single target"`
 
 	Clean struct {
 		NoBackground bool     `long:"nobackground" short:"f" description:"Don't fork & detach until clean is finished."`
+		Remote       bool     `long:"remote" description:"Clean entire remote cache when no targets are given (default is local only)"`
 		Args         struct { // Inner nesting is necessary to make positional-args work :(
 			Targets []core.BuildLabel `positional-arg-name:"targets" description:"Targets to clean (default is to clean everything)"`
 		} `positional-args:"true"`
@@ -182,9 +199,16 @@ var opts struct {
 
 	Help struct {
 		Args struct {
-			Topic string `positional-arg-name:"topic" description:"Topic to display help on"`
+			Topic help.Topic `positional-arg-name:"topic" description:"Topic to display help on"`
 		} `positional-args:"true"`
 	} `command:"help" alias:"halp" description:"Displays help about various parts of plz or its build rules"`
+
+	Tool struct {
+		Args struct {
+			Tool tool.Tool `positional-arg-name:"tool" description:"Tool to invoke (jarcat, lint, etc)"`
+			Args []string  `positional-arg-name:"arguments" description:"Arguments to pass to the tool"`
+		} `positional-args:"true"`
+	} `command:"tool" hidden:"true" description:"Invoke one of Please's sub-tools"`
 
 	Query struct {
 		Deps struct {
@@ -211,7 +235,8 @@ var opts struct {
 			} `positional-args:"true"`
 		} `command:"alltargets" description:"Lists all targets in the graph"`
 		Print struct {
-			Args struct {
+			Fields []string `short:"f" long:"field" description:"Individual fields to print of the target"`
+			Args   struct {
 				Targets []core.BuildLabel `positional-arg-name:"targets" description:"Targets to print" required:"true"`
 			} `positional-args:"true" required:"true"`
 		} `command:"print" description:"Prints a representation of a single target"`
@@ -222,7 +247,7 @@ var opts struct {
 			Args       struct {
 				Fragments []string `positional-arg-name:"fragment" description:"Initial fragment to attempt to complete"`
 			} `positional-args:"true"`
-		} `command:"completions" description:"Prints possible completions for a string."`
+		} `command:"completions" subcommands-optional:"true" description:"Prints possible completions for a string."`
 		AffectedTargets struct {
 			Tests        bool `long:"tests" description:"Shows only affected tests, no other targets."`
 			Intransitive bool `long:"intransitive" description:"Shows only immediately affected targets, not transitive dependencies."`
@@ -323,12 +348,29 @@ var buildFunctions = map[string]func() bool{
 		}
 		return false // We should never return from run.Run so if we make it here something's wrong.
 	},
+	"parallel": func() bool {
+		if success, state := runBuild(opts.Run.Parallel.PositionalArgs.Targets, true, false); success {
+			os.Exit(run.Parallel(state.Graph, opts.Run.Parallel.PositionalArgs.Targets, opts.Run.Parallel.Args))
+		}
+		return false
+	},
+	"sequential": func() bool {
+		if success, state := runBuild(opts.Run.Sequential.PositionalArgs.Targets, true, false); success {
+			os.Exit(run.Sequential(state.Graph, opts.Run.Sequential.PositionalArgs.Targets, opts.Run.Sequential.Args))
+		}
+		return false
+	},
 	"clean": func() bool {
 		opts.NoCacheCleaner = true
 		if len(opts.Clean.Args.Targets) == 0 {
 			if len(opts.BuildFlags.Include) == 0 && len(opts.BuildFlags.Exclude) == 0 {
 				// Clean everything, doesn't require parsing at all.
-				clean.Clean(config, !opts.FeatureFlags.NoCache, !opts.Clean.NoBackground)
+				if !opts.Clean.Remote {
+					// Don't construct the remote caches if they didn't pass --remote.
+					config.Cache.RpcUrl = ""
+					config.Cache.HttpUrl = ""
+				}
+				clean.Clean(config, newCache(config), !opts.Clean.NoBackground)
 				return true
 			}
 			opts.Clean.Args.Targets = core.WholeGraph
@@ -378,7 +420,11 @@ var buildFunctions = map[string]func() bool{
 		return success
 	},
 	"help": func() bool {
-		return help.Help(opts.Help.Args.Topic)
+		return help.Help(string(opts.Help.Args.Topic))
+	},
+	"tool": func() bool {
+		tool.Run(config, opts.Tool.Args.Tool, opts.Tool.Args.Args)
+		return false // If the function returns (which it shouldn't), something went wrong.
 	},
 	"deps": func() bool {
 		return runQuery(true, opts.Query.Deps.Args.Targets, func(state *core.BuildState) {
@@ -386,8 +432,8 @@ var buildFunctions = map[string]func() bool{
 		})
 	},
 	"reverseDeps": func() bool {
-		return runQuery(true, core.WholeGraph, func(state *core.BuildState) {
-			state.OriginalTargets = opts.Query.ReverseDeps.Args.Targets
+		opts.VisibilityParse = true
+		return runQuery(false, opts.Query.ReverseDeps.Args.Targets, func(state *core.BuildState) {
 			query.ReverseDeps(state.Graph, state.ExpandOriginalTargets())
 		})
 	},
@@ -406,7 +452,7 @@ var buildFunctions = map[string]func() bool{
 	},
 	"print": func() bool {
 		return runQuery(false, opts.Query.Print.Args.Targets, func(state *core.BuildState) {
-			query.QueryPrint(state.Graph, state.ExpandOriginalTargets())
+			query.Print(state.Graph, state.ExpandOriginalTargets(), opts.Query.Print.Fields)
 		})
 	},
 	"affectedtargets": func() bool {
@@ -451,11 +497,11 @@ var buildFunctions = map[string]func() bool{
 		if len(fragments) == 0 || len(fragments) == 1 && strings.Trim(fragments[0], "/ ") == "" {
 			os.Exit(0) // Don't do anything for empty completion, it's normally too slow.
 		}
-		labels := query.QueryCompletionLabels(config, fragments, core.RepoRoot)
-		if success, state := Please(labels, config, false, false, false); success {
+		labels, parseLabels, hidden := query.QueryCompletionLabels(config, fragments, core.RepoRoot)
+		if success, state := Please(parseLabels, config, false, false, false); success {
 			binary := opts.Query.Completions.Cmd == "run"
 			test := opts.Query.Completions.Cmd == "test" || opts.Query.Completions.Cmd == "cover"
-			query.QueryCompletions(state.Graph, labels, binary, test)
+			query.QueryCompletions(state.Graph, labels, binary, test, hidden)
 			return true
 		}
 		return false
@@ -503,7 +549,10 @@ func please(tid int, state *core.BuildState, parsePackageOnly bool, include, exc
 		case core.Stop, core.Kill:
 			return
 		case core.Parse, core.SubincludeParse:
-			parse.Parse(tid, state, label, dependor, parsePackageOnly, include, exclude)
+			parse.Parse(tid, state, label, dependor, parsePackageOnly, include, exclude, t == core.SubincludeParse)
+			if opts.VisibilityParse && state.IsOriginalTarget(label) {
+				parseForVisibleTargets(state, label)
+			}
 		case core.Build, core.SubincludeBuild:
 			build.Build(tid, state, label)
 		case core.Test:
@@ -513,12 +562,29 @@ func please(tid int, state *core.BuildState, parsePackageOnly bool, include, exc
 	}
 }
 
-// Determines from input flags whether we should show 'pretty' output (ie. interactive).
+// parseForVisibleTargets adds parse tasks for any targets that the given label is visible to.
+func parseForVisibleTargets(state *core.BuildState, label core.BuildLabel) {
+	if target := state.Graph.Target(label); target != nil {
+		for _, vis := range target.Visibility {
+			findOriginalTask(state, vis, false)
+		}
+	}
+}
+
+// prettyOutputs determines from input flags whether we should show 'pretty' output (ie. interactive).
 func prettyOutput(interactiveOutput bool, plainOutput bool, verbosity int) bool {
 	if interactiveOutput && plainOutput {
 		log.Fatal("Can't pass both --interactive_output and --plain_output")
 	}
 	return interactiveOutput || (!plainOutput && cli.StdErrIsATerminal && verbosity < 4)
+}
+
+// newCache constructs a new cache based on the current config / flags.
+func newCache(config *core.Configuration) core.Cache {
+	if opts.FeatureFlags.NoCache {
+		return nil
+	}
+	return cache.NewCache(config)
 }
 
 func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput, shouldBuild, shouldTest bool) (bool, *core.BuildState) {
@@ -533,10 +599,7 @@ func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput,
 	if opts.BuildFlags.Config != "" {
 		config.Build.Config = opts.BuildFlags.Config
 	}
-	var c core.Cache
-	if !opts.FeatureFlags.NoCache {
-		c = cache.NewCache(config)
-	}
+	c := newCache(config)
 	state := core.NewBuildState(config.Please.NumThreads, c, opts.OutputFlags.Verbosity, config)
 	state.Arch = arch()
 	state.VerifyHashes = !opts.FeatureFlags.NoHashVerification
@@ -594,27 +657,27 @@ func findOriginalTasks(state *core.BuildState, targets []core.BuildLabel) {
 	for _, target := range targets {
 		if target == core.BuildLabelStdin {
 			for label := range utils.ReadStdin() {
-				findOriginalTask(state, core.ParseBuildLabels([]string{label})[0])
+				findOriginalTask(state, core.ParseBuildLabels([]string{label})[0], true)
 			}
 		} else {
-			findOriginalTask(state, target)
+			findOriginalTask(state, target, true)
 		}
 	}
 	state.TaskDone() // initial target adding counts as one.
 }
 
-func findOriginalTask(state *core.BuildState, target core.BuildLabel) {
+func findOriginalTask(state *core.BuildState, target core.BuildLabel, addToList bool) {
 	if target.IsAllSubpackages() {
 		for pkg := range utils.FindAllSubpackages(state.Config, target.PackageName, "") {
 			state.AddOriginalTarget(core.BuildLabel{
 				PackageName: pkg,
 				Name:        "all",
 				Arch:        arch(),
-			})
+			}, addToList)
 		}
 	} else {
 		target.Arch = arch()
-		state.AddOriginalTarget(target)
+		state.AddOriginalTarget(target, addToList)
 	}
 }
 
@@ -665,13 +728,11 @@ func runBuild(targets []core.BuildLabel, shouldBuild, shouldTest bool) (bool, *c
 }
 
 // activeCommand returns the name of the currently active command.
-func activeCommand(parser *flags.Parser) string {
-	if parser.Active == nil {
-		return ""
-	} else if parser.Active.Active != nil {
-		return parser.Active.Active.Name
+func activeCommand(command *flags.Command) string {
+	if command.Active != nil {
+		return activeCommand(command.Active)
 	}
-	return parser.Active.Name
+	return command.Name
 }
 
 func main() {
@@ -692,8 +753,13 @@ func main() {
 	// Init logging, but don't do file output until we've chdir'd.
 	cli.InitLogging(opts.OutputFlags.Verbosity)
 
-	command := activeCommand(parser)
-	if command == "init" {
+	command := activeCommand(parser.Command)
+	if opts.Complete != "" {
+		// Completion via PLZ_COMPLETE env var sidesteps other commands
+		opts.Query.Completions.Cmd = command
+		opts.Query.Completions.Args.Fragments = []string{opts.Complete}
+		command = "completions"
+	} else if command == "init" {
 		if flagsErr != nil { // This error otherwise doesn't get checked until later.
 			cli.ParseFlagsFromArgsOrDie("Please", core.PleaseVersion.String(), &opts, os.Args)
 		}
@@ -705,8 +771,12 @@ func main() {
 			os.Exit(1)
 		}
 		os.Exit(0)
+	} else if opts.OutputFlags.CompletionScript {
+		utils.PrintCompletionScript()
+		os.Exit(0)
 	} else if opts.Query.Completions.BashScript || opts.Query.Completions.ZshScript {
-		utils.PrintCompletionScript(opts.Query.Completions.ZshScript)
+		log.Warning("--bash_script and --zsh_script are deprecated in favour of plz --completion_script")
+		utils.PrintCompletionScript()
 		os.Exit(0)
 	}
 	if opts.BuildFlags.RepoRoot == "" {
@@ -721,7 +791,10 @@ func main() {
 	}
 	// Reset this now we're at the repo root.
 	if opts.OutputFlags.LogFile != "" {
-		cli.InitFileLogging(path.Join(core.RepoRoot, opts.OutputFlags.LogFile), opts.OutputFlags.LogFileLevel)
+		if !path.IsAbs(opts.OutputFlags.LogFile) {
+			opts.OutputFlags.LogFile = path.Join(core.RepoRoot, opts.OutputFlags.LogFile)
+		}
+		cli.InitFileLogging(opts.OutputFlags.LogFile, opts.OutputFlags.LogFileLevel)
 	}
 
 	config = readConfig(command == "update")
@@ -736,7 +809,7 @@ func main() {
 			argv = strings.Replace(argv, k, v, 1)
 		}
 		parser = cli.ParseFlagsFromArgsOrDie("Please", core.PleaseVersion.String(), &opts, strings.Fields(argv))
-		command = activeCommand(parser)
+		command = activeCommand(parser.Command)
 	}
 
 	if opts.Profile != "" {

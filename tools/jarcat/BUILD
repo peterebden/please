@@ -6,6 +6,7 @@ go_library(
         '//third_party/go:logging',
         '//third_party/go/zip',
     ],
+    visibility = ['//tools/please_pex:all'],
 )
 
 go_binary(
@@ -16,6 +17,7 @@ go_binary(
         '//src/cli',
         '//third_party/go:logging',
         '//third_party/go/zip',
+        '//tools/jarcat/tar',
     ],
     visibility = ['PUBLIC'],
 )

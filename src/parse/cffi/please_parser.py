@@ -201,13 +201,13 @@ def _get_subinclude_target(url, hash):
 
 
 def build_rule(globals_dict, package, name, cmd, test_cmd=None, arch=None, srcs=None, data=None, outs=None,
-               deps=None, exported_deps=None, tools=None, labels=None, visibility=None, hashes=None,
+               deps=None, exported_deps=None, secrets=None, tools=None, labels=None, visibility=None, hashes=None,
                binary=False, test=False, test_only=None, building_description='Building...',
                needs_transitive_deps=False, output_is_complete=False, container=False,
                no_test_output=False, flaky=0, build_timeout=0, test_timeout=0,
                pre_build=None, post_build=None, requires=None, provides=None, licences=None,
                test_outputs=None, system_srcs=None, stamp=False, tag='', optional_outs=None,
-               _filegroup=False):
+               _filegroup=False, _hash_filegroup=False):
     if name == 'all':
         raise ValueError('"all" is a reserved build target name.')
     if '/' in name or ':' in name:
@@ -250,6 +250,7 @@ def build_rule(globals_dict, package, name, cmd, test_cmd=None, arch=None, srcs=
                          test_only or test,  # Tests are implicitly test_only
                          stamp,
                          _filegroup,
+                         _hash_filegroup,
                          3 if flaky is True else flaky,  # Default is to rerun three times.
                          build_timeout,
                          test_timeout,
@@ -258,20 +259,9 @@ def build_rule(globals_dict, package, name, cmd, test_cmd=None, arch=None, srcs=
         # Currently this is the only reason _add_target can fail, given that we validated
         # the target name earlier. Bit hacky but will have to do for now.
         raise DuplicateTargetError('Duplicate target %s' % name)
-    if isinstance(srcs, Mapping):
-        for src_name, src_list in srcs.items():
-            if isinstance(src_list, str):
-                raise ValueError('Value in named_srcs for target %s is a string, you probably '
-                                 'meant to use a list of strings instead' % name)
-            elif src_list:
-                for src in src_list:
-                    _check_c_error(_add_named_src(target, src_name, src))
-    elif srcs:
-        for src in srcs:
-            if src and src.startswith('/') and not src.startswith('//'):
-                raise ValueError('Entry "%s" in srcs of %s has an absolute path; that\'s not allowed. '
-                                 'You might want to try system_srcs instead' % (src, name))
-        _add_strings(target, _add_src, srcs, 'srcs')
+    _add_maybe_named(target, _add_named_src, _add_src, srcs, name, 'srcs')
+    _add_maybe_named(target, _add_named_out, _add_out, outs, name, 'outs')
+    _add_maybe_named(target, _add_named_tool, _add_tool, tools, name, 'tools', absolute=True)
     if isinstance(cmd, Mapping):
         for config, command in cmd.items():
             _check_c_error(_add_command(target, config, command.strip()))
@@ -287,8 +277,6 @@ def build_rule(globals_dict, package, name, cmd, test_cmd=None, arch=None, srcs=
     _add_strings(target, _add_data, data, 'data')
     _add_strings(target, _add_dep, deps, 'deps')
     _add_strings(target, _add_exported_dep, exported_deps, 'exported_deps')
-    _add_strings(target, _add_tool, tools, 'tools')
-    _add_strings(target, _add_out, outs, 'outs')
     _add_strings(target, _add_optional_out, optional_outs, 'optional_outs')
     _add_strings(target, _add_vis, visibility, 'visibility')
     _add_strings(target, _add_label, labels, 'labels')
@@ -301,6 +289,11 @@ def build_rule(globals_dict, package, name, cmd, test_cmd=None, arch=None, srcs=
             raise ValueError('"provides" argument for rule %s is not a mapping' % name)
         for lang, rule in provides.items():
             _check_c_error(_add_provide(target, ffi_from_string(lang), ffi_from_string(rule)))
+    if secrets:
+        for secret in secrets:
+            if (not secret.startswith('/') or secret.startswith('//')) and not secret.startswith('~'):
+                raise ValueError('Secret "%s" of %s is not an absolute path' % (secret, name))
+        _add_strings(target, _add_secret, secrets, 'secrets')
     if pre_build:
         # Must manually ensure we keep these objects from being gc'd.
         handle = ffi.new_handle(pre_build)
@@ -347,6 +340,24 @@ def _add_strings(target, func, lst, name):
         for x in lst:
             if x:
                 _check_c_error(func(target, ffi_from_string(x)))
+
+
+def _add_maybe_named(target, named_func, unnamed_func, arg, name, arg_name, absolute=False):
+    if isinstance(arg, Mapping):
+        for k, v in arg.items():
+            if isinstance(v, str):
+                raise ValueError('Value in %s for target %s is a string, you probably '
+                                 'meant to use a list of strings instead' % (arg_name, name))
+            elif v:
+                for x in v:
+                    if x:
+                        _check_c_error(named_func(target, k, x))
+    elif arg:
+        if not absolute:
+            for v in arg:
+                if v and v.startswith('/') and not v.startswith('//'):
+                    raise ValueError('Entry "%s" in %s of %s has an absolute path; that\'s not allowed.' % (v, arg_name, name))
+        _add_strings(target, unnamed_func, arg, arg_name)
 
 
 def _check_c_error(error):
@@ -410,6 +421,16 @@ def _null_terminated_array(arr):
         yield arr[i]
 
 
+def _checked_log(level, c_package, message, args):
+    """Checked version of log that handles logging args directly."""
+    if args:
+        _log(level, c_package, message % args)  # Main 'correct' way: log('%s', thing)
+    elif isinstance(message, str):
+        _log(level, c_package, message)         # Also 'correct': log('some message')
+    else:
+        _log(level, c_package, str(message))    # 'Lazy' way: log(thing)
+
+
 def _get_globals(c_package, c_package_name):
     """Creates a copy of the builtin set of globals to use on interpreting new files.
 
@@ -436,7 +457,8 @@ def _get_globals(c_package, c_package_name):
     local_globals['get_base_path'] = lambda: package_name
     local_globals['add_dep'] = lambda target, dep: _check_c_error(_add_dependency(c_package, target, dep, False))
     local_globals['add_exported_dep'] = lambda target, dep: _check_c_error(_add_dependency(c_package, target, dep, True))
-    local_globals['add_out'] = lambda target, out: _check_c_error(_add_output(c_package, target, out))
+    local_globals['add_out'] = lambda target, name, out='': _check_c_error(_add_named_output(c_package, target, name, out) if out else
+                                                                           _add_output(c_package, target, name))
     local_globals['add_licence'] = lambda name, licence: _check_c_error(_add_licence_post(c_package, name, licence))
     local_globals['get_command'] = lambda name, config='': ffi_to_string(_get_command(c_package, name, config))
     local_globals['set_command'] = lambda name, config, command='': _check_c_error(_set_command(c_package, name, config, command))
@@ -449,12 +471,12 @@ def _get_globals(c_package, c_package_name):
     local_globals['dirname'] = os.path.dirname
     # The levels here are internally interpreted to match go-logging's levels.
     local_globals['log'] = DotDict({
-        'fatal': lambda message, *args: _log(0, c_package, message % args),
-        'error': lambda message, *args: _log(1, c_package, message % args),
-        'warning': lambda message, *args: _log(2, c_package, message % args),
-        'notice': lambda message, *args: _log(3, c_package, message % args),
-        'info': lambda message, *args: _log(4, c_package, message % args),
-        'debug': lambda message, *args: _log(5, c_package, message % args),
+        'fatal': lambda message, *args: _checked_log(0, c_package, message, args),
+        'error': lambda message, *args: _checked_log(1, c_package, message, args),
+        'warning': lambda message, *args: _checked_log(2, c_package, message, args),
+        'notice': lambda message, *args: _checked_log(3, c_package, message, args),
+        'info': lambda message, *args: _checked_log(4, c_package, message, args),
+        'debug': lambda message, *args: _checked_log(5, c_package, message, args),
     })
     if bazel_compat:
         # include_defs is used indirectly. It's also nice to switch this on for limited Buck compatibility too.
