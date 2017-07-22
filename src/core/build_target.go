@@ -497,6 +497,9 @@ func (target *BuildTarget) allDepsBuilt() bool {
 func (target *BuildTarget) allDependenciesResolved() bool {
 	for _, deps := range target.dependencies {
 		if !deps.resolved {
+			if target.Label.Name == "junit_runner" {
+				log.Warning("allDependenciesResolved %s %s %v", target.Label, deps.declared, deps.resolved)
+			}
 			return false
 		}
 	}
@@ -605,6 +608,18 @@ func (target *BuildTarget) dependencyInfo(label BuildLabel) *depInfo {
 	return nil
 }
 
+// dependencyInfoTarget returns the information about a resolved dependency, or nil if the target doesn't have it.
+func (target *BuildTarget) dependencyInfoTarget(t *BuildTarget) *depInfo {
+	for i, info := range target.dependencies {
+		for _, dep := range info.deps {
+			if dep == t {
+				return &target.dependencies[i]
+			}
+		}
+	}
+	return nil
+}
+
 // State returns the target's current state.
 func (target *BuildTarget) State() BuildTargetState {
 	return BuildTargetState(atomic.LoadInt32(&target.state))
@@ -686,6 +701,16 @@ func (target *BuildTarget) ProvideFor(other *BuildTarget) []BuildLabel {
 		}
 	}
 	return []BuildLabel{target.Label}
+}
+
+// wouldProvideFor returns true if we would provide the given build label for the given target.
+func (target *BuildTarget) wouldProvideFor(label BuildLabel, other *BuildTarget) bool {
+	for _, l := range target.ProvideFor(other) {
+		if l == label {
+			return true
+		}
+	}
+	return false
 }
 
 // AddSource adds a source to the build target, deduplicating against existing entries.

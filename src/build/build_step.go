@@ -57,6 +57,9 @@ func Build(tid int, state *core.BuildState, label core.BuildLabel) {
 
 	// Add any of the reverse deps that are now fully built to the queue.
 	for _, reverseDep := range state.Graph.ReverseDependencies(target) {
+		if reverseDep.Label.Name == "junit_runner" {
+			log.Warning("%s %v %v", reverseDep.Label, reverseDep.State() == core.Active, state.Graph.AllDepsBuilt(reverseDep))
+		}
 		if reverseDep.State() == core.Active && state.Graph.AllDepsBuilt(reverseDep) && reverseDep.SyncUpdateState(core.Active, core.Pending) {
 			state.AddPendingBuild(reverseDep.Label, false)
 		}
