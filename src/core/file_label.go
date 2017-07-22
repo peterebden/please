@@ -33,6 +33,10 @@ func (label FileLabel) nonOutputLabel() *BuildLabel {
 	return nil
 }
 
+func (label FileLabel) toArchInput(arch string) BuildInput {
+	return label
+}
+
 func (label FileLabel) String() string {
 	return label.File
 }
@@ -60,6 +64,10 @@ func (label SystemFileLabel) Label() *BuildLabel {
 
 func (label SystemFileLabel) nonOutputLabel() *BuildLabel {
 	return nil
+}
+
+func (label SystemFileLabel) toArchInput(arch string) BuildInput {
+	return label
 }
 
 func (label SystemFileLabel) String() string {
@@ -92,6 +100,11 @@ func (label NamedOutputLabel) Label() *BuildLabel {
 
 func (label NamedOutputLabel) nonOutputLabel() *BuildLabel {
 	return nil
+}
+
+func (label NamedOutputLabel) toArchInput(arch string) BuildInput {
+	label.Arch = arch
+	return label
 }
 
 func (label NamedOutputLabel) String() string {

@@ -290,6 +290,10 @@ func (label BuildLabel) nonOutputLabel() *BuildLabel {
 	return &label
 }
 
+func (label BuildLabel) toArchInput(arch string) BuildInput {
+	return label.toArch(arch)
+}
+
 // UnmarshalFlag unmarshals a build label from a command line flag. Implementation of flags.Unmarshaler interface.
 func (label *BuildLabel) UnmarshalFlag(value string) error {
 	// This is only allowable here, not in any other usage of build labels.

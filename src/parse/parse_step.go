@@ -66,8 +66,8 @@ func Parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, noD
 
 	// Now add any lurking pending targets for this package.
 	pendingTargetMutex.Lock()
-	pending := pendingTargets[label.PackageName] // Must be present.
-	pendingTargets[label.PackageName] = nil      // Empty this to free memory, but leave a sentinel
+	pending := pendingTargets[label.PackageName]                                       // Must be present.
+	pendingTargets[label.PackageName] = make(map[core.BuildLabel][]core.BuildLabel, 0) // Empty this to free memory, but leave a sentinel
 	log.Debug("Retrieved %d pending targets for %s", len(pending), label)
 	pendingTargetMutex.Unlock() // Nothing will look up this package in the map again.
 	for target, dependors := range pending {

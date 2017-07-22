@@ -332,7 +332,7 @@ func TestDeclaredDependenciesStrict(t *testing.T) {
 	target1 := makeTarget("//src/core:target1", "")
 	target2 := makeTarget("//src/core:target2", "", target1)
 	target3 := makeTarget("//src/core:target3", "", target2)
-	target3.AddMaybeExportedDependency(target1.Label, true)
+	target3.AddMaybeExportedDependency(target1.Label, true, false)
 	assert.Equal(t, []BuildLabel{}, target1.DeclaredDependenciesStrict())
 	assert.Equal(t, []BuildLabel{target1.Label}, target2.DeclaredDependenciesStrict())
 	assert.Equal(t, []BuildLabel{target2.Label}, target3.DeclaredDependenciesStrict())
@@ -500,14 +500,6 @@ func TestCheckSecrets(t *testing.T) {
 	assert.NoError(t, target.CheckSecrets())
 	target.Secrets = append(target.Secrets, "/doesnt_exist")
 	assert.Error(t, target.CheckSecrets())
-}
-
-func TestAddTool(t *testing.T) {
-	target1 := makeTarget("//src/core:target1", "")
-	target2 := makeTarget("//src/core:target2", "")
-	target1.AddTool(target2.Label)
-	assert.Equal(t, []BuildInput{target2.Label}, target1.Tools)
-	assert.True(t, target1.HasDependency(target2.Label))
 }
 
 func TestAddNamedTool(t *testing.T) {

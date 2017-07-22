@@ -212,6 +212,8 @@ type BuildInput interface {
 	// one or is a specific output of a rule.
 	// This is fiddly enough that we don't want to expose it outside the package right now.
 	nonOutputLabel() *BuildLabel
+	// toArch returns a new build input that is of the given architecture.
+	toArchInput(arch string) BuildInput
 	// Returns a string representation of this input
 	String() string
 }
@@ -699,8 +701,8 @@ func (target *BuildTarget) addSource(sources []BuildInput, source BuildInput) []
 	}
 	// Add a dependency if this is not just a file.
 	if label := source.Label(); label != nil {
-		source = label.toArch(target.Label.Arch)
 		target.AddDependency(*label)
+		source = source.toArchInput(target.Label.Arch)
 	}
 	return append(sources, source)
 }
@@ -1030,6 +1032,12 @@ func (target *BuildTarget) toArch(graph *BuildGraph, arch string) *BuildTarget {
 	t.Provides = make(map[string]BuildLabel, len(target.Provides))
 	for k, v := range target.Provides {
 		t.Provides[k] = v.toArch(arch)
+	}
+	// Any sources that refer to a label will need to refer to the new architecture.
+	for _, src := range target.Sources {
+		if label, ok := src.(BuildLabel); ok {
+			label.Arch = arch
+		}
 	}
 	return &t
 }
