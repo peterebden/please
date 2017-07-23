@@ -73,11 +73,6 @@ func (p *pythonParser) RunPostBuildFunction(threadId int, state *core.BuildState
 	return RunPostBuildFunction(threadId, state, target, output)
 }
 
-// UndeferAnyParses undefers any pending parses that are waiting for this target to build.
-func (p *pythonParser) UndeferAnyParses(state *core.BuildState, target *core.BuildTarget) {
-	UndeferAnyParses(state, target)
-}
-
 // Code to initialise the Python interpreter.
 func initializeInterpreter(state *core.BuildState) {
 	log.Debug("Initialising interpreter...")

@@ -303,9 +303,6 @@ func (fake *fakeParser) RunPostBuildFunction(threadId int, state *core.BuildStat
 	return nil
 }
 
-func (fake *fakeParser) UndeferAnyParses(state *core.BuildState, target *core.BuildTarget) {
-}
-
 func TestMain(m *testing.M) {
 	cache = &mockCache{}
 	backend := logging.NewLogBackend(os.Stderr, "", 0)

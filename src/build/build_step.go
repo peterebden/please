@@ -67,7 +67,6 @@ func Build(tid int, state *core.BuildState, label core.BuildLabel) {
 	if target.IsTest && state.NeedTests {
 		state.AddPendingTest(target.Label)
 	}
-	state.Parser.UndeferAnyParses(state, target)
 }
 
 // Builds a single target

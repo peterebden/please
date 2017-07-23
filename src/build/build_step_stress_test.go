@@ -124,6 +124,3 @@ func (fake *fakeParser) RunPostBuildFunction(threadId int, state *core.BuildStat
 	}
 	return nil
 }
-
-func (fake *fakeParser) UndeferAnyParses(state *core.BuildState, target *core.BuildTarget) {
-}

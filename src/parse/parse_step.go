@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"path"
 	"strings"
-	"sync"
 
 	"core"
 )
@@ -42,11 +41,16 @@ func Parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, noD
 			state.LogBuildResult(tid, label, core.PackageParsed, "Parsed")
 		}
 	}
-	state.AddPendingTarget()
-	go pkg.WhenReady(func() {
-		activateTarget(state, pkg, label, dependor, noDeps, forSubinclude, include, exclude)
-		state.TaskDone()
-	})
+	f := func() { activateTarget(state, pkg, label, dependor, noDeps, forSubinclude, include, exclude) }
+	if !pkg.IsReady {
+		state.RegisterEvent(label, core.PackageParsed, f)
+	}
+	// Mild hack to avoid a race condition; we might register the event above after the package parses,
+	// in which case we never get called back.
+	// Hence the mildly odd looking double if statement; it's possible it can change in between the two.
+	if pkg.IsReady {
+		f()
+	}
 }
 
 // activateTarget marks a target as active (ie. to be built) and adds its dependencies as pending parses.
@@ -80,37 +84,18 @@ func activateTarget(state *core.BuildState, pkg *core.Package, label, dependor c
 	}
 }
 
-// Used to arbitrate single access to this map
-var pendingTargetMutex sync.Mutex
-
-// Map of build label -> any packages that have subincluded it.
-var deferredParses = map[core.BuildLabel][]*core.Package{}
-
 // deferParse defers the parsing of a package until the given label has been built.
 // Returns true if it was deferred, or false if it's already built.
 func deferParse(label core.BuildLabel, pkg *core.Package) bool {
-	pendingTargetMutex.Lock()
-	defer pendingTargetMutex.Unlock()
 	if target := core.State.Graph.Target(label); target != nil && target.State() >= core.Built {
 		return false
 	}
 	log.Debug("Deferring parse of %s pending %s", pkg.Name, label)
-	deferredParses[label] = append(deferredParses[label], pkg)
-	pkg.SubincludeUnready()
+	core.State.RegisterEvent(label, core.TargetBuilt, func() {
+		parsePackageDefer(core.State, pkg)
+	})
 	core.State.AddPendingParse(label, core.BuildLabel{PackageName: pkg.Name, Name: "all"}, true)
 	return true
-}
-
-// UndeferAnyParses un-defers the parsing of a package if it depended on some subinclude target being built.
-func UndeferAnyParses(state *core.BuildState, target *core.BuildTarget) {
-	pendingTargetMutex.Lock()
-	defer pendingTargetMutex.Unlock()
-	if pkgs, present := deferredParses[target.Label]; present {
-		for _, pkg := range pkgs {
-			pkg.SubincludeReady()
-		}
-		delete(deferredParses, target.Label) // Don't need this any more.
-	}
 }
 
 // parsePackage performs the initial parse of a package.
@@ -141,11 +126,7 @@ func parsePackage(state *core.BuildState, pkg *core.Package, label, dependor cor
 // It returns true if the parse was deferred due to pending subinclude() calls or false if it's ready immediately.
 func parsePackageDefer(state *core.BuildState, pkg *core.Package) bool {
 	deferred := parsePackageFile(state, pkg.Filename, pkg)
-	if deferred {
-		go pkg.WhenSubincludeReady(func() {
-			parsePackageDefer(state, pkg)
-		})
-	} else {
+	if !deferred {
 		addTargetsToGraph(state, pkg)
 	}
 	return deferred
@@ -171,7 +152,7 @@ func addTargetsToGraph(state *core.BuildState, pkg *core.Package) {
 		}
 	}
 	// Package is now ready to go.
-	pkg.Ready()
+	pkg.IsReady = true
 }
 
 func buildFileName(state *core.BuildState, pkgName string) string {
@@ -191,11 +172,13 @@ func buildFileName(state *core.BuildState, pkgName string) string {
 // Adds a single target to the build queue.
 func addDep(state *core.BuildState, label, dependor core.BuildLabel, rescan, forceBuild bool) {
 	// Stop at any package that's not loaded yet
-	if state.Graph.Package(label.PackageName) == nil {
-		if forceBuild {
-			log.Debug("Adding forced pending parse of %s", label)
-		}
+	if pkg := state.Graph.Package(label.PackageName); pkg == nil {
 		state.AddPendingParse(label, dependor, forceBuild)
+		return
+	} else if !pkg.IsReady {
+		state.RegisterEvent(label, core.PackageParsed, func() {
+			addDep(state, label, dependor, rescan, forceBuild)
+		})
 		return
 	}
 	target := state.Graph.Target(label)

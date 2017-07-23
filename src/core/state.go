@@ -48,8 +48,6 @@ type Parser interface {
 	RunPreBuildFunction(threadId int, state *BuildState, target *BuildTarget) error
 	// RunPostBuildFunction runs a post-build function for a target.
 	RunPostBuildFunction(threadId int, state *BuildState, target *BuildTarget, output string) error
-	// UndeferAnyParses undefers any pending parses that are waiting for this target to build.
-	UndeferAnyParses(state *BuildState, target *BuildTarget)
 }
 
 // Passed about to track the current state of the build.
@@ -59,6 +57,8 @@ type BuildState struct {
 	pendingTasks *queue.PriorityQueue
 	// Stream of results from the build
 	Results chan *BuildResult
+	// Registered events to take on specific build results.
+	registeredEvents map[registeredEvent][]func()
 	// Configuration options
 	Config *Configuration
 	// Parser implementation. Other things can call this to perform various external parse tasks.
@@ -119,20 +119,21 @@ type BuildState struct {
 	numActive  int64
 	numPending int64
 	numDone    int64
-	mutex      sync.Mutex
+	mutex      sync.RWMutex
 }
 
 // Singleton instance of one of these. Tried to avoid introducing it but it ended up being
 // inevitable to make some of the parsing code work.
 var State *BuildState
 
-func (state *BuildState) AddActiveTarget() {
-	atomic.AddInt64(&state.numActive, 1)
+// A registeredEvent can be set by other parts of the system to get notified when build events happen.
+type registeredEvent struct {
+	Label  BuildLabel
+	Status BuildResultStatus
 }
 
-func (state *BuildState) AddPendingTarget() {
+func (state *BuildState) AddActiveTarget() {
 	atomic.AddInt64(&state.numActive, 1)
-	atomic.AddInt64(&state.numPending, 1)
 }
 
 func (state *BuildState) AddPendingParse(label, dependor BuildLabel, forSubinclude bool) {
@@ -202,6 +203,40 @@ func (state *BuildState) KillAll() {
 	state.Kill(state.numWorkers)
 }
 
+// RegisterEvent registers the given function to be called once a particular event happens.
+// N.B. If the registration takes place after that event has already occurred, the caller will *not* be
+//      retroactively notified about it.
+func (state *BuildState) RegisterEvent(label BuildLabel, status BuildResultStatus, callback func()) {
+	event := registeredEvent{Label: label, Status: status}
+	if status <= PackageParsed {
+		event.Label.Name = "all" // Parse events aren't specific to which target in the package triggers it.
+	}
+	state.mutex.Lock()
+	state.registeredEvents[event] = append(state.registeredEvents[event], callback)
+	state.mutex.Unlock()
+}
+
+// notifyEvents notifies all registered events when their event has happened.
+func (state *BuildState) notifyEvents(label BuildLabel, status BuildResultStatus) {
+	if status <= PackageParsed {
+		label.Name = "all" // Parse events aren't specific to which target in the package triggers it.
+	}
+	state.mutex.RLock()
+	callbacks, present := state.registeredEvents[registeredEvent{Label: label, Status: status}]
+	state.mutex.RUnlock()
+	if present {
+		// The callbacks are invoked in a separate goroutine so they don't block anything.
+		// We need to track how many are running at a time though.
+		atomic.AddInt64(&state.numPending, int64(len(callbacks)))
+		for _, callback := range callbacks {
+			go func(state *BuildState, callback func()) {
+				callback()
+				state.TaskDone()
+			}(state, callback)
+		}
+	}
+}
+
 // IsOriginalTarget returns true if a target is an original target, ie. one specified on the command line.
 func (state *BuildState) IsOriginalTarget(label BuildLabel) bool {
 	return state.isOriginalTarget(label, false)
@@ -257,6 +292,7 @@ func (state *BuildState) LogBuildResult(tid int, label BuildLabel, status BuildR
 		Err:         nil,
 		Description: description,
 	}
+	state.notifyEvents(label, status)
 }
 
 func (state *BuildState) LogTestResult(tid int, label BuildLabel, status BuildResultStatus, results *TestResults, coverage *TestCoverage, err error, format string, args ...interface{}) {
@@ -269,6 +305,7 @@ func (state *BuildState) LogTestResult(tid int, label BuildLabel, status BuildRe
 		Description: fmt.Sprintf(format, args...),
 		Tests:       *results,
 	}
+	state.notifyEvents(label, status)
 	state.mutex.Lock()
 	defer state.mutex.Unlock()
 	state.Coverage.Aggregate(coverage)
@@ -283,6 +320,7 @@ func (state *BuildState) LogBuildError(tid int, label BuildLabel, status BuildRe
 		Err:         err,
 		Description: fmt.Sprintf(format, args...),
 	}
+	state.notifyEvents(label, status)
 }
 
 func (state *BuildState) NumActive() int {
@@ -348,6 +386,7 @@ func NewBuildState(numThreads int, cache Cache, verbosity int, config *Configura
 		Coverage:          TestCoverage{Files: map[string][]LineCoverage{}},
 		numWorkers:        numThreads,
 		experimentalLabel: BuildLabel{PackageName: config.Please.ExperimentalDir, Name: "..."},
+		registeredEvents:  map[registeredEvent][]func(){},
 	}
 	State.Hashes.Config = config.Hash()
 	State.Hashes.Containerisation = config.ContainerisationHash()
