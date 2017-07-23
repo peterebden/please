@@ -57,7 +57,7 @@ func (graph *BuildGraph) linkPendingRevdeps(label BuildLabel, target *BuildTarge
 	}
 }
 
-// Adds a new package to the graph with given name.
+// AddPackage adds a new package to the graph with given name.
 func (graph *BuildGraph) AddPackage(pkg *Package) {
 	graph.mutex.Lock()
 	defer graph.mutex.Unlock()
@@ -65,6 +65,19 @@ func (graph *BuildGraph) AddPackage(pkg *Package) {
 		panic("Attempt to readd existing package: " + pkg.Name)
 	}
 	graph.packages[pkg.Name] = pkg
+}
+
+// GetOrAddPackage retrieves the existing package from the graph by name, or adds a new one if it's not there.
+// Returned bool is true if it was added and false if retrieved. The package is never nil.
+func (graph *BuildGraph) GetOrAddPackage(name string) (*Package, bool) {
+	graph.mutex.Lock()
+	defer graph.mutex.Unlock()
+	if pkg, present := graph.packages[name]; present {
+		return pkg, false
+	}
+	pkg := NewPackage(name)
+	graph.packages[name] = pkg
+	return pkg, true
 }
 
 // Target retrieves a target from the graph by label

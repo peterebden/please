@@ -32,54 +32,21 @@ func Parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, noD
 			state.LogBuildError(tid, label, core.ParseFailed, fmt.Errorf("%s", r), "Failed to parse package")
 		}
 	}()
-	// First see if this package already exists; once it's in the graph it will have been parsed.
-	pkg := state.Graph.Package(label.PackageName)
-	if pkg != nil {
-		// Does exist, all we need to do is toggle on this target
-		activateTarget(state, pkg, label, dependor, noDeps, forSubinclude, include, exclude)
-		return
-	}
-	// We use the name here to signal undeferring of a package. If we get that we need to retry the package regardless.
-	if dependor.Name != "_UNDEFER_" && !firstToParse(label, dependor) {
-		// Check this again to avoid a potential race
-		if pkg = state.Graph.Package(label.PackageName); pkg != nil {
-			activateTarget(state, pkg, label, dependor, noDeps, forSubinclude, include, exclude)
-		} else if forSubinclude {
-			// Need to make sure this guy happens, so re-add him to the queue.
-			// It should be essentially idempotent but we need to make sure that the task with
-			// forSubinclude = true is processed at some point, not just ones where it's false.
-			log.Debug("Re-adding pending parse for %s", label)
-			core.State.AddPendingParse(label, dependor, true)
+	pkg, added := state.Graph.GetOrAddPackage(label.PackageName)
+	if added {
+		// We are the first to reach this package, so it falls to us to parse it.
+		state.LogBuildResult(tid, label, core.PackageParsing, "Parsing...")
+		if parsePackage(state, pkg, label, dependor) {
+			state.LogBuildResult(tid, label, core.PackageParsed, "Deferred")
 		} else {
-			log.Debug("Skipping pending parse for %s", label)
-		}
-		return
-	}
-	// If we get here then it falls to us to parse this package
-	state.LogBuildResult(tid, label, core.PackageParsing, "Parsing...")
-	pkg = parsePackage(state, label, dependor)
-	if pkg == nil {
-		state.LogBuildResult(tid, label, core.PackageParsed, "Deferred")
-		return
-	}
-	activateTarget(state, pkg, label, dependor, noDeps, forSubinclude, include, exclude)
-
-	// Now add any lurking pending targets for this package.
-	pendingTargetMutex.Lock()
-	pending := pendingTargets[label.PackageName]                                       // Must be present.
-	pendingTargets[label.PackageName] = make(map[core.BuildLabel][]core.BuildLabel, 0) // Empty this to free memory, but leave a sentinel
-	log.Debug("Retrieved %d pending targets for %s", len(pending), label)
-	pendingTargetMutex.Unlock() // Nothing will look up this package in the map again.
-	for target, dependors := range pending {
-		if target.Name != label.Name {
-			for _, dependor := range dependors {
-				log.Debug("Undeferring pending target %s now we've got %s", dependor, target.Name)
-				lbl := core.BuildLabel{PackageName: label.PackageName, Name: target.Name}
-				activateTarget(state, pkg, lbl, dependor, noDeps, forSubinclude, include, exclude)
-			}
+			state.LogBuildResult(tid, label, core.PackageParsed, "Parsed")
 		}
 	}
-	state.LogBuildResult(tid, label, core.PackageParsed, "Parsed")
+	state.AddPendingTarget()
+	go pkg.WhenReady(func() {
+		activateTarget(state, pkg, label, dependor, noDeps, forSubinclude, include, exclude)
+		state.TaskDone()
+	})
 }
 
 // activateTarget marks a target as active (ie. to be built) and adds its dependencies as pending parses.
@@ -113,28 +80,11 @@ func activateTarget(state *core.BuildState, pkg *core.Package, label, dependor c
 	}
 }
 
-// Used to arbitrate single access to these maps
+// Used to arbitrate single access to this map
 var pendingTargetMutex sync.Mutex
 
-// Map of package name -> target name -> label that requested parse
-var pendingTargets = map[string]map[core.BuildLabel][]core.BuildLabel{}
-
-// Map of package name -> target label -> package names that're waiting for it
-var deferredParses = map[string]map[core.BuildLabel][]string{}
-
-// firstToParse returns true if the caller is the first to parse a given package and hence should
-// continue parsing that file. It only returns true once for each package but stores subsequent
-// targets in the pendingTargets map.
-func firstToParse(label, dependor core.BuildLabel) bool {
-	pendingTargetMutex.Lock()
-	defer pendingTargetMutex.Unlock()
-	if pkg, present := pendingTargets[label.PackageName]; present {
-		pkg[label] = append(pkg[label], dependor)
-		return false
-	}
-	pendingTargets[label.PackageName] = map[core.BuildLabel][]core.BuildLabel{label: {dependor}}
-	return true
-}
+// Map of build label -> any packages that have subincluded it.
+var deferredParses = map[core.BuildLabel][]*core.Package{}
 
 // deferParse defers the parsing of a package until the given label has been built.
 // Returns true if it was deferred, or false if it's already built.
@@ -145,12 +95,8 @@ func deferParse(label core.BuildLabel, pkg *core.Package) bool {
 		return false
 	}
 	log.Debug("Deferring parse of %s pending %s", pkg.Name, label)
-	if m, present := deferredParses[label.PackageName]; present {
-		m[label] = append(m[label], pkg.Name)
-	} else {
-		deferredParses[label.PackageName] = map[core.BuildLabel][]string{label: {pkg.Name}}
-	}
-	log.Debug("Adding pending parse for %s", label)
+	deferredParses[label] = append(deferredParses[label], pkg)
+	pkg.SubincludeUnready()
 	core.State.AddPendingParse(label, core.BuildLabel{PackageName: pkg.Name, Name: "all"}, true)
 	return true
 }
@@ -159,44 +105,23 @@ func deferParse(label core.BuildLabel, pkg *core.Package) bool {
 func UndeferAnyParses(state *core.BuildState, target *core.BuildTarget) {
 	pendingTargetMutex.Lock()
 	defer pendingTargetMutex.Unlock()
-	if m, present := deferredParses[target.Label.PackageName]; present {
-		if s, present := m[target.Label]; present {
-			for _, deferredPackageName := range s {
-				log.Debug("Undeferring parse of %s", deferredPackageName)
-				state.AddPendingParse(
-					getDependingTarget(deferredPackageName),
-					core.BuildLabel{PackageName: deferredPackageName, Name: "_UNDEFER_"},
-					false,
-				)
-			}
-			delete(m, target.Label) // Don't need this any more
+	if pkgs, present := deferredParses[target.Label]; present {
+		for _, pkg := range pkgs {
+			pkg.SubincludeReady()
 		}
+		delete(deferredParses, target.Label) // Don't need this any more.
 	}
-}
-
-// getDependingTarget returns the name of any one target in packageName that required parsing.
-func getDependingTarget(packageName string) core.BuildLabel {
-	// We need to supply a label in this package that actually needs to be built.
-	// Fortunately there must be at least one of these in the pending target map...
-	if m, present := pendingTargets[packageName]; present {
-		for target := range m {
-			return target
-		}
-	}
-	// We shouldn't really get here, of course.
-	log.Errorf("No pending target entry for %s at deferral. Must assume :all.", packageName)
-	return core.NewBuildLabel(packageName, "all")
 }
 
 // parsePackage performs the initial parse of a package.
-// It's assumed that the caller used firstToParse to ascertain that they only call this once per package.
-func parsePackage(state *core.BuildState, label, dependor core.BuildLabel) *core.Package {
+// It returns true if the parse was deferred due to pending subinclude() calls or false if it's ready immediately.
+func parsePackage(state *core.BuildState, pkg *core.Package, label, dependor core.BuildLabel) bool {
 	packageName := label.PackageName
 	if strings.HasPrefix(packageName, systemPackage) {
 		// System packages don't have associated BUILD files. It is annoying if we can't handle those targets though.
-		return parseSystemPackage(state, packageName)
+		parseSystemPackage(state, packageName)
+		return false // system packages cannot subinclude so are never deferred
 	}
-	pkg := core.NewPackage(packageName)
 	if pkg.Filename = buildFileName(state, packageName); pkg.Filename == "" {
 		exists := core.PathExists(packageName)
 		// Handle quite a few cases to provide more obvious error messages.
@@ -209,12 +134,21 @@ func parsePackage(state *core.BuildState, label, dependor core.BuildLabel) *core
 		}
 		panic(fmt.Sprintf("Can't build %s; the directory %s doesn't exist", label, packageName))
 	}
+	return parsePackageDefer(state, pkg)
+}
 
-	if parsePackageFile(state, pkg.Filename, pkg) {
-		return nil // Indicates deferral
+// parsePackageDefer does the actual parse of a package, handling subinclude deferral.
+// It returns true if the parse was deferred due to pending subinclude() calls or false if it's ready immediately.
+func parsePackageDefer(state *core.BuildState, pkg *core.Package) bool {
+	deferred := parsePackageFile(state, pkg.Filename, pkg)
+	if deferred {
+		go pkg.WhenSubincludeReady(func() {
+			parsePackageDefer(state, pkg)
+		})
+	} else {
+		addTargetsToGraph(state, pkg)
 	}
-	addTargetsToGraph(state, pkg)
-	return pkg
+	return deferred
 }
 
 // addTargetsToGraph adds all the targets in a newly parsed package to the build graph.
@@ -236,7 +170,8 @@ func addTargetsToGraph(state *core.BuildState, pkg *core.Package) {
 			state.Graph.AddDependency(target.Label, dep)
 		}
 	}
-	state.Graph.AddPackage(pkg) // Calling this means nobody else will add entries to pendingTargets for this package.
+	// Package is now ready to go.
+	pkg.Ready()
 }
 
 func buildFileName(state *core.BuildState, pkgName string) string {

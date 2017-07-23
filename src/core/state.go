@@ -130,6 +130,11 @@ func (state *BuildState) AddActiveTarget() {
 	atomic.AddInt64(&state.numActive, 1)
 }
 
+func (state *BuildState) AddPendingTarget() {
+	atomic.AddInt64(&state.numActive, 1)
+	atomic.AddInt64(&state.numPending, 1)
+}
+
 func (state *BuildState) AddPendingParse(label, dependor BuildLabel, forSubinclude bool) {
 	atomic.AddInt64(&state.numActive, 1)
 	atomic.AddInt64(&state.numPending, 1)

@@ -336,9 +336,8 @@ func parsePackageFile(state *core.BuildState, filename string, pkg *core.Package
 
 // parseSystemPackage is analogous to parsePackageFile but only for system packages.
 // We typically only end up in here if the user specifies a system target on the command line.
-func parseSystemPackage(state *core.BuildState, packageName string) *core.Package {
+func parseSystemPackage(state *core.BuildState, packageName string) {
 	initializeOnce.Do(func() { initializeInterpreter(state) })
-	return state.Graph.Package(packageName)
 }
 
 // RunCode will run some arbitrary Python code using our embedded interpreter.
@@ -420,8 +419,8 @@ func addTarget(pkgPtr uintptr, name, cmd, testCmd, arch string, binary, test, ne
 		return nil
 	}
 	pkg.Targets[name] = target
-	if core.State.Graph.Package(pkg.Name) != nil {
-		// Package already added, so we're probably in a post-build function. Add target directly to graph now.
+	if pkg.IsReady {
+		// Package already ready, so we're probably in a post-build function. Add target directly to graph now.
 		log.Debug("Adding new target %s directly to graph", target.Label)
 		core.State.Graph.AddTarget(target)
 	}

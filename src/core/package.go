@@ -33,14 +33,23 @@ type Package struct {
 	// N.B. This assumes that BuildCallbackMutex has been set, i.e. we are not handling multiple
 	//      callbacks simultaneously (otherwise it wouldn't be threadsafe, obviously).
 	CurrentArch string
+	// Used for the implementation of Ready() and WhenReady().
+	// TODO(pebers): Consider a sync.Cond, that may be more appropriate as a broadcast mechanism.
+	readyMutex sync.Mutex
+	// Similarly used for SubincludeReady() and WhenSubincludeReady()
+	subincludeMutex sync.Mutex
+	// This becomes true after Ready() is set.
+	IsReady bool
 }
 
 // NewPackage constructs a new package with the given name.
 func NewPackage(name string) *Package {
-	pkg := new(Package)
-	pkg.Name = name
-	pkg.Targets = map[string]*BuildTarget{}
-	pkg.Outputs = map[string]*BuildTarget{}
+	pkg := &Package{
+		Name:    name,
+		Targets: map[string]*BuildTarget{},
+		Outputs: map[string]*BuildTarget{},
+	}
+	pkg.readyMutex.Lock()
 	return pkg
 }
 
@@ -116,6 +125,39 @@ func (pkg *Package) AllChildren(target *BuildTarget) []*BuildTarget {
 // e.g. //src/... includes the packages src and src/core but not src2.
 func (pkg *Package) IsIncludedIn(label BuildLabel) bool {
 	return pkg.Name == label.PackageName || strings.HasPrefix(pkg.Name, label.PackageName+"/")
+}
+
+// WhenReady calls the given function when this package is ready.
+// Note that this blocks until is is ready, so you'd typically call it in a new goroutine.
+func (pkg *Package) WhenReady(f func()) {
+	pkg.readyMutex.Lock()
+	pkg.readyMutex.Unlock()
+	f()
+}
+
+// Ready marks this package as ready and will allow anything blocked on WaitReady to continue.
+func (pkg *Package) Ready() {
+	pkg.IsReady = true
+	pkg.readyMutex.Unlock()
+}
+
+// WhenSubincludeReady calls the given function when this package has finished waiting for a subinclude.
+// Note that this blocks until is is ready, so you'd typically call it in a new goroutine.
+func (pkg *Package) WhenSubincludeReady(f func()) {
+	pkg.subincludeMutex.Lock()
+	pkg.subincludeMutex.Unlock()
+	f()
+}
+
+// SubincludeReady marks this package as ready and will allow anything blocked on WaitSubincludeReady to continue.
+func (pkg *Package) SubincludeReady() {
+	pkg.subincludeMutex.Unlock()
+}
+
+// SubincludeUnready marks this package as waiting for subincludes and will block any further calls to WhenSubincludeReady.
+// Care must be taken not to call this again until SubincludeReady has been called.
+func (pkg *Package) SubincludeUnready() {
+	pkg.subincludeMutex.Lock()
 }
 
 // FindOwningPackages returns build labels corresponding to the packages that own each of the given files.
