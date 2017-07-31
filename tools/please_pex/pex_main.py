@@ -57,23 +57,7 @@ def override_import(package=MODULE_DIR):
     builtins.__import__ = _override_import
 
 
-def clean_sys_path():
-    """Remove anything from sys.path that isn't either the pex or the main Python install dir.
-
-    NB: *not* site-packages or dist-packages or any of that malarkey, just the place where
-        we get the actual Python standard library packages from).
-    """
-    sys_path = os.path.split(os.__file__)[0]
-    local_path = os.path.abspath(sys.argv[0])
-    sys.path = [x for x in sys.path if 'dist-packages' not in x
-                and (x.startswith(sys_path) or x.startswith(local_path) or '/.pex/code/' in x)]
-    if not ZIP_SAFE:
-        # Strip the pex paths if we're not zip safe so nothing accidentally imports from there.
-        sys.path = [x for x in sys.path if not x.endswith('.pex')]
-
-
 if __name__ == '__main__':
     override_import()
-    clean_sys_path()
     # Must run this as __main__ so it executes its own __name__ == '__main__' block.
     runpy.run_module(ENTRY_POINT, run_name='__main__')

@@ -1,6 +1,5 @@
 """Customised test runner to output in JUnit-style XML."""
 
-import argparse
 import os
 import unittest
 import sys
@@ -15,7 +14,7 @@ TEST_NAMES = '__TEST_NAMES__'.split(',')
 sys.path.append(os.path.join(sys.argv[0], '.bootstrap'))
 
 import xmlrunner
-from pex_main import clean_sys_path, override_import
+from pex_main import override_import
 
 
 def list_classes(suite):
@@ -103,36 +102,23 @@ def run_tests(test_names):
     return len(results.errors) + len(results.failures)
 
 
-def main(args, extra_args):
-    args.test_names = args.test_names.split(',') if args.test_names else []
-    sys.argv[1:] = extra_args
-    if args.list_classes:
-        suite = unittest.defaultTestLoader.loadTestsFromNames(TEST_NAMES)
-        for _, cls in set(list_classes(suite)):
-            sys.stdout.write(cls + '\n')
-        return 0
-    elif args.coverage or os.getenv('COVERAGE'):
+def main(test_names=TEST_NAMES):
+    if os.getenv('COVERAGE'):
         # It's important that we run coverage while we load the tests otherwise
         # we get no coverage for import statements etc.
         cov = initialise_coverage().coverage()
         cov.start()
-        result = run_tests(args.test_names)
+        result = run_tests(test_names)
         cov.stop()
-        omissions = ['*/third_party/*', '*/.bootstrap/*', '*/test_main.py']
+        omissions = ['*/third_party/*', '*/.bootstrap/*', '__main__.py']
         # Exclude test code from coverage itself.
-        omissions.extend('*/%s.py' % module.replace('.', '/') for module in args.test_names)
+        omissions.extend('*/%s.py' % module.replace('.', '/') for module in test_names)
         cov.xml_report(outfile=os.getenv('COVERAGE_FILE'), omit=omissions, ignore_errors=True)
         return result
     else:
-        return run_tests(args.test_names)
+        return run_tests(test_names)
 
 
 if __name__ == '__main__':
     override_import()
-    clean_sys_path()
-    parser = argparse.ArgumentParser(description='Arguments for Please Python tests.')
-    parser.add_argument('--list_classes', type=bool, default=False, help='List all test classes')
-    parser.add_argument('--coverage', dest='coverage', action='store_true',
-                        help='Write output coverage file')
-    parser.add_argument('--test_names', default=os.environ.get('TEST_ARGS'), help='Tests to run')
-    sys.exit(main(*parser.parse_known_args()))
+    main(sys.argv[1:])

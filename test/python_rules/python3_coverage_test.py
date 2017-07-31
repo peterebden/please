@@ -13,7 +13,7 @@ class Python3CoverageTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Must ensure coverage is set up before we can import tracer."""
-        import test_main
+        import __main__ as test_main
         test_main.initialise_coverage()
 
     def test_can_import_coverage(self):
