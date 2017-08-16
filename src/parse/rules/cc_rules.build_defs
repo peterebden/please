@@ -198,6 +198,57 @@ def cc_library(name, srcs=None, hdrs=None, private_hdrs=None, deps=None, visibil
     )
 
 
+def prebuilt_cc_library(name, srcs, hdrs=None, deps=None, visibility=None, test_only=False, compiler_flags=None,
+                        linker_flags=None, pkg_config_libs=None, includes=None, defines=None, alwayslink=False):
+    """Collect a precompiled C or C++ library for use by other rules.
+
+    This shares many flags with cc_library, many of which have no effect on this library itself
+    but are picked up by dependent rules. This is useful to allow rules to describe their own
+    properties rather than having to repeat them downstream.
+
+    Args:
+      name (str): Name of the rule
+      srcs (list): Precompiled .so or .a files containing the library.
+      hdrs (list): Header files exposing the interface of the library.
+      deps (list): Dependent rules.
+      visibility (list): Visibility declaration for this rule.
+      test_only (bool): If True, is only available to other test rules.
+      compiler_flags (list): Flags to pass to the compiler.
+      linker_flags (list): Flags to pass to the linker; these will be picked up by a cc_binary or cc_test rule.
+      pkg_config_libs (list): Libraries to declare a dependency on using pkg-config. Only the ldflags
+                              will have any effect, they will be picked up by cc_binary or cc_test rules.
+      includes (list): List of include directories to be added to the compiler's path for dependent rules.
+      defines (list | dict): List of tokens to define in the preprocessor.
+                             Alternatively can be a dict of name -> value to define, in which case
+                             values are surrounded by quotes.
+      alwayslink (bool): If True, any binaries / tests using this library will link in all symbols,
+                         even if they don't directly reference them. This is useful for e.g. having
+                         static members that register themselves at construction time.
+    """
+    hdrs = hdrs or []
+    linker_flags = linker_flags or []
+    pkg_config_libs = pkg_config_libs or []
+    includes = includes or []
+    defines = defines or []
+
+    # Handle defines being passed as a dict, as a nicety for the user.
+    if isinstance(defines, dict):
+        defines = [k if v is None else r'%s=\"%s\"' % (k, v) for k, v in sorted(defines.items())]
+
+    labels = (['cc:ld:' + flag for flag in linker_flags] +
+              ['cc:pc:' + lib for lib in pkg_config_libs] +
+              ['cc:inc:%s/%s' % (get_base_path(), include) for include in includes] +
+              ['cc:def:' + define for define in defines])
+
+    return filegroup(
+        name = name,
+        srcs = srcs + hdrs,
+        test_only = test_only,
+        visibility = visibility,
+        output_is_complete = False,
+    )
+
+
 def cc_static_library(name, srcs=None, hdrs=None, compiler_flags=None, linker_flags=None,
                       deps=None, visibility=None, test_only=False, pkg_config_libs=None, _c=False):
     """Generates a C++ static library (.a).
@@ -746,6 +797,9 @@ def _binary_transitive_labels(c, linker_flags, pkg_config_libs, shared=False):
 # C rules. These call straight through to the c++ versions and just set a flag.
 def c_library(**kwargs):
     cc_library(_c=True, **kwargs)
+
+def c_prebuilt_library(**kwargs):
+    cc_prebuilt_library(**kwargs)
 
 def c_static_library(**kwargs):
     cc_static_library(_c=True, **kwargs)
