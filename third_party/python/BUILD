@@ -38,7 +38,6 @@ python_wheel(
     hashes = [
         'sha1: e43b552c4a6063d32b8c9bf742fb3e9ce579c4d8',
     ],
-    test_only = True,  # Not used by plz itself.
 )
 
 python_wheel(
@@ -62,4 +61,13 @@ python_wheel(
 python_wheel(
     name = 'pycparser',
     version = '2.18',
+)
+
+genrule(
+    name = 'cffi',
+    srcs = ['find_wheels.py'],
+    deps = [':requests'],
+    outs = ['cffix'],
+    tools = ['python3'],
+    cmd = 'for URL in `PYTHONPATH="third_party/python" $TOOL $SRC cffi==1.10.0`; do curl -fsSL $URL -o cffi.whl && unzip -qo cffi.whl; done',
 )
