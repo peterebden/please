@@ -1,6 +1,7 @@
 // +build proto
 
 // RPC-based remote cache. Similar to HTTP but likely higher performance.
+
 package cache
 
 import (
@@ -130,7 +131,7 @@ func (cache *rpcCache) sendArtifacts(target *core.BuildTarget, key []byte, artif
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), cache.timeout)
 	defer cancel()
-	cache.runRpc(key, func(cache *rpcCache) (bool, []*pb.Artifact) {
+	cache.runRPC(key, func(cache *rpcCache) (bool, []*pb.Artifact) {
 		_, err := cache.client.Store(ctx, &req)
 		if err != nil {
 			log.Warning("Error communicating with RPC cache server: %s", err)
@@ -171,7 +172,7 @@ func (cache *rpcCache) RetrieveExtra(target *core.BuildTarget, key []byte, file 
 func (cache *rpcCache) retrieveArtifacts(target *core.BuildTarget, req *pb.RetrieveRequest, remove bool) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), cache.timeout)
 	defer cancel()
-	success, artifacts := cache.runRpc(req.Hash, func(cache *rpcCache) (bool, []*pb.Artifact) {
+	success, artifacts := cache.runRPC(req.Hash, func(cache *rpcCache) (bool, []*pb.Artifact) {
 		response, err := cache.client.Retrieve(ctx, req)
 		if err != nil {
 			log.Warning("Failed to retrieve artifacts for %s: %s", target.Label, err)
@@ -228,7 +229,7 @@ func (cache *rpcCache) Clean(target *core.BuildTarget) {
 		req := pb.DeleteRequest{Os: runtime.GOOS, Arch: runtime.GOARCH}
 		artifact := pb.Artifact{Package: target.Label.PackageName, Target: target.Label.Name}
 		req.Artifacts = []*pb.Artifact{&artifact}
-		cache.runRpc(zeroKey, func(cache *rpcCache) (bool, []*pb.Artifact) {
+		cache.runRPC(zeroKey, func(cache *rpcCache) (bool, []*pb.Artifact) {
 			response, err := cache.client.Delete(context.Background(), &req)
 			if err != nil || !response.Success {
 				log.Errorf("Failed to remove %s from RPC cache", target.Label)
@@ -247,7 +248,7 @@ func (cache *rpcCache) CleanAll() {
 	} else {
 		log.Debug("Cleaning entire RPC cache")
 		req := pb.DeleteRequest{Everything: true}
-		cache.runRpc(zeroKey, func(cache *rpcCache) (bool, []*pb.Artifact) {
+		cache.runRPC(zeroKey, func(cache *rpcCache) (bool, []*pb.Artifact) {
 			if response, err := cache.client.Delete(context.Background(), &req); err != nil || !response.Success {
 				log.Errorf("Failed to clean RPC cache: %s", err)
 				return false, nil
@@ -310,7 +311,7 @@ func (cache *rpcCache) connect(url string, config *core.Configuration, isSubnode
 	// If we get here, we are connected and the cache is clustered.
 	cache.nodes = make([]cacheNode, len(resp.Nodes))
 	for i, n := range resp.Nodes {
-		subCache, _ := newRpcCacheInternal(n.Address, config, true)
+		subCache, _ := newRPCCacheInternal(n.Address, config, true)
 		cache.nodes[i] = cacheNode{
 			cache:     subCache,
 			hashStart: n.HashBegin,
@@ -339,9 +340,9 @@ func (cache *rpcCache) isConnected() bool {
 	return cache.Connected
 }
 
-// runRpc runs one RPC for a cache, with optional fallback to a replica on RPC failure
+// runRPC runs one RPC for a cache, with optional fallback to a replica on RPC failure
 // (but not if the RPC completes unsuccessfully).
-func (cache *rpcCache) runRpc(hash []byte, f func(*rpcCache) (bool, []*pb.Artifact)) (bool, []*pb.Artifact) {
+func (cache *rpcCache) runRPC(hash []byte, f func(*rpcCache) (bool, []*pb.Artifact)) (bool, []*pb.Artifact) {
 	if len(cache.nodes) == 0 {
 		// No clustering, just call it directly.
 		return f(cache)
@@ -378,11 +379,11 @@ func (cache *rpcCache) error() {
 	}
 }
 
-func newRpcCache(config *core.Configuration) (*rpcCache, error) {
-	return newRpcCacheInternal(config.Cache.RpcUrl.String(), config, false)
+func newRPCCache(config *core.Configuration) (*rpcCache, error) {
+	return newRPCCacheInternal(config.Cache.RpcURL.String(), config, false)
 }
 
-func newRpcCacheInternal(url string, config *core.Configuration, isSubnode bool) (*rpcCache, error) {
+func newRPCCacheInternal(url string, config *core.Configuration, isSubnode bool) (*rpcCache, error) {
 	cache := &rpcCache{
 		Writeable:  config.Cache.RpcWriteable,
 		Connecting: true,

@@ -29,9 +29,9 @@ func init() {
 	testServer := httptest.NewServer(server.BuildRouter(cache))
 
 	config := core.DefaultConfiguration()
-	config.Cache.HttpUrl.UnmarshalFlag(testServer.URL)
+	config.Cache.HttpURL.UnmarshalFlag(testServer.URL)
 	config.Cache.HttpWriteable = true
-	httpcache = newHttpCache(config)
+	httpcache = newHTTPCache(config)
 }
 
 func TestStore(t *testing.T) {
