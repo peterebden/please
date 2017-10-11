@@ -438,7 +438,7 @@ var buildFunctions = map[string]func() bool{
 	},
 	"deps": func() bool {
 		return runQuery(true, opts.Query.Deps.Args.Targets, func(state *core.BuildState) {
-			query.QueryDeps(state, state.ExpandOriginalTargets(), opts.Query.Deps.Unique)
+			query.Deps(state, state.ExpandOriginalTargets(), opts.Query.Deps.Unique)
 		})
 	},
 	"reverseDeps": func() bool {
@@ -451,13 +451,13 @@ var buildFunctions = map[string]func() bool{
 		return runQuery(true,
 			[]core.BuildLabel{opts.Query.SomePath.Args.Target1, opts.Query.SomePath.Args.Target2},
 			func(state *core.BuildState) {
-				query.QuerySomePath(state.Graph, opts.Query.SomePath.Args.Target1, opts.Query.SomePath.Args.Target2)
+				query.SomePath(state.Graph, opts.Query.SomePath.Args.Target1, opts.Query.SomePath.Args.Target2)
 			},
 		)
 	},
 	"alltargets": func() bool {
 		return runQuery(true, opts.Query.AllTargets.Args.Targets, func(state *core.BuildState) {
-			query.QueryAllTargets(state.Graph, state.ExpandOriginalTargets(), opts.Query.AllTargets.Hidden)
+			query.AllTargets(state.Graph, state.ExpandOriginalTargets(), opts.Query.AllTargets.Hidden)
 		})
 	},
 	"print": func() bool {
@@ -475,17 +475,17 @@ var buildFunctions = map[string]func() bool{
 			if len(files) == 1 && files[0] == "-" {
 				files = utils.ReadAllStdin()
 			}
-			query.QueryAffectedTargets(state.Graph, files, opts.BuildFlags.Include, opts.BuildFlags.Exclude, opts.Query.AffectedTargets.Tests, !opts.Query.AffectedTargets.Intransitive)
+			query.AffectedTargets(state.Graph, files, opts.BuildFlags.Include, opts.BuildFlags.Exclude, opts.Query.AffectedTargets.Tests, !opts.Query.AffectedTargets.Intransitive)
 		})
 	},
 	"input": func() bool {
 		return runQuery(true, opts.Query.Input.Args.Targets, func(state *core.BuildState) {
-			query.QueryTargetInputs(state.Graph, state.ExpandOriginalTargets())
+			query.TargetInputs(state.Graph, state.ExpandOriginalTargets())
 		})
 	},
 	"output": func() bool {
 		return runQuery(true, opts.Query.Output.Args.Targets, func(state *core.BuildState) {
-			query.QueryTargetOutputs(state.Graph, state.ExpandOriginalTargets())
+			query.TargetOutputs(state.Graph, state.ExpandOriginalTargets())
 		})
 	},
 	"completions": func() bool {
@@ -507,11 +507,11 @@ var buildFunctions = map[string]func() bool{
 		if len(fragments) == 0 || len(fragments) == 1 && strings.Trim(fragments[0], "/ ") == "" {
 			os.Exit(0) // Don't do anything for empty completion, it's normally too slow.
 		}
-		labels, parseLabels, hidden := query.QueryCompletionLabels(config, fragments, core.RepoRoot)
+		labels, parseLabels, hidden := query.CompletionLabels(config, fragments, core.RepoRoot)
 		if success, state := Please(parseLabels, config, false, false, false); success {
 			binary := opts.Query.Completions.Cmd == "run"
 			test := opts.Query.Completions.Cmd == "test" || opts.Query.Completions.Cmd == "cover"
-			query.QueryCompletions(state.Graph, labels, binary, test, hidden)
+			query.Completions(state.Graph, labels, binary, test, hidden)
 			return true
 		}
 		return false
@@ -521,7 +521,7 @@ var buildFunctions = map[string]func() bool{
 			if len(opts.Query.Graph.Args.Targets) == 0 {
 				state.OriginalTargets = opts.Query.Graph.Args.Targets // It special-cases doing the full graph.
 			}
-			query.QueryGraph(state.Graph, state.ExpandOriginalTargets())
+			query.Graph(state.Graph, state.ExpandOriginalTargets())
 		})
 	},
 	"whatoutputs": func() bool {
