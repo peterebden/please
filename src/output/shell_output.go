@@ -118,18 +118,18 @@ func processResult(state *core.BuildState, result *core.BuildResult, buildingTar
 	cached := result.Status == core.TargetCached || result.Tests.Cached
 	stopped := result.Status == core.TargetBuildStopped
 	if shouldTrace {
-		addTrace(result, buildingTargets[result.ThreadId].Label, active)
+		addTrace(result, buildingTargets[result.ThreadID].Label, active)
 	}
 	if failed && result.Tests.NumTests == 0 && result.Tests.Failed == 0 {
 		result.Tests.NumTests = 1
 		result.Tests.Failed = 1 // Ensure there's one test failure when there're no results to parse.
 	}
 	// Only aggregate test results the first time it finishes.
-	if buildingTargets[result.ThreadId].Active && !active {
+	if buildingTargets[result.ThreadID].Active && !active {
 		aggregatedResults.Aggregate(&result.Tests)
 	}
 	target := state.Graph.Target(label)
-	updateTarget(state, plainOutput, &buildingTargets[result.ThreadId], label, active, failed, cached, result.Description, result.Err, targetColour(target))
+	updateTarget(state, plainOutput, &buildingTargets[result.ThreadID], label, active, failed, cached, result.Description, result.Err, targetColour(target))
 	if failed {
 		failedTargetMap[label] = result.Err
 		// Don't stop here after test failure, aggregate them for later.
