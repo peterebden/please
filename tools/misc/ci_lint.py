@@ -24,6 +24,7 @@ BLACKLISTED_VET_PACKAGES = {
     'tools/please_go_test/test_data',
     'test/go_rules',
     'test/go_rules/test',
+    'third_party/go/zip',
     # There are two warnings in here about unsafe.Pointer; we *think* they
     # are safe but not 100% sure and it'd be nice to clean it up.
     # Unfortunately may be hard due to cgo checks :(

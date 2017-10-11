@@ -498,9 +498,9 @@ var buildFunctions = map[string]func() bool{
 		if opts.Query.Completions.Cmd == "help" {
 			// Special-case completing help topics rather than build targets.
 			if len(fragments) == 0 {
-				help.HelpTopics("")
+				help.Topics("")
 			} else {
-				help.HelpTopics(fragments[0])
+				help.Topics(fragments[0])
 			}
 			return true
 		}
@@ -605,6 +605,7 @@ func newCache(config *core.Configuration) core.Cache {
 	return cache.NewCache(config)
 }
 
+// Please starts & runs the main build process through to its completion.
 func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput, shouldBuild, shouldTest bool) (bool, *core.BuildState) {
 	if opts.BuildFlags.NumThreads > 0 {
 		config.Please.NumThreads = opts.BuildFlags.NumThreads
