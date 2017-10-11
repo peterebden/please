@@ -346,13 +346,15 @@ func ExecWithTimeoutSimple(timeout cli.Duration, cmd ...string) ([]byte, error) 
 	return out, err
 }
 
-type sourcePair struct{ Src, Tmp string }
+// A SourcePair represents a source file with its source and temporary locations.
+// This isn't typically used much by callers; it's just useful to have a single type for channels.
+type SourcePair struct{ Src, Tmp string }
 
 // IterSources returns all the sources for a function, allowing for sources that are other rules
 // and rules that require transitive dependencies.
 // Yielded values are pairs of the original source location and its temporary location for this rule.
-func IterSources(graph *BuildGraph, target *BuildTarget) <-chan sourcePair {
-	ch := make(chan sourcePair)
+func IterSources(graph *BuildGraph, target *BuildTarget) <-chan SourcePair {
+	ch := make(chan SourcePair)
 	done := map[BuildLabel]bool{}
 	donePaths := map[string]bool{}
 	tmpDir := target.TmpDir()
@@ -366,7 +368,7 @@ func IterSources(graph *BuildGraph, target *BuildTarget) <-chan sourcePair {
 					fullPaths := providedSource.FullPaths(graph)
 					for i, sourcePath := range providedSource.Paths(graph) {
 						tmpPath := path.Join(tmpDir, sourcePath)
-						ch <- sourcePair{fullPaths[i], tmpPath}
+						ch <- SourcePair{fullPaths[i], tmpPath}
 						donePaths[tmpPath] = true
 					}
 				}
@@ -378,7 +380,7 @@ func IterSources(graph *BuildGraph, target *BuildTarget) <-chan sourcePair {
 				depPath := path.Join(outDir, dep)
 				tmpPath := path.Join(tmpDir, dependency.Label.PackageName, dep)
 				if !donePaths[tmpPath] {
-					ch <- sourcePair{depPath, tmpPath}
+					ch <- SourcePair{depPath, tmpPath}
 					donePaths[tmpPath] = true
 				}
 			}
@@ -462,9 +464,9 @@ func recursivelyProvideSource(graph *BuildGraph, target *BuildTarget, src BuildI
 }
 
 // IterRuntimeFiles yields all the runtime files for a rule (outputs & data files), similar to above.
-func IterRuntimeFiles(graph *BuildGraph, target *BuildTarget, absoluteOuts bool) <-chan sourcePair {
+func IterRuntimeFiles(graph *BuildGraph, target *BuildTarget, absoluteOuts bool) <-chan SourcePair {
 	done := map[string]bool{}
-	ch := make(chan sourcePair)
+	ch := make(chan SourcePair)
 
 	makeOut := func(out string) string {
 		if absoluteOuts {
@@ -476,7 +478,7 @@ func IterRuntimeFiles(graph *BuildGraph, target *BuildTarget, absoluteOuts bool)
 	pushOut := func(src, out string) {
 		out = makeOut(out)
 		if !done[out] {
-			ch <- sourcePair{src, out}
+			ch <- SourcePair{src, out}
 			done[out] = true
 		}
 	}
@@ -581,7 +583,7 @@ func PrepareSource(sourcePath string, tmpPath string) error {
 }
 
 // PrepareSourcePair prepares a source file for a build.
-func PrepareSourcePair(pair sourcePair) error {
+func PrepareSourcePair(pair SourcePair) error {
 	if path.IsAbs(pair.Src) {
 		return PrepareSource(pair.Src, pair.Tmp)
 	}

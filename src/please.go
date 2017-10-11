@@ -370,8 +370,8 @@ var buildFunctions = map[string]func() bool{
 				// Clean everything, doesn't require parsing at all.
 				if !opts.Clean.Remote {
 					// Don't construct the remote caches if they didn't pass --remote.
-					config.Cache.RpcUrl = ""
-					config.Cache.HttpUrl = ""
+					config.Cache.RpcURL = ""
+					config.Cache.HttpURL = ""
 				}
 				clean.Clean(config, newCache(config), !opts.Clean.NoBackground)
 				return true
