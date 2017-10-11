@@ -379,7 +379,7 @@ var buildFunctions = map[string]func() bool{
 			opts.Clean.Args.Targets = core.WholeGraph
 		}
 		if success, state := runBuild(opts.Clean.Args.Targets, false, false); success {
-			clean.CleanTargets(state, state.ExpandOriginalTargets(), !opts.FeatureFlags.NoCache)
+			clean.Targets(state, state.ExpandOriginalTargets(), !opts.FeatureFlags.NoCache)
 			return true
 		}
 		return false
