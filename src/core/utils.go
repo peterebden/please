@@ -99,17 +99,19 @@ func getRepoRoot(filename string, die bool) (string, string) {
 	return "", ""
 }
 
-// Returns true if the build was initiated from the repo root.
+// StartedAtRepoRoot returns true if the build was initiated from the repo root.
 // Used to provide slightly nicer output in some places.
 func StartedAtRepoRoot() bool {
 	return RepoRoot == initialWorkingDir
 }
 
+// PathExists returns true if the given path exists, as a file or a directory.
 func PathExists(filename string) bool {
 	_, err := os.Stat(filename)
 	return err == nil
 }
 
+// FileExists returns true if the given path exists and is a file.
 func FileExists(filename string) bool {
 	info, err := os.Stat(filename)
 	return err == nil && !info.IsDir()
@@ -157,7 +159,7 @@ func WriteFile(fromFile io.Reader, to string, mode os.FileMode) error {
 	return os.Rename(tempFile.Name(), to)
 }
 
-// Copies either a single file or a directory.
+// RecursiveCopyFile copies either a single file or a directory.
 // If 'link' is true then we'll hardlink files instead of copying them.
 // If 'fallback' is true then we'll fall back to a copy if linking fails.
 func RecursiveCopyFile(from string, to string, mode os.FileMode, link, fallback bool) error {
@@ -175,20 +177,17 @@ func RecursiveCopyFile(from string, to string, mode os.FileMode, link, fallback 
 				}
 				if fi.IsDir() {
 					return RecursiveCopyFile(name+"/", dest+"/", mode, link, fallback)
-				} else {
-					// 0 indicates inheriting the existing mode bits.
-					if mode == 0 {
-						mode = info.Mode()
-					}
-					return copyOrLinkFile(name, dest, mode, link, fallback)
 				}
-			} else {
+				// 0 indicates inheriting the existing mode bits.
+				if mode == 0 {
+					mode = info.Mode()
+				}
 				return copyOrLinkFile(name, dest, mode, link, fallback)
 			}
+			return copyOrLinkFile(name, dest, mode, link, fallback)
 		})
-	} else {
-		return copyOrLinkFile(from, to, mode, link, fallback)
 	}
+	return copyOrLinkFile(from, to, mode, link, fallback)
 }
 
 // Either copies or hardlinks a file based on the link argument.
@@ -247,7 +246,7 @@ func (sb *safeBuffer) String() string {
 
 // logProgress logs a message once a minute until the given context has expired.
 // Used to provide some notion of progress while waiting for external commands.
-func logProgress(label BuildLabel, ctx context.Context) {
+func logProgress(ctx context.Context, label BuildLabel) {
 	t := time.NewTicker(1 * time.Minute)
 	defer t.Stop()
 	for i := 1; i < 1000000; i++ {
@@ -292,7 +291,7 @@ func ExecWithTimeout(target *BuildTarget, dir string, env []string, timeout time
 		cmd.Stderr = &outerr
 	}
 	if target != nil {
-		go logProgress(target.Label, ctx)
+		go logProgress(ctx, target.Label)
 	}
 	// Start the command, wait for the timeout & then kill it.
 	// We deliberately don't use CommandContext because it will only send SIGKILL which
@@ -462,7 +461,7 @@ func recursivelyProvideSource(graph *BuildGraph, target *BuildTarget, src BuildI
 	return []BuildInput{src}
 }
 
-// Yields all the runtime files for a rule (outputs & data files), similar to above.
+// IterRuntimeFiles yields all the runtime files for a rule (outputs & data files), similar to above.
 func IterRuntimeFiles(graph *BuildGraph, target *BuildTarget, absoluteOuts bool) <-chan sourcePair {
 	done := map[string]bool{}
 	ch := make(chan sourcePair)
@@ -470,9 +469,8 @@ func IterRuntimeFiles(graph *BuildGraph, target *BuildTarget, absoluteOuts bool)
 	makeOut := func(out string) string {
 		if absoluteOuts {
 			return path.Join(RepoRoot, target.TestDir(), out)
-		} else {
-			return out
 		}
+		return out
 	}
 
 	pushOut := func(src, out string) {
@@ -511,7 +509,7 @@ func IterRuntimeFiles(graph *BuildGraph, target *BuildTarget, absoluteOuts bool)
 	return ch
 }
 
-// Yields all the transitive input files for a rule (sources & data files), similar to above (again).
+// IterInputPaths yields all the transitive input files for a rule (sources & data files), similar to above (again).
 func IterInputPaths(graph *BuildGraph, target *BuildTarget) <-chan string {
 	// Use a couple of maps to protect us from dep-graph loops and to stop parsing the same target
 	// multiple times. We also only want to push files to the channel that it has not already seen.
@@ -568,7 +566,7 @@ func IterInputPaths(graph *BuildGraph, target *BuildTarget) <-chan string {
 	return ch
 }
 
-// Symlinks a single source file for a build rule.
+// PrepareSource symlinks a single source file for a build rule.
 func PrepareSource(sourcePath string, tmpPath string) error {
 	dir := path.Dir(tmpPath)
 	if !PathExists(dir) {
@@ -582,6 +580,7 @@ func PrepareSource(sourcePath string, tmpPath string) error {
 	return RecursiveCopyFile(sourcePath, tmpPath, 0, true, true)
 }
 
+// PrepareSourcePair prepares a source file for a build.
 func PrepareSourcePair(pair sourcePair) error {
 	if path.IsAbs(pair.Src) {
 		return PrepareSource(pair.Src, pair.Tmp)
