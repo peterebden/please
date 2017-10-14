@@ -9,12 +9,8 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"io/ioutil"
 	"os"
-	"path/filepath"
-	"strings"
-	"zip"
 
 	"gopkg.in/op/go-logging.v1"
 
@@ -139,15 +135,15 @@ func main() {
 		must(f.WritePreamble([]byte(opts.Preamble + "\n")))
 	}
 	if opts.PreambleFile != "" {
-		b, err := ioutil.ReadFile(preambleFile)
+		b, err := ioutil.ReadFile(opts.PreambleFile)
 		must(err)
 		must(f.WritePreamble(b))
 	}
-	if mainClass != "" {
-		must(f.AddManifest(mainClass))
+	if opts.MainClass != "" {
+		must(f.AddManifest(opts.MainClass))
 	}
-	if manifest != "" {
-		b, err := ioutil.ReadFile(manifest)
+	if opts.Manifest != "" {
+		b, err := ioutil.ReadFile(opts.Manifest)
 		must(err)
 		must(f.WriteFile("META-INF/MANIFEST.MF", b))
 	}

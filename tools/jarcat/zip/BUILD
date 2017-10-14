@@ -6,7 +6,10 @@ go_library(
         '//third_party/go:testify',
         '//third_party/go/zip',
     ],
-    visibility = ['//tools/please_pex:all'],
+    visibility = [
+        '//tools/jarcat:all',
+        '//tools/please_pex:all',
+    ],
 )
 
 go_test(
@@ -15,6 +18,5 @@ go_test(
     data = ['test_data/test.zip'],
     deps = [
         ':zip',
-        '//third_party/go/zip',
     ],
 )
