@@ -1,8 +1,10 @@
-// Small program to merge lots of .jar files into one.
-// Currently walks the entire of the current directory finding all .jar files beneath it
-// and merges them all into one. Later we might add additional flags to exclude certain
-// files etc.
-
+// Package main implements jarcat, a program to efficiently concatenate .zip files.
+// Originally this was pretty simple and that was all it could do, over time it's
+// gained a bunch more features on a more or less as needed basis.
+//
+// It's now used for most general-purpose zip and tar manipulation in Please, since
+// the standard tools either differ between implementations (e.g. GNU tar vs. BSD tar)
+// or introduce indeterminacy, often in regard to timestamps.
 package main
 
 import (
@@ -157,6 +159,7 @@ var opts = struct {
 	PreambleFile            string            `long:"preamble_file" description:"Concatenate zip file onto the end of this file"`
 	MainClass               string            `short:"m" long:"main_class" description:"Write a Java manifest file containing the given main class."`
 	Manifest                string            `long:"manifest" description:"Use the given file as a Java manifest"`
+	Align                   int               `short:"a" long:"align" description:"Align zip members to a multiple of this number of bytes."`
 	Verbosity               int               `short:"v" long:"verbose" default:"1" description:"Verbosity of output (higher number = more output, default 1 -> warnings and errors only)"`
 	Strict                  bool              `long:"strict" description:"Disallow duplicate files"`
 	IncludeOther            bool              `long:"include_other" description:"Add files that are not jar files as well"`
@@ -191,7 +194,7 @@ Any apparent relationship between the name of this tool and bonsai kittens is co
 }
 
 func main() {
-	cli.ParseFlagsOrDie("Jarcat", "5.5.0", &opts)
+	cli.ParseFlagsOrDie("Jarcat", "9.3.2", &opts)
 	if opts.DumbMode {
 		opts.Suffix = nil
 		opts.ExcludeSuffix = nil
