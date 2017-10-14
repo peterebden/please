@@ -1,27 +1,99 @@
-// Contains utility functions for helping combine .jar files.
-package jarcat
+// Package zip implements functions for jarcat that manipulate .zip files.
+package zip
 
 import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
-	"zip"
 
 	"gopkg.in/op/go-logging.v1"
+
+	"third_party/go/zip"
 )
 
-var log = logging.MustGetLogger("zip_writer")
+var log = logging.MustGetLogger("zip")
 var modTime = time.Date(2001, time.January, 1, 0, 0, 0, 0, time.UTC)
 
-// AddZipFile copies the contents of a zip file into an existing zip writer.
-func AddZipFile(w *zip.Writer, filepath string, include, exclude []string, stripPrefix string, strict bool, renameDirs map[string]string) error {
+// A File represents an output zipfile.
+type File struct {
+	f        io.WriteCloser
+	w        *zip.Writer
+	filename string
+	input    string
+	// Include and Exclude are prefixes of filenames to include or exclude from the zipfile.
+	Include, Exclude []string
+	// Strict controls whether we deny duplicate files or not.
+	// Zipfiles can readily contain duplicates, if this is true we reject them unless they are identical.
+	// If false we allow duplicates and leave it to someone else to handle.
+	Strict bool
+	// RenameDirs is a map of directories to rename, from the old name to the new one.
+	RenameDirs map[string]string
+	// StripPrefix is a prefix that is stripped off any files added with AddFiles.
+	StripPrefix string
+	// Suffix is the suffix of files that we include while scanning.
+	Suffix []string
+	// ExcludeSuffix is a list of suffixes that are excluded from the file scan.
+	ExcludeSuffix []string
+	// IncludeOther will make the file scan include other files that are not part of a zip file.
+	IncludeOther bool
+	// AddInitPy will make the writer add __init__.py files to all directories that don't already have one on close.
+	AddInitPy bool
+	// DirEntries makes the writer add empty directory entries.
+	DirEntries bool
+	// files tracks the files that we've written so far.
+	files map[string]fileRecord
+	// concatenatedFiles tracks the files that are built up as we go.
+	concatenatedFiles map[string][]byte
+}
+
+// A fileRecord records some information about a file that we use to check if they're exact duplicates.
+type fileRecord struct {
+	ZipFile            string
+	CompressedSize64   uint64
+	UncompressedSize64 uint64
+	CRC32              uint32
+}
+
+// NewFile constructs and returns a new File.
+func NewFile(output string, strict bool) *File {
+	f, err := os.Create(output)
+	if err != nil {
+		log.Fatalf("Failed to open output file: %s", err)
+	}
+	return &File{
+		f:                 f,
+		w:                 zip.NewWriter(f),
+		filename:          output,
+		Strict:            strict,
+		files:             map[string]fileRecord{},
+		concatenatedFiles: map[string][]byte{},
+	}
+}
+
+// Close must be called before the File is destroyed.
+func (f *File) Close() {
+	f.handleConcatenatedFiles()
+	if err := f.AddInitPyFiles(); err != nil {
+		log.Fatalf("%s", err)
+	}
+	if err := f.w.Close(); err != nil {
+		log.Fatalf("Failed to finalise zip file: %s", err)
+	}
+	if err := f.f.Close(); err != nil {
+		log.Fatalf("Failed to close file: %s", err)
+	}
+}
+
+// AddZipFile copies the contents of a zip file into the new zipfile.
+func (f *File) AddZipFile(filepath string) error {
 	r, err := zip.OpenReader(filepath)
 	if err != nil {
 		return err
@@ -35,28 +107,27 @@ func AddZipFile(w *zip.Writer, filepath string, include, exclude []string, strip
 	}
 	defer r2.Close()
 
-outer:
-	for _, f := range r.File {
-		log.Debug("Found file %s (from %s)", f.Name, filepath)
+	for _, rf := range r.File {
+		log.Debug("Found file %s (from %s)", rf.Name, filepath)
 		// This directory is very awkward. We need to merge the contents by concatenating them,
 		// we can't replace them or leave them out.
-		if strings.HasPrefix(f.Name, "META-INF/services/") ||
-			strings.HasPrefix(f.Name, "META-INF/spring") ||
-			f.Name == "META-INF/please_sourcemap" {
-			if err := concatenateFile(w, f); err != nil {
+		if strings.HasPrefix(rf.Name, "META-INF/services/") ||
+			strings.HasPrefix(rf.Name, "META-INF/spring") ||
+			rf.Name == "META-INF/please_sourcemap" {
+			if err := f.concatenateFile(rf); err != nil {
 				return err
 			}
 			continue
 		}
-		if !shouldInclude(f.Name, include, exclude) {
-			continue outer
+		if !f.shouldInclude(rf.Name) {
+			continue
 		}
-		hasTrailingSlash := strings.HasSuffix(f.Name, "/")
-		isDir := hasTrailingSlash || f.FileInfo().IsDir()
+		hasTrailingSlash := strings.HasSuffix(rf.Name, "/")
+		isDir := hasTrailingSlash || rf.FileInfo().IsDir()
 		if isDir && !hasTrailingSlash {
-			f.Name = f.Name + "/"
+			rf.Name = rf.Name + "/"
 		}
-		if existing, present := getExistingFile(w, f.Name); present {
+		if existing, present := f.files[rf.Name]; present {
 			// Allow duplicates of directories. Seemingly the best way to identify them is that
 			// they end in a trailing slash.
 			if isDir {
@@ -66,47 +137,110 @@ outer:
 			// It's unnecessarily awkward to insist on not ever doubling up on a dependency.
 			// TODO(pebers): Bit of a hack ignoring it when CRC is 0, would be better to add
 			//               the correct CRC when added through WriteFile.
-			if existing.CRC32 == f.CRC32 || existing.CRC32 == 0 {
-				log.Info("Skipping %s / %s: already added (from %s)", filepath, f.Name, existing.ZipFile)
+			if existing.CRC32 == rf.CRC32 || existing.CRC32 == 0 {
+				log.Info("Skipping %s / %s: already added (from %s)", filepath, rf.Name, existing.ZipFile)
 				continue
 			}
-			if strict {
-				log.Error("Duplicate file %s (from %s, already added from %s); crc %d / %d", f.Name, filepath, existing.ZipFile, f.CRC32, existing.CRC32)
-				return fmt.Errorf("File %s already added to destination zip file (from %s)", f.Name, existing.ZipFile)
+			if f.Strict {
+				log.Error("Duplicate file %s (from %s, already added from %s); crc %d / %d", rf.Name, filepath, existing.ZipFile, rf.CRC32, existing.CRC32)
+				return fmt.Errorf("File %s already added to destination zip file (from %s)", rf.Name, existing.ZipFile)
 			}
 			continue
 		}
-		for before, after := range renameDirs {
-			if strings.HasPrefix(f.Name, before) {
-				f.Name = path.Join(after, strings.TrimPrefix(f.Name, before))
+		for before, after := range f.RenameDirs {
+			if strings.HasPrefix(rf.Name, before) {
+				rf.Name = path.Join(after, strings.TrimPrefix(rf.Name, before))
 				if isDir {
-					f.Name = f.Name + "/"
+					rf.Name = rf.Name + "/"
 				}
 				break
 			}
 		}
-		f.Name = strings.TrimPrefix(f.Name, stripPrefix)
+		if f.StripPrefix != "" {
+			rf.Name = strings.TrimPrefix(rf.Name, f.StripPrefix)
+		}
 		// Java tools don't seem to like writing a data descriptor for stored items.
 		// Unsure if this is a limitation of the format or a problem of those tools.
-		f.Flags = 0
-		addExistingFile(w, f.Name, filepath, f.CompressedSize64, f.UncompressedSize64, f.CRC32)
+		rf.Flags = 0
+		f.addExistingFile(rf.Name, filepath, rf.CompressedSize64, rf.UncompressedSize64, rf.CRC32)
 
-		start, err := f.DataOffset()
+		start, err := rf.DataOffset()
 		if err != nil {
 			return err
 		}
 		if _, err := r2.Seek(start, 0); err != nil {
 			return err
 		}
-		if err := addFile(w, &f.FileHeader, r2, f.CRC32); err != nil {
+		if err := f.addFile(&rf.FileHeader, r2, rf.CRC32); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func shouldInclude(name string, include, exclude []string) bool {
-	for _, excl := range exclude {
+// walk is a filepath.WalkFunc-compatible function which walks a file tree,
+// adding all the files it finds within it.
+func (f *File) walk(path string, info os.FileInfo, err error) error {
+	if err != nil {
+		return err
+	} else if path != f.input && (info.Mode()&os.ModeSymlink) != 0 {
+		if resolved, err := filepath.EvalSymlinks(path); err != nil {
+			return err
+		} else if stat, err := os.Stat(resolved); err != nil {
+			return err
+		} else if stat.IsDir() {
+			// TODO(peterebden): Is this case still needed?
+			return filepath.Walk(resolved, f.walk)
+		}
+	}
+	if path == f.filename {
+		return nil
+	} else if !info.IsDir() {
+		if !f.matchesSuffix(path, f.ExcludeSuffix) {
+			if f.matchesSuffix(path, f.Suffix) {
+				log.Debug("Adding zip file %s", path)
+				if err := f.AddZipFile(path); err != nil {
+					return fmt.Errorf("Error adding %s to zipfile: %s", path, err)
+				}
+			} else if f.IncludeOther && !f.HasExistingFile(path) {
+				log.Debug("Including existing non-zip file %s", path)
+				if b, err := ioutil.ReadFile(path); err != nil {
+					return fmt.Errorf("Error reading %s to zipfile: %s", path, err)
+				} else if err := f.StripBytecodeTimestamp(path, b); err != nil {
+					return err
+				} else if err := f.WriteFile(path, b); err != nil {
+					return err
+				}
+			}
+		}
+	} else if (len(f.Suffix) == 0 || f.AddInitPy) && path != "." && f.DirEntries { // Only add directory entries in "dumb" mode.
+		log.Debug("Adding directory entry %s/", path)
+		if err := f.WriteDir(path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// AddFiles walks the given directory and adds any zip files (determined by suffix) that it finds within.
+func (f *File) AddFiles(in string) error {
+	f.input = in
+	return filepath.Walk(in, f.walk)
+}
+
+// shouldExcludeSuffix returns true if the given filename has a suffix that should be excluded.
+func (f *File) matchesSuffix(path string, suffixes []string) bool {
+	for _, suffix := range suffixes {
+		if suffix != "" && strings.HasSuffix(path, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// shouldInclude returns true if the given filename should be included according to the include / exclude sets of this File.
+func (f *File) shouldInclude(name string) bool {
+	for _, excl := range f.Exclude {
 		if matched, _ := filepath.Match(excl, name); matched {
 			log.Debug("Skipping %s (excluded by %s)", name, excl)
 			return false
@@ -115,10 +249,10 @@ func shouldInclude(name string, include, exclude []string) bool {
 			return false
 		}
 	}
-	if len(include) == 0 {
+	if len(f.Include) == 0 {
 		return true
 	}
-	for _, incl := range include {
+	for _, incl := range f.Include {
 		if matched, _ := filepath.Match(incl, name); matched || strings.HasPrefix(name, incl) {
 			return true
 		}
@@ -128,10 +262,9 @@ func shouldInclude(name string, include, exclude []string) bool {
 }
 
 // AddInitPyFiles adds an __init__.py file to every directory in the zip file that doesn't already have one.
-func AddInitPyFiles(w *zip.Writer) error {
-	m := files[w]
-	s := make([]string, 0, len(m))
-	for p := range m {
+func (f *File) AddInitPyFiles() error {
+	s := make([]string, 0, len(f.files))
+	for p := range f.files {
 		s = append(s, p)
 	}
 	sort.Strings(s)
@@ -142,17 +275,17 @@ func AddInitPyFiles(w *zip.Writer) error {
 			}
 			initPyPath := path.Join(d, "__init__.py")
 			// Don't write one at the root, it's not necessary.
-			if _, present := m[initPyPath]; present || initPyPath == "__init__.py" {
+			if _, present := f.files[initPyPath]; present || initPyPath == "__init__.py" {
 				break
-			} else if _, present := m[initPyPath+"c"]; present {
+			} else if _, present := f.files[initPyPath+"c"]; present {
 				// If we already have a pyc / pyo we don't need the __init__.py as well.
 				break
-			} else if _, present := m[initPyPath+"o"]; present {
+			} else if _, present := f.files[initPyPath+"o"]; present {
 				break
 			}
 			log.Debug("Adding %s", initPyPath)
-			m[initPyPath] = fileRecord{}
-			if err := WriteFile(w, initPyPath, []byte{}); err != nil {
+			f.files[initPyPath] = fileRecord{}
+			if err := f.WriteFile(initPyPath, []byte{}); err != nil {
 				return err
 			}
 		}
@@ -161,87 +294,64 @@ func AddInitPyFiles(w *zip.Writer) error {
 }
 
 // AddManifest adds a manifest to the given zip writer with a Main-Class entry (and a couple of others)
-func AddManifest(w *zip.Writer, mainClass string) error {
+func (f *File) AddManifest(mainClass string) error {
 	manifest := fmt.Sprintf("Manifest-Version: 1.0\nMain-Class: %s\n", mainClass)
-	return WriteFile(w, "META-INF/MANIFEST.MF", []byte(manifest))
-}
-
-// Records some information about a file that we use to check if they're exact duplicates.
-type fileRecord struct {
-	ZipFile            string
-	CompressedSize64   uint64
-	UncompressedSize64 uint64
-	CRC32              uint32
-}
-
-var files = map[*zip.Writer]map[string]fileRecord{}
-var concatenatedFiles = map[string]string{}
-
-func getExistingFile(w *zip.Writer, name string) (fileRecord, bool) {
-	if m := files[w]; m != nil {
-		record, present := m[name]
-		return record, present
-	}
-	return fileRecord{}, false
+	return f.WriteFile("META-INF/MANIFEST.MF", []byte(manifest))
 }
 
 // HasExistingFile returns true if the writer has already written the given file.
-func HasExistingFile(w *zip.Writer, name string) bool {
-	_, b := getExistingFile(w, name)
-	return b
+func (f *File) HasExistingFile(name string) bool {
+	_, present := f.files[name]
+	return present
 }
 
-func addExistingFile(w *zip.Writer, name, file string, c, u uint64, crc uint32) {
-	m := files[w]
-	if m == nil {
-		m = map[string]fileRecord{}
-		files[w] = m
-	}
-	m[name] = fileRecord{file, c, u, crc}
+// addExistingFile adds a record for an existing file, although doesn't write any contents.
+func (f *File) addExistingFile(name, file string, compressedSize, uncompressedSize uint64, crc uint32) {
+	f.files[name] = fileRecord{file, compressedSize, uncompressedSize, crc}
 }
 
-// Add a file to the zip which is concatenated with any existing content with the same name.
+// concatenateFile adds a file to the zip which is concatenated with any existing content with the same name.
 // Writing is deferred since we obviously can't append to it later.
-func concatenateFile(w *zip.Writer, f *zip.File) error {
-	r, err := f.Open()
+func (f *File) concatenateFile(zf *zip.File) error {
+	r, err := zf.Open()
 	if err != nil {
 		return err
 	}
 	defer r.Close()
-	buf := new(bytes.Buffer)
-	if _, err := io.Copy(buf, r); err != nil {
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r); err != nil {
 		return err
 	}
-	contents := buf.String()
-	if !strings.HasSuffix(contents, "\n") {
-		contents += "\n"
+	contents := buf.Bytes()
+	if !bytes.HasSuffix(contents, []byte{'\n'}) {
+		contents = append(contents, '\n')
 	}
-	concatenatedFiles[f.Name] += contents
+	f.concatenatedFiles[zf.Name] = append(f.concatenatedFiles[zf.Name], contents...)
 	return nil
 }
 
-// HandleConcatenatedFiles appends concatenated files to the archive's directory for writing.
-func HandleConcatenatedFiles(w *zip.Writer) error {
+// handleConcatenatedFiles appends concatenated files to the archive's directory for writing.
+func (f *File) handleConcatenatedFiles() error {
 	// Must do it in a deterministic order
-	files := make([]string, 0, len(concatenatedFiles))
-	for name := range concatenatedFiles {
+	files := make([]string, 0, len(f.concatenatedFiles))
+	for name := range f.concatenatedFiles {
 		files = append(files, name)
 	}
 	sort.Strings(files)
 	for _, name := range files {
-		if err := WriteFile(w, name, []byte(concatenatedFiles[name])); err != nil {
+		if err := f.WriteFile(name, f.concatenatedFiles[name]); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// Writes a file to the new writer.
-func addFile(w *zip.Writer, fh *zip.FileHeader, r io.Reader, crc uint32) error {
+// addFile writes a file to the new writer.
+func (f *File) addFile(fh *zip.FileHeader, r io.Reader, crc uint32) error {
 	fh.Flags = 0 // we're not writing a data descriptor after the file
 	comp := func(w io.Writer) (io.WriteCloser, error) { return nopCloser{w}, nil }
 	fh.SetModTime(modTime)
-	fw, err := w.CreateHeaderWithCompressor(fh, comp, fixedCrc32{value: crc})
+	fw, err := f.w.CreateHeaderWithCompressor(fh, comp, fixedCrc32{value: crc})
 	if err == nil {
 		_, err = io.CopyN(fw, r, int64(fh.CompressedSize64))
 	}
@@ -249,40 +359,45 @@ func addFile(w *zip.Writer, fh *zip.FileHeader, r io.Reader, crc uint32) error {
 }
 
 // WriteFile writes a complete file to the writer.
-func WriteFile(w *zip.Writer, filename string, data []byte) error {
+func (f *File) WriteFile(filename string, data []byte) error {
 	fh := zip.FileHeader{
 		Name:   filename,
 		Method: zip.Deflate,
 	}
 	fh.SetModTime(modTime)
 
-	if fw, err := w.CreateHeader(&fh); err != nil {
+	if fw, err := f.w.CreateHeader(&fh); err != nil {
 		return err
 	} else if _, err := fw.Write(data); err != nil {
 		return err
 	}
-	addExistingFile(w, filename, filename, 0, 0, 0)
+	f.addExistingFile(filename, filename, 0, 0, 0)
 	return nil
 }
 
 // WriteDir writes a directory entry to the writer.
-func WriteDir(w *zip.Writer, filename string) error {
+func (f *File) WriteDir(filename string) error {
 	filename += "/" // Must have trailing slash to tell it it's a directory.
 	fh := zip.FileHeader{
 		Name:   filename,
 		Method: zip.Store,
 	}
 	fh.SetModTime(modTime)
-	if _, err := w.CreateHeader(&fh); err != nil {
+	if _, err := f.w.CreateHeader(&fh); err != nil {
 		return err
 	}
-	addExistingFile(w, filename, filename, 0, 0, 0)
+	f.addExistingFile(filename, filename, 0, 0, 0)
 	return nil
+}
+
+// WritePreamble writes a preamble to the zipfile.
+func (f *File) WritePreamble(preamble []byte) error {
+	return f.w.WritePreamble(preamble)
 }
 
 // StripBytecodeTimestamp strips a timestamp from a .pyc or .pyo file.
 // This is important so our output is deterministic.
-func StripBytecodeTimestamp(filename string, contents []byte) error {
+func (f *File) StripBytecodeTimestamp(filename string, contents []byte) error {
 	if strings.HasSuffix(filename, ".pyc") || strings.HasSuffix(filename, ".pyo") {
 		if len(contents) < 8 {
 			log.Warning("Invalid bytecode file, will not strip timestamp")
