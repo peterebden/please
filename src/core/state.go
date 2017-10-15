@@ -429,6 +429,8 @@ type BuildResult struct {
 	Description string
 	// Test results
 	Tests TestResults
+	// True if this result relates to a remote worker
+	Remote bool
 }
 
 // A BuildResultStatus represents the status of a target when we log a build result.
@@ -445,6 +447,7 @@ const (
 	TargetCached
 	TargetBuildFailed
 	TargetTesting
+	TargetTestRemote
 	TargetTested
 	TargetTestFailed
 )
@@ -456,7 +459,7 @@ func (s BuildResultStatus) Category() string {
 		return "Parse"
 	case TargetBuilding, TargetBuildStopped, TargetBuilt, TargetBuildFailed:
 		return "Build"
-	case TargetTesting, TargetTested, TargetTestFailed:
+	case TargetTesting, TargetTestRemote, TargetTested, TargetTestFailed:
 		return "Test"
 	default:
 		return "Other"

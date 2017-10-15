@@ -88,7 +88,11 @@ func ReadConfigFiles(filenames []string) (*Configuration, error) {
 	if (config.Cache.RPCPrivateKey == "") != (config.Cache.RPCPublicKey == "") {
 		return config, fmt.Errorf("Must pass both rpcprivatekey and rpcpublickey properties for cache")
 	}
-
+	if len(config.Test.RemoteWorker) > 0 && config.Test.NumRemoteWorkers == 0 {
+		config.Test.NumRemoteWorkers = 10
+	} else if len(config.Test.RemoteWorker) == 0 && config.Test.NumRemoteWorkers > 0 {
+		return config, fmt.Errorf("Can't set test.numremoteworkers without setting test.remoteworker")
+	}
 	// We can only verify options by reflection (we need struct tags) so run them quickly through this.
 	return config, config.ApplyOverrides(map[string]string{
 		"test.defaultcontainer": config.Test.DefaultContainer,
@@ -257,6 +261,7 @@ type Configuration struct {
 		Timeout          cli.Duration `help:"Default timeout applied to all tests. Can be overridden on a per-rule basis."`
 		DefaultContainer string       `help:"Sets the default type of containerisation to use for tests that are given container = True.\nCurrently the only available option is 'docker', we expect to add support for more engines in future." options:"none,docker"`
 		Sandbox          bool         `help:"True to sandbox individual tests, which isolates them using namespaces. Somewhat experimental, only works on Linux and requires please_sandbox to be installed separately."`
+		NumRemoteWorkers int          `help:"Max number of remote workers to consume at once." example:"10"`
 		RemoteWorker     []cli.URL    `help:"URL of remote workers to run tests. These will be crudely load-balanced between client-side. If this isn't set then all tests are run locally.\n\nSee please_test_worker for more information on running the workers."`
 		RemoteLabels     []string     `help:"Defines a set of labels that tests are required to have at least one of to be run remotely. If this is empty then any test can be run remotely when remoteworker is set."`
 		LocalLabels      []string     `help:"Defines a set of labels that force a test to be run locally when applied."`

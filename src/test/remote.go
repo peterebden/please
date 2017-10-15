@@ -15,13 +15,22 @@ import (
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"core"
 	pb "test/proto/worker"
 )
 
-// runTestRemotely runs a single test against a remote worker and returns the output, results & any error.
-func runTestRemotely(state *core.BuildState, target *core.BuildTarget) ([]byte, [][]byte, []byte, error) {
+const remoteConnTimeout = 2 * time.Second
+
+type remoteWorker struct {
+	client pb.TestWorkerClient
+	id     int
+}
+
+// RunRemotely runs a single test on a remote worker.
+func (worker *remoteWorker) RunRemotely(state *core.BuildState, target *core.BuildTarget) {
 	client, err := manager.GetClient(state.Config)
 	if err != nil {
 		return nil, nil, nil, err
@@ -84,34 +93,74 @@ func runTestRemotely(state *core.BuildState, target *core.BuildTarget) ([]byte, 
 	return response.Output, response.Results, response.Coverage, nil
 }
 
-type clientManager struct {
-	sync.RWMutex
-	clients map[string]pb.TestWorkerClient
+// Dial dials the remote server and returns true if successful.
+func (worker *remoteWorker) Dial() bool {
+	// TODO(peterebden): One day we will do TLS here.
+	conn, err := grpc.Dial(getAddress(config), grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(remoteConnTimeout))
+	if s, ok := status.FromError(err); ok && s.Code() == codes.ResourceExhausted {
+		// This is a transient error from the remote; it indicates that the server is
+		// already busy but we got it anyway. Retry once
+		log.Debug("Got busy remote, will retry: %s", s.Err())
+		conn, err = grpc.Dial(getAddress(config), grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(remoteConnTimeout))
+	}
+	if err != nil {
+		return false
+	}
+	worker.client = pb.NewTestWorkerClient(conn)
+	return true
 }
 
-var manager = clientManager{clients: map[string]pb.TestWorkerClient{}}
+// Release releases this client back to the worker pool when done.
+func (worker *remoteWorker) Release() {
+	// It's a little unfortunate that we can't use these, but we need to load balance each request.
+	// We might consider using grpclb or something in the future.
+	worker.client = nil
+	clientsLock.Lock()
+	defer clientsLock.Unlock()
+	availableRemoteClients = append(availableRemoteClients, *remoteWorker)
+}
 
-// GetClient returns a client of one of our remote test workers.
-// TODO(pebers): we lazy-initialise these, doing it eagerly at startup would probably be a
-//               small optimisation so they're dialed and ready when we want to use them.
-func (m *clientManager) GetClient(config *core.Configuration) (pb.TestWorkerClient, error) {
-	address := config.Test.RemoteWorker[rand.Intn(len(config.Test.RemoteWorker))].String()
-	m.RLock()
-	client, present := m.clients[address]
-	m.RUnlock()
-	if present {
-		return client, nil
+var availableRemoteClients []remoteWorker
+var clientsLock sync.Mutex
+var clientsOnce sync.Once
+
+// getRemoteClient returns a client of one of our remote test workers, or nil
+// if none is available right now.
+func getRemoteClient(config *core.Configuration) *remoteWorker {
+	clientsOnce.Do(func() {
+		availableRemoteClients = make([]remoteWorker, len(config.Test.NumRemoteWorkers))
+		for i := range availableRemoteClients {
+			availableRemoteClients[i].id = i
+		}
+	})
+	clientsLock.Lock()
+	if len(availableRemoteClients == 0) {
+		clientsLock.Unlock()
+		return nil
 	}
-	// Need to initialise a new one.
-	// Technically this is a little racy but there is little harm creating an extra client.
-	m.Lock()
-	defer m.Unlock()
-	// TODO(pebers): Support secure connections here.
-	conn, err := grpc.Dial(address, grpc.WithTimeout(5*time.Second), grpc.WithInsecure())
-	if err != nil {
-		return nil, err
+	client := &availableRemoteClients[0]
+	availableRemoteClients = availableRemoteClients[1:]
+	clientsLock.Unlock()
+	// Establish a connection to the remote server before we give this guy back.
+	if !client.Dial() {
+		// Didn't work, release the client.
+		client.Release()
+		return nil
 	}
-	client = pb.NewTestWorkerClient(conn)
-	m.clients[address] = client
-	return client, nil
+	return client
+}
+
+// getAddress returns a remote address from the given config.
+func getAddress(config *core.Configuration) string {
+	if len(config.Test.RemoteWorker) == 1 {
+		return config.Test.RemoteWorker[0]
+	}
+	return config.Test.RemoteWorker[rand.Intn(len(config.Test.RemoteWorker))].String()
+}
+
+// canRunRemotely returns true if the given target can be run on a remote worker.
+func canRunRemotely(config *core.Configuration, target *core.BuildTarget) bool {
+	return config.Test.NumRemoteWorkers == 0 &&
+		!target.HasAnyLabel(config.Test.LocalLabels) &&
+		(len(config.Test.RemoteLabels) == 0 || target.HasAnyLabel(config.Test.LocalLabels))
 }

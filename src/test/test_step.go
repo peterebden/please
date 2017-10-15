@@ -133,6 +133,18 @@ func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.B
 		state.LogBuildError(tid, label, core.TargetTestFailed, err, "Failed to remove cached test files")
 		return
 	}
+	// Run the target remotely if we can.
+	if canRunRemotely(state.Config, target) {
+		if client := getRemoteClient(state.Config); client != nil {
+			// Will be run remotely, detach it from us.
+			// We must mark an extra task so the core knows it's not done yet.
+			state.AddActiveTarget()
+			go client.RunRemotely(state, target)
+			state.LogBuildResult(tid, label, core.TargetTestingRemote, "Testing remotely")
+			return
+		}
+	}
+
 	numSucceeded := 0
 	numFlakes := 0
 	numRuns, successesRequired := calcNumRuns(state.NumTestRuns, target.Flakiness)
