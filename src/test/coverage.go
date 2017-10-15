@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -15,19 +14,13 @@ import (
 	"core"
 )
 
-// Parses test coverage for a single target from its output file.
-func parseTestCoverage(target *core.BuildTarget, outputFile string) (core.TestCoverage, error) {
+// parseTestCoverage parses test coverage for a single target given the raw data.
+func parseTestCoverage(target *core.BuildTarget, data []byte) (core.TestCoverage, error) {
 	coverage := core.NewTestCoverage()
-	data, err := ioutil.ReadFile(outputFile)
-	if err != nil && os.IsNotExist(err) {
-		return coverage, nil // Tests aren't required to produce coverage files.
-	} else if err != nil {
-		return coverage, err
-	} else if len(data) == 0 {
+	if len(data) == 0 {
 		return coverage, fmt.Errorf("Empty coverage output")
 	} else if looksLikeGoCoverageResults(data) {
-		// TODO(pebers): this is a little wasteful, we've already read the file once and we must do it again.
-		return coverage, parseGoCoverageResults(target, &coverage, outputFile)
+		return coverage, parseGoCoverageResults(target, &coverage, data)
 	} else if looksLikeGcovCoverageResults(data) {
 		return coverage, parseGcovCoverageResults(target, &coverage, data)
 	} else if looksLikeIstanbulCoverageResults(data) {
@@ -35,6 +28,15 @@ func parseTestCoverage(target *core.BuildTarget, outputFile string) (core.TestCo
 	} else {
 		return coverage, parseXMLCoverageResults(target, &coverage, data)
 	}
+}
+
+// ParseCoverageFile parses the coverage output for a single target.
+func parseCoverageFile(target *core.BuildTarget, coverageFile string) (core.TestCoverage, error) {
+	data, err := ioutil.ReadFile(coverageFile)
+	if err != nil {
+		return core.TestCoverage{}, fmt.Errorf("Failed to parse coverage file for %s: %s", target.Label, err)
+	}
+	return parseTestCoverage(target, data)
 }
 
 // AddOriginalTargetsToCoverage adds empty coverage entries for any files covered by the original

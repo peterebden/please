@@ -9,7 +9,7 @@ import (
 )
 
 func TestGoFailure(t *testing.T) {
-	results, err := parseTestResults(new(core.BuildTarget), "src/test/test_data/go_test_failure.txt", false)
+	results, err := parseTestResultsFile(new(core.BuildTarget), "src/test/test_data/go_test_failure.txt")
 	if err != nil {
 		t.Errorf("Unable to parse file: %s", err)
 		return
@@ -22,7 +22,7 @@ func TestGoFailure(t *testing.T) {
 }
 
 func TestGoPassed(t *testing.T) {
-	results, err := parseTestResults(new(core.BuildTarget), "src/test/test_data/go_test_pass.txt", false)
+	results, err := parseTestResultsFile(new(core.BuildTarget), "src/test/test_data/go_test_pass.txt")
 	if err != nil {
 		t.Errorf("Unable to parse file: %s", err)
 		return
@@ -35,7 +35,7 @@ func TestGoPassed(t *testing.T) {
 }
 
 func TestGoMultipleFailure(t *testing.T) {
-	results, err := parseTestResults(new(core.BuildTarget), "src/test/test_data/go_multiple_failure.txt", false)
+	results, err := parseTestResultsFile(new(core.BuildTarget), "src/test/test_data/go_multiple_failure.txt")
 	if err != nil {
 		t.Errorf("Unable to parse file: %s", err)
 		return
@@ -48,7 +48,7 @@ func TestGoMultipleFailure(t *testing.T) {
 }
 
 func TestGoSkipped(t *testing.T) {
-	results, err := parseTestResults(new(core.BuildTarget), "src/test/test_data/go_test_skip.txt", false)
+	results, err := parseTestResultsFile(new(core.BuildTarget), "src/test/test_data/go_test_skip.txt")
 	if err != nil {
 		t.Errorf("Unable to parse file: %s", err)
 		return
@@ -61,7 +61,7 @@ func TestGoSkipped(t *testing.T) {
 }
 
 func TestGoSubtests(t *testing.T) {
-	results, err := parseTestResults(new(core.BuildTarget), "src/test/test_data/go_subtests.txt", false)
+	results, err := parseTestResultsFile(new(core.BuildTarget), "src/test/test_data/go_subtests.txt")
 	if err != nil {
 		t.Errorf("Unable to parse file: %s", err)
 		return
@@ -71,7 +71,7 @@ func TestGoSubtests(t *testing.T) {
 }
 
 func TestBuckXML(t *testing.T) {
-	results, err := parseTestResults(new(core.BuildTarget), "src/test/test_data/junit.xml", false)
+	results, err := parseTestResultsFile(new(core.BuildTarget), "src/test/test_data/junit.xml")
 	if err != nil {
 		t.Errorf("Unable to parse file: %s", err)
 		return
@@ -84,7 +84,7 @@ func TestBuckXML(t *testing.T) {
 }
 
 func TestJUnitXML(t *testing.T) {
-	results, err := parseTestResults(new(core.BuildTarget), "src/test/test_data/xmlrunner-junit.xml", false)
+	results, err := parseTestResultsFile(new(core.BuildTarget), "src/test/test_data/xmlrunner-junit.xml")
 	if err != nil {
 		t.Errorf("Unable to parse file: %s", err)
 		return
@@ -97,7 +97,7 @@ func TestJUnitXML(t *testing.T) {
 }
 
 func TestKarmaXML(t *testing.T) {
-	results, err := parseTestResults(new(core.BuildTarget), "src/test/test_data/karma-junit.xml", false)
+	results, err := parseTestResultsFile(new(core.BuildTarget), "src/test/test_data/karma-junit.xml")
 	if err != nil {
 		t.Errorf("Unable to parse file: %s", err)
 		return
@@ -110,7 +110,7 @@ func TestKarmaXML(t *testing.T) {
 }
 
 func TestUnitTestXML(t *testing.T) {
-	results, err := parseTestResults(new(core.BuildTarget), "src/test/test_data/unittest.xml", false)
+	results, err := parseTestResultsFile(new(core.BuildTarget), "src/test/test_data/unittest.xml")
 	if err != nil {
 		t.Errorf("Unable to parse file: %s", err)
 		return
@@ -123,7 +123,7 @@ func TestUnitTestXML(t *testing.T) {
 }
 
 func TestGoSuite(t *testing.T) {
-	results, err := parseTestResults(new(core.BuildTarget), "src/test/test_data/go_test_suite.txt", false)
+	results, err := parseTestResultsFile(new(core.BuildTarget), "src/test/test_data/go_test_suite.txt")
 	if err != nil {
 		t.Errorf("Unable to parse file: %s", err)
 		return
@@ -136,7 +136,7 @@ func TestGoSuite(t *testing.T) {
 }
 
 func TestGoIgnoreUnknownOutput(t *testing.T) {
-	results, err := parseTestResults(new(core.BuildTarget), "src/test/test_data/go_test_ignore_logs.txt", false)
+	results, err := parseTestResultsFile(new(core.BuildTarget), "src/test/test_data/go_test_ignore_logs.txt")
 	if err != nil {
 		t.Errorf("Unable to parse file: %s", err)
 		return
@@ -149,7 +149,7 @@ func TestGoIgnoreUnknownOutput(t *testing.T) {
 }
 
 func TestGoFailIfUnknownTestPasses(t *testing.T) {
-	_, err := parseTestResults(new(core.BuildTarget), "src/test/test_data/go_test_unknown_test.txt", false)
+	_, err := parseTestResultsFile(new(core.BuildTarget), "src/test/test_data/go_test_unknown_test.txt")
 	assert.Error(t, err)
 }
 

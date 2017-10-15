@@ -1,0 +1,75 @@
+// Defines the interface to remote test workers.
+// This is similar to build/proto/worker.proto, but we do treat this as a
+// real RPC to a remote worker.
+// It is still fairly naive in that it transmits the required data as binary
+// through the RPC, one can easily imagine wanting something more performant
+// but that'd be quite a bit more complex.
+
+syntax = "proto3";
+
+package testworker;
+option java_package = "build.please.testworker";
+option java_outer_classname = "TestWorkerProto";
+
+service TestWorker {
+    // A request to test a single target.
+    rpc Test(TestRequest) returns (TestResponse);
+}
+
+message TestRequest {
+    // The rule label
+    BuildLabel rule = 1;
+    // The test binary to run.
+    DataFile binary = 2;
+    // The command to run.
+    string command = 9;
+    // Any additional data files required for the test at runtime.
+    repeated DataFile data = 3;
+    // True if the test is being run for coverage (i.e. through plz cover)
+    bool coverage = 4;
+    // Set of tests that should be run. If empty it indicates all of them.
+    repeated string test_name = 5;
+    // Timeout this test should be subject to, in seconds. Note that the RPC may have a similar
+    // timeout applied (for safety it may be slightly larger than this, but if this
+    // is nonzero the worker won't have forever to respond to the RPC).
+    int32 timeout = 6;
+    // Labels applied to this test. These may be interpreted by the runner to define
+    // its execution strategy (for example, to provide hints about test size).
+    repeated string labels = 7;
+    // True if the target will not produce test output.
+    bool no_output = 8;
+    // PATH environment variable to set for this test.
+    repeated string path = 10;
+}
+
+message TestResponse {
+    // The rule label
+    BuildLabel rule = 1;
+    // True if test was run with no structural problems. Note that this does not
+    // indicate test success / failure, just that we were able to run it as expected.
+    bool success = 2;
+    // Any messages reported. On failure these should indicate what's gone wrong.
+    repeated string messages = 3;
+    // True if the process exited successfully (i.e. exit code 0).
+    bool exit_success = 4;
+    // Test results (unparsed, just the file contents)
+    repeated bytes results = 5;
+    // Coverage results, if coverage was run.
+    bytes coverage = 6;
+    // Output of the test (i.e. what was printed to stderr).
+    bytes output = 7;
+}
+
+message BuildLabel {
+    // The package this rule lives in
+    string package_name = 1;
+    // The name of this rule.
+    string name = 2;
+}
+
+message DataFile {
+    // The filename that should be used
+    string filename = 1;
+    // Contents of it
+    bytes contents = 2;
+}

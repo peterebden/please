@@ -56,6 +56,11 @@ type cacheNode struct {
 	hashEnd   uint32
 }
 
+func init() {
+	// Change grpc to log using our implementation
+	grpclog.SetLogger(&grpcLogMabob{})
+}
+
 func (cache *rpcCache) Store(target *core.BuildTarget, key []byte, files ...string) {
 	if cache.isConnected() && cache.Writeable {
 		log.Debug("Storing %s in RPC cache...", target.Label)

@@ -63,7 +63,6 @@ func GeneralBuildEnvironment(config *Configuration) BuildEnv {
 // Note that we lie about the location of HOME in order to keep some tools happy.
 // We read this as being slightly more POSIX-compliant than not having it set at all...
 func BuildEnvironment(state *BuildState, target *BuildTarget, test bool) BuildEnv {
-	sources := target.AllSourcePaths(state.Graph)
 	env := GeneralBuildEnvironment(state.Config)
 	env = append(
 		env,
@@ -72,6 +71,7 @@ func BuildEnvironment(state *BuildState, target *BuildTarget, test bool) BuildEn
 		"NAME="+target.Label.Name,
 	)
 	if !test {
+		sources := target.AllSourcePaths(state.Graph)
 		tmpDir := path.Join(RepoRoot, target.TmpDir())
 		env = append(env,
 			"TMP_DIR="+tmpDir,
@@ -125,6 +125,7 @@ func BuildEnvironment(state *BuildState, target *BuildTarget, test bool) BuildEn
 			"TMP_DIR="+testDir,
 			"TMPDIR="+testDir,
 			"TEST_ARGS="+strings.Join(state.TestArgs, ","),
+			"RESULTS_FILE="+path.Join(RepoRoot, target.TestResultsFile()),
 		)
 		// Ideally we would set this to something useful even within a container, but it ends
 		// up being /tmp/test or something which just confuses matters.
@@ -132,7 +133,7 @@ func BuildEnvironment(state *BuildState, target *BuildTarget, test bool) BuildEn
 			env = append(env, "HOME="+testDir)
 		}
 		if state.NeedCoverage {
-			env = append(env, "COVERAGE=true", "COVERAGE_FILE="+path.Join(RepoRoot, target.TestDir(), "test.coverage"))
+			env = append(env, "COVERAGE=true", "COVERAGE_FILE="+path.Join(RepoRoot, target.TestCoverageFile()))
 		}
 		if len(target.Outputs()) > 0 {
 			env = append(env, "TEST="+path.Join(RepoRoot, target.TestDir(), target.Outputs()[0]))

@@ -14,8 +14,8 @@ go_get(
 
 go_get(
     name = 'cover',
-    get = 'golang.org/x/tools/cover',
-    revision = 'c0008c5889c0d5091cdfefd2bfb08bff96527879',
+    get = 'github.com/peterebden/tools/cover',
+    revision = '7c3632b8eb3e053fb1ce3374e288217838a837b9',
 )
 
 go_get(

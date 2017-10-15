@@ -17,21 +17,21 @@ func looksLikeJUnitXMLTestResults(b []byte) bool {
 	return bytes.HasPrefix(b, []byte{'<', '?', 'x', 'm', 'l'})
 }
 
-func parseJUnitXMLTestResults(bytes []byte) (core.TestResults, error) {
-	results := core.TestResults{}
+func parseJUnitXMLTestResults(bytes []byte) (*core.TestResults, error) {
+	results := &core.TestResults{}
 	junitCase := jUnitXMLTestResults{}
 	if err := xml.Unmarshal(bytes, &junitCase); err != nil {
 		return results, err
 	}
 	for _, test := range junitCase.Tests {
-		appendResult(test, &results)
+		appendResult(test, results)
 	}
 	for _, test := range junitCase.TestCases {
-		appendResult(test, &results)
+		appendResult(test, results)
 	}
 	for _, suite := range junitCase.TestSuites {
 		for _, test := range suite.TestCases {
-			appendResult(test, &results)
+			appendResult(test, results)
 		}
 	}
 	return results, nil

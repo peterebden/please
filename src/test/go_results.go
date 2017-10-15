@@ -19,8 +19,8 @@ import (
 var testStart = regexp.MustCompile("^=== RUN (.*)(?:-6)?$")
 var testResult = regexp.MustCompile("^ *--- (PASS|FAIL|SKIP): (.*)(?:-6)? \\((.*)s\\)$")
 
-func parseGoTestResults(data []byte) (core.TestResults, error) {
-	results := core.TestResults{}
+func parseGoTestResults(data []byte) (*core.TestResults, error) {
+	results := &core.TestResults{}
 	lines := bytes.Split(data, []byte{'\n'})
 	testsStarted := map[string]bool{}
 	for i, line := range lines {

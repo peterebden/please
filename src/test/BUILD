@@ -1,11 +1,17 @@
 go_library(
     name = 'test',
-    srcs = glob(['*.go'], excludes = ['*_test.go']),
+    srcs = glob(['*.go'], excludes = [
+        '*_test.go',
+        'stub.go',
+    ]),
     deps = [
         '//src/build',
         '//src/core',
         '//src/metrics',
+        '//src/test/proto:worker',
+        '//third_party/go:context',
         '//third_party/go:cover',
+        '//third_party/go:grpc',
         '//third_party/go:logging',
     ],
     visibility = ['PUBLIC'],
@@ -59,6 +65,20 @@ go_test(
     ],
     deps = [
         ':test',
+        '//third_party/go:testify',
+    ],
+)
+
+go_test(
+    name = 'remote_test',
+    srcs = ['remote_test.go'],
+    deps = [
+        ':test',
+        '//src/cli',
+        '//src/core',
+        '//src/test/proto:worker',
+        '//third_party/go:context',
+        '//third_party/go:grpc',
         '//third_party/go:testify',
     ],
 )

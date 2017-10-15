@@ -13,7 +13,7 @@ import (
 	"core"
 )
 
-func runContainerisedTest(state *core.BuildState, target *core.BuildTarget) ([]byte, error) {
+func runContainerisedTest(state *core.BuildState, target *core.BuildTarget) ([]byte, [][]byte, []byte, error) {
 	testDir := path.Join(core.RepoRoot, target.TestDir())
 	replacedCmd := build.ReplaceTestSequences(target, target.GetTestCommand())
 	replacedCmd += " " + strings.Join(state.TestArgs, " ")
@@ -47,10 +47,11 @@ func runContainerisedTest(state *core.BuildState, target *core.BuildTarget) ([]b
 	log.Debug("Running containerised test %s: %s", target.Label, strings.Join(command, " "))
 	_, out, err := core.ExecWithTimeout(target, target.TestDir(), nil, target.TestTimeout, state.Config.Test.Timeout, state.ShowAllOutput, command)
 	retrieveResultsAndRemoveContainer(target, cidfile, err == nil)
-	return out, err
+	results, coverage := LoadResultsAndCoverage(target)
+	return out, results, coverage, err
 }
 
-func runPossiblyContainerisedTest(state *core.BuildState, target *core.BuildTarget) (out []byte, err error) {
+func runPossiblyContainerisedTest(state *core.BuildState, target *core.BuildTarget) (out []byte, results [][]byte, coverage []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("%s", r)
@@ -63,13 +64,13 @@ func runPossiblyContainerisedTest(state *core.BuildState, target *core.BuildTarg
 				"containers are disabled in your .plzconfig.", target.Label)
 			return runTest(state, target)
 		}
-		out, err = runContainerisedTest(state, target)
+		out, results, coverage, err = runContainerisedTest(state, target)
 		if err != nil && state.Config.Docker.AllowLocalFallback {
 			log.Warning("Failed to run %s containerised: %s %s. Falling back to local version.",
 				target.Label, out, err)
 			return runTest(state, target)
 		}
-		return out, err
+		return out, results, coverage, err
 	}
 	return runTest(state, target)
 }

@@ -7,7 +7,7 @@
 package test
 
 import "bytes"
-import "golang.org/x/tools/cover"
+import "github.com/peterebden/tools/cover"
 
 import "core"
 
@@ -15,8 +15,8 @@ func looksLikeGoCoverageResults(results []byte) bool {
 	return bytes.HasPrefix(results, []byte("mode: "))
 }
 
-func parseGoCoverageResults(target *core.BuildTarget, coverage *core.TestCoverage, filename string) error {
-	profiles, err := cover.ParseProfiles(filename)
+func parseGoCoverageResults(target *core.BuildTarget, coverage *core.TestCoverage, data []byte) error {
+	profiles, err := cover.ParseProfileData(bytes.NewReader(data))
 	if err != nil {
 		return err
 	}

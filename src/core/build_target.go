@@ -1032,6 +1032,16 @@ func (target *BuildTarget) PostBuildOutputFileName() string {
 	return ".build_output_" + target.Label.Name
 }
 
+// TestResultsFile returns the name of the test results file in this target's temporary test dir.
+func (target *BuildTarget) TestResultsFile() string {
+	return path.Join(target.TestDir(), "test.results")
+}
+
+// TestCoverageFile returns the name of the coverage file in this target's temporary test dir.
+func (target *BuildTarget) TestCoverageFile() string {
+	return path.Join(target.TestDir(), "test.coverage")
+}
+
 // Parent finds the parent of a build target, or nil if the target is parentless.
 // Note that this is a fairly informal relationship; we identify it by labels with the convention of
 // a leading _ and trailing hashtag on child rules, rather than storing pointers between them in the graph.
