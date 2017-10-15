@@ -66,12 +66,13 @@ func assertExpected(t *testing.T, filename string, alignment int) {
 func TestAlignment(t *testing.T) {
 	for _, align := range []int{2, 4, 8, 12, 32} {
 		t.Run(fmt.Sprintf("%dByte", align), func(t *testing.T) {
-			f := NewFile(fmt.Sprintf("test_alignment_%d.zip", align), false)
+			filename := fmt.Sprintf("test_alignment_%d.zip", align)
+			f := NewFile(filename, false)
 			f.Align = align
 			err := f.AddZipFile("tools/jarcat/zip/test_data/test.zip")
 			require.NoError(t, err)
 			f.Close()
-			assertExpected(t, "add_zip_file_test.zip", 4)
+			assertExpected(t, filename, align)
 		})
 	}
 }

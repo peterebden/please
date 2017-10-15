@@ -22,6 +22,10 @@ import (
 var log = logging.MustGetLogger("zip")
 var modTime = time.Date(2001, time.January, 1, 0, 0, 0, 0, time.UTC)
 
+// fileHeaderLen is the length of a file header in a zipfile.
+// We need to know this to adjust alignment.
+const fileHeaderLen = 30
+
 // A File represents an output zipfile.
 type File struct {
 	f        io.WriteCloser
@@ -350,7 +354,7 @@ func (f *File) handleConcatenatedFiles() error {
 
 // addFile writes a file to the new writer.
 func (f *File) addFile(fh *zip.FileHeader, r io.Reader, crc uint32) error {
-	f.align()
+	f.align(fh)
 	fh.Flags = 0 // we're not writing a data descriptor after the file
 	comp := func(w io.Writer) (io.WriteCloser, error) { return nopCloser{w}, nil }
 	fh.SetModTime(modTime)
@@ -363,13 +367,13 @@ func (f *File) addFile(fh *zip.FileHeader, r io.Reader, crc uint32) error {
 
 // WriteFile writes a complete file to the writer.
 func (f *File) WriteFile(filename string, data []byte) error {
-	f.align()
 	fh := zip.FileHeader{
 		Name:   filename,
 		Method: zip.Deflate,
 	}
 	fh.SetModTime(modTime)
 
+	f.align(&fh)
 	if fw, err := f.w.CreateHeader(&fh); err != nil {
 		return err
 	} else if _, err := fw.Write(data); err != nil {
@@ -380,10 +384,14 @@ func (f *File) WriteFile(filename string, data []byte) error {
 }
 
 // align writes any necessary bytes to align the next file.
-func (f *File) align() {
+func (f *File) align(h *zip.FileHeader) {
 	if f.Align != 0 {
-		if padding := f.w.Offset() % f.Align; padding != 0 {
-			f.w.WriteRaw(bytes.Repeat([]byte{0}, padding))
+		// We have to allow space for writing the header, so we predict what the offset will be after it.
+		fileStart := f.w.Offset() + fileHeaderLen + len(h.Name) + len(h.Extra)
+		if overlap := fileStart % f.Align; overlap != 0 {
+			if err := f.w.WriteRaw(bytes.Repeat([]byte{0}, f.Align-overlap)); err != nil {
+				log.Error("Failed to pad file: %s", err)
+			}
 		}
 	}
 }
