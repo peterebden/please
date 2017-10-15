@@ -48,6 +48,8 @@ type File struct {
 	AddInitPy bool
 	// DirEntries makes the writer add empty directory entries.
 	DirEntries bool
+	// Align aligns entries to a multiple of this many bytes.
+	Align int
 	// files tracks the files that we've written so far.
 	files map[string]fileRecord
 	// concatenatedFiles tracks the files that are built up as we go.
@@ -348,6 +350,7 @@ func (f *File) handleConcatenatedFiles() error {
 
 // addFile writes a file to the new writer.
 func (f *File) addFile(fh *zip.FileHeader, r io.Reader, crc uint32) error {
+	f.align()
 	fh.Flags = 0 // we're not writing a data descriptor after the file
 	comp := func(w io.Writer) (io.WriteCloser, error) { return nopCloser{w}, nil }
 	fh.SetModTime(modTime)
@@ -360,6 +363,7 @@ func (f *File) addFile(fh *zip.FileHeader, r io.Reader, crc uint32) error {
 
 // WriteFile writes a complete file to the writer.
 func (f *File) WriteFile(filename string, data []byte) error {
+	f.align()
 	fh := zip.FileHeader{
 		Name:   filename,
 		Method: zip.Deflate,
@@ -373,6 +377,15 @@ func (f *File) WriteFile(filename string, data []byte) error {
 	}
 	f.addExistingFile(filename, filename, 0, 0, 0)
 	return nil
+}
+
+// align writes any necessary bytes to align the next file.
+func (f *File) align() {
+	if f.Align != 0 {
+		if padding := f.w.Offset() % f.Align; padding != 0 {
+			f.w.WriteRaw(bytes.Repeat([]byte{0}, padding))
+		}
+	}
 }
 
 // WriteDir writes a directory entry to the writer.
@@ -392,7 +405,7 @@ func (f *File) WriteDir(filename string) error {
 
 // WritePreamble writes a preamble to the zipfile.
 func (f *File) WritePreamble(preamble []byte) error {
-	return f.w.WritePreamble(preamble)
+	return f.w.WriteRaw(preamble)
 }
 
 // StripBytecodeTimestamp strips a timestamp from a .pyc or .pyo file.

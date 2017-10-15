@@ -127,6 +127,7 @@ func main() {
 	f.IncludeOther = opts.IncludeOther
 	f.AddInitPy = opts.AddInitPy
 	f.DirEntries = !opts.NoDirEntries
+	f.Align = opts.Align
 
 	if opts.PreambleFrom != "" {
 		opts.Preamble = mustReadPreamble(opts.PreambleFrom)

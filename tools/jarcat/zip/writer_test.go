@@ -1,7 +1,9 @@
 package zip
 
 import (
+	"archive/zip"
 	"bytes"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -9,8 +11,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"third_party/go/zip"
 )
 
 var expectedModTime = time.Date(2001, time.January, 1, 0, 0, 0, 0, time.UTC)
@@ -21,7 +21,7 @@ func TestAddZipFile(t *testing.T) {
 	err := f.AddZipFile("tools/jarcat/zip/test_data/test.zip")
 	require.NoError(t, err)
 	f.Close()
-	assertExpected(t, "add_zip_file_test.zip")
+	assertExpected(t, "add_zip_file_test.zip", 0)
 }
 
 func TestAddFiles(t *testing.T) {
@@ -30,10 +30,10 @@ func TestAddFiles(t *testing.T) {
 	err := f.AddFiles("tools")
 	require.NoError(t, err)
 	f.Close()
-	assertExpected(t, "add_files_test.zip")
+	assertExpected(t, "add_files_test.zip", 0)
 }
 
-func assertExpected(t *testing.T, filename string) {
+func assertExpected(t *testing.T, filename string, alignment int) {
 	r, err := zip.OpenReader(filename)
 	if err != nil {
 		t.Fatalf("Failed to reopen zip file: %s", err)
@@ -54,5 +54,24 @@ func assertExpected(t *testing.T, filename string) {
 		require.NoError(t, err)
 		assert.True(t, strings.HasPrefix(buf.String(), files[i].Prefix))
 		fr.Close()
+
+		if alignment > 0 {
+			offset, err := f.DataOffset()
+			assert.NoError(t, err)
+			assert.True(t, int(offset)%alignment == 0)
+		}
+	}
+}
+
+func TestAlignment(t *testing.T) {
+	for _, align := range []int{2, 4, 8, 12, 32} {
+		t.Run(fmt.Sprintf("%dByte", align), func(t *testing.T) {
+			f := NewFile(fmt.Sprintf("test_alignment_%d.zip", align), false)
+			f.Align = align
+			err := f.AddZipFile("tools/jarcat/zip/test_data/test.zip")
+			require.NoError(t, err)
+			f.Close()
+			assertExpected(t, "add_zip_file_test.zip", 4)
+		})
 	}
 }
