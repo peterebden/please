@@ -35,9 +35,7 @@ func TestAddFiles(t *testing.T) {
 
 func assertExpected(t *testing.T, filename string, alignment int) {
 	r, err := zip.OpenReader(filename)
-	if err != nil {
-		t.Fatalf("Failed to reopen zip file: %s", err)
-	}
+	require.NoError(t, err)
 	defer r.Close()
 	files := []struct{ Name, Prefix string }{
 		{"build_step.go", "// Implementation of Step interface."},
@@ -75,4 +73,24 @@ func TestAlignment(t *testing.T) {
 			assertExpected(t, filename, align)
 		})
 	}
+}
+
+func TestStoreSuffix(t *testing.T) {
+	// This is a sort of Android-esque example (storing PNGs at 4-byte alignment)
+	f := NewFile("test_store_suffix.zip", false)
+	f.Suffix = []string{"zip"}
+	f.StoreSuffix = []string{"png"}
+	f.Align = 4
+	f.IncludeOther = true
+	err := f.AddFiles("tools")
+	require.NoError(t, err)
+	f.Close()
+
+	r, err := zip.OpenReader("test_store_suffix.zip")
+	require.NoError(t, err)
+	defer r.Close()
+	assert.Equal(t, 3, len(r.File))
+	png := r.File[0]
+	assert.Equal(t, "tools/jarcat/zip/test_data/kitten.png", png.Name)
+	assert.Equal(t, zip.Store, png.Method)
 }

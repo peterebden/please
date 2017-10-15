@@ -71,6 +71,7 @@ var opts = struct {
 	DumbMode              bool              `short:"d" long:"dumb" description:"Dumb mode, an alias for --suffix='' --exclude_suffix='' --include_other"`
 	NoDirEntries          bool              `short:"n" long:"nodir_entries" description:"Don't add directory entries to zip"`
 	RenameDirs            map[string]string `short:"r" long:"rename_dir" description:"Rename directories within zip file"`
+	StoreSuffix           []string          `short:"u" long:"store_suffix" description:"Suffix of filenames to store instead of deflate (i.e. without compression). Note that this only affects files found with --include_other."`
 
 	Tar    bool     `long:"tar" description:"Write a tarball instead of a zipfile. Note that most other flags are not honoured if this is given."`
 	Gzip   bool     `short:"z" long:"gzip" description:"Apply gzip compression to the tar file. Only has an effect if --tar is passed."`
@@ -124,6 +125,7 @@ func main() {
 	f.StripPrefix = opts.StripPrefix
 	f.Suffix = opts.Suffix
 	f.ExcludeSuffix = opts.ExcludeSuffix
+	f.StoreSuffix = opts.StoreSuffix
 	f.IncludeOther = opts.IncludeOther
 	f.AddInitPy = opts.AddInitPy
 	f.DirEntries = !opts.NoDirEntries

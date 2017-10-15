@@ -15,7 +15,7 @@ go_library(
 go_test(
     name = 'writer_test',
     srcs = ['writer_test.go'],
-    data = ['test_data/test.zip'],
+    data = ['test_data'],
     deps = [
         ':zip',
     ],

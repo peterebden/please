@@ -46,6 +46,8 @@ type File struct {
 	Suffix []string
 	// ExcludeSuffix is a list of suffixes that are excluded from the file scan.
 	ExcludeSuffix []string
+	// StoreSuffix is a list of file suffixes that will be stored instead of deflated.
+	StoreSuffix []string
 	// IncludeOther will make the file scan include other files that are not part of a zip file.
 	IncludeOther bool
 	// AddInitPy will make the writer add __init__.py files to all directories that don't already have one on close.
@@ -87,8 +89,10 @@ func NewFile(output string, strict bool) *File {
 // Close must be called before the File is destroyed.
 func (f *File) Close() {
 	f.handleConcatenatedFiles()
-	if err := f.AddInitPyFiles(); err != nil {
-		log.Fatalf("%s", err)
+	if f.AddInitPy {
+		if err := f.AddInitPyFiles(); err != nil {
+			log.Fatalf("%s", err)
+		}
 	}
 	if err := f.w.Close(); err != nil {
 		log.Fatalf("Failed to finalise zip file: %s", err)
@@ -372,6 +376,13 @@ func (f *File) WriteFile(filename string, data []byte) error {
 		Method: zip.Deflate,
 	}
 	fh.SetModTime(modTime)
+
+	for _, ext := range f.StoreSuffix {
+		if strings.HasSuffix(filename, ext) {
+			fh.Method = zip.Store
+			break
+		}
+	}
 
 	f.align(&fh)
 	if fw, err := f.w.CreateHeader(&fh); err != nil {
