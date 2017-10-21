@@ -1,18 +1,9 @@
-go_library(
-    name = 'signer',
-    srcs = ['signer.go'],
+go_binary(
+    name = 'release_signer',
+    srcs = ['main.go'],
     deps = [
-        '//third_party/go:openpgp',
+        '//src/cli',
+        '//tools/release_signer/signer',
     ],
-)
-
-go_test(
-    name = 'signer_test',
-    srcs = ['signer_test.go'],
-    data = ['test_data'],
-    deps = [
-        ':signer',
-        '//third_party/go:openpgp',
-        '//third_party/go:testify',
-    ],
+    visibility = ['//package:all'],
 )
