@@ -9,8 +9,10 @@ import (
 )
 
 const (
-	pubKey = "tools/release_signer/signer/test_data/pub.gpg"
-	secKey = "tools/release_signer/signer/test_data/sec.gpg"
+	pubKey  = "tools/release_signer/signer/test_data/pub.gpg"
+	secKey  = "tools/release_signer/signer/test_data/sec.gpg"
+	testTxt = "tools/release_signer/signer/test_data/test.txt"
+	badTxt  = "tools/release_signer/signer/test_data/bad.txt"
 )
 
 func must(err error) {
@@ -33,15 +35,35 @@ func verifyFile(signed, signature, keyring string) bool {
 }
 
 func TestSignFile(t *testing.T) {
-	assert.NoError(t, SignFile("tools/release_signer/signer/test_data/test.txt", "test.txt.asc", secKey, "test@please.build", "testtest"))
-	assert.True(t, verifyFile("tools/release_signer/signer/test_data/test.txt", "test.txt.asc", pubKey))
+	assert.NoError(t, SignFile(testTxt, "test.txt.asc", secKey, "test@please.build", "testtest"))
+	assert.True(t, verifyFile(testTxt, "test.txt.asc", pubKey))
 }
 
 func TestSignFileBadPassphrase(t *testing.T) {
-	assert.Error(t, SignFile("tools/release_signer/signer/test_data/test.txt", "test.txt.asc", secKey, "test@please.build", "nope"))
+	assert.Error(t, SignFile(testTxt, "test.txt.asc", secKey, "test@please.build", "nope"))
 }
 
 func TestSignFileBadSignature(t *testing.T) {
-	assert.NoError(t, SignFile("tools/release_signer/signer/test_data/test.txt", "test.txt.asc", secKey, "test@please.build", "testtest"))
-	assert.False(t, verifyFile("tools/release_signer/signer/test_data/bad.txt", "test.txt.asc", pubKey))
+	assert.NoError(t, SignFile(testTxt, "test.txt.asc", secKey, "test@please.build", "testtest"))
+	assert.False(t, verifyFile(badTxt, "test.txt.asc", pubKey))
+}
+
+func TestSignFileUnknownUser(t *testing.T) {
+	assert.Error(t, SignFile(testTxt, "test.txt.asc", secKey, "not@please.build", "testtest"))
+}
+
+func TestSignFileMissingKeyring(t *testing.T) {
+	assert.Error(t, SignFile(testTxt, "test.txt.asc", "doesnt_exist", "test@please.build", "testtest"))
+}
+
+func TestSignFileBadKeyring(t *testing.T) {
+	assert.Error(t, SignFile(testTxt, "test.txt.asc", badTxt, "test@please.build", "testtest"))
+}
+
+func TestSignFileMissingInput(t *testing.T) {
+	assert.Error(t, SignFile("doesnt_exist", "test.txt.asc", secKey, "test@please.build", "testtest"))
+}
+
+func TestSignFileCantOutput(t *testing.T) {
+	assert.Error(t, SignFile(testTxt, "dir/doesnt/exist", secKey, "test@please.build", "testtest"))
 }
