@@ -59,3 +59,12 @@ go_test(
         '//third_party/go:testify',
     ],
 )
+
+go_test(
+    name = 'dir_cache_test',
+    srcs = ['dir_cache_test.go'],
+    deps = [
+        ':cache',
+        '//third_party/go:testify',
+    ],
+)

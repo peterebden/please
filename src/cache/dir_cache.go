@@ -26,6 +26,7 @@ type dirCache struct {
 func (cache *dirCache) Store(target *core.BuildTarget, key []byte, files ...string) {
 	cacheDir := cache.getPath(target, key)
 	tmpDir := cacheDir + "=" // Temp dir which we'll move when it's ready.
+	cache.markDir(cacheDir)
 	// Clear out anything that might already be there.
 	if err := os.RemoveAll(cacheDir); err != nil {
 		log.Warning("Failed to remove existing cache directory %s: %s", cacheDir, err)
@@ -34,7 +35,6 @@ func (cache *dirCache) Store(target *core.BuildTarget, key []byte, files ...stri
 		log.Warning("Failed to create cache directory %s: %s", tmpDir, err)
 		return
 	}
-	cache.markDir(cacheDir)
 	for out := range cacheArtifacts(target, files...) {
 		cache.storeFile(target, out, tmpDir)
 	}
@@ -217,6 +217,9 @@ func (cache *dirCache) clean(highWaterMark, lowWaterMark uint64) {
 			// 28 == length of 20-byte sha1 hash, encoded to base64, which always gets a trailing =
 			// as padding so we can check that to be "sure".
 			// Also 29 in case we appended an extra = (see below)
+			if cache.isMarked(path) {
+				return filepath.SkipDir // Already handled
+			}
 			size, err := findSize(path)
 			if err != nil {
 				return err
