@@ -30,17 +30,36 @@ func inCache(target *core.BuildTarget) bool {
 }
 
 func TestStoreAndRetrieve(t *testing.T) {
-	cache := makeCache("0", "10M")
-	target := makeTarget("//test1:target1", 0)
+	cache := makeCache()
+	target := makeTarget("//test1:target1", 20)
 	cache.Store(target, hash)
 	// Should now exist in cache at this path
 	assert.True(t, inCache(target))
+	assert.True(t, cache.Retrieve(target, hash))
+	// Should be able to store it again without problems
+	cache.Store(target, hash)
+	assert.True(t, inCache(target))
+	assert.True(t, cache.Retrieve(target, hash))
 }
 
-func makeCache(lowWaterMark, highWaterMark string) *dirCache {
+func TestClean(t *testing.T) {
+	cache := makeCache()
+	target1 := makeTarget("//test1:target1", 2000)
+	cache.Store(target1, hash)
+	assert.True(t, inCache(target1))
+	target2 := makeTarget("//test1:target2", 2000)
+	cache.Store(target2, hash)
+	assert.True(t, inCache(target2))
+	// Doesn't clean anything this time because the high water mark is sufficiently high
+	totalSize := cache.clean(20000, 1000)
+	assert.EqualValues(t, 12000, totalSize)
+	assert.True(t, inCache(target1))
+	assert.True(t, inCache(target2))
+}
+
+func makeCache() *dirCache {
 	config := core.DefaultConfiguration()
-	config.Cache.DirCacheLowWaterMark.UnmarshalFlag(lowWaterMark)
-	config.Cache.DirCacheHighWaterMark.UnmarshalFlag(highWaterMark)
+	config.Cache.DirClean = false // We will do this explicitly
 	return newDirCache(config)
 }
 

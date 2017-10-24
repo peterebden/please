@@ -205,7 +205,8 @@ func findSize(path string) (uint64, error) {
 }
 
 // clean runs background cleaning of this cache until the process exits.
-func (cache *dirCache) clean(highWaterMark, lowWaterMark uint64) {
+// Returns the total size of the cache after it's finished.
+func (cache *dirCache) clean(highWaterMark, lowWaterMark uint64) uint64 {
 	entries := []cacheEntry{}
 	var totalSize uint64
 	if err := filepath.Walk(cache.Dir, func(path string, info os.FileInfo, err error) error {
@@ -236,11 +237,11 @@ func (cache *dirCache) clean(highWaterMark, lowWaterMark uint64) {
 		}
 	}); err != nil {
 		log.Error("error walking cache directory: %s\n", err)
-		return
+		return totalSize
 	}
 	log.Info("Total cache size: %s", humanize.Bytes(uint64(totalSize)))
 	if totalSize < highWaterMark {
-		return // Nothing to do, cache is small enough.
+		return totalSize // Nothing to do, cache is small enough.
 	}
 	// OK, we need to slim it down a bit. We implement a simple LRU algorithm.
 	sort.Slice(entries, func(i, j int) bool {
@@ -271,4 +272,5 @@ func (cache *dirCache) clean(highWaterMark, lowWaterMark uint64) {
 			break
 		}
 	}
+	return totalSize
 }
