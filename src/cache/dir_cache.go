@@ -19,14 +19,14 @@ import (
 
 type dirCache struct {
 	Dir   string
-	added map[string]struct{}
+	added map[string]uint64
 	mutex sync.Mutex
 }
 
 func (cache *dirCache) Store(target *core.BuildTarget, key []byte, files ...string) {
 	cacheDir := cache.getPath(target, key)
 	tmpDir := cacheDir + "=" // Temp dir which we'll move when it's ready.
-	cache.markDir(cacheDir)
+	cache.markDir(cacheDir, 0)
 	// Clear out anything that might already be there.
 	if err := os.RemoveAll(cacheDir); err != nil {
 		log.Warning("Failed to remove existing cache directory %s: %s", cacheDir, err)
@@ -45,16 +45,17 @@ func (cache *dirCache) Store(target *core.BuildTarget, key []byte, files ...stri
 
 func (cache *dirCache) StoreExtra(target *core.BuildTarget, key []byte, out string) {
 	path := cache.getPath(target, key)
-	cache.markDir(path)
-	cache.storeFile(target, out, path)
+	cache.markDir(path, 0)
+	size := cache.storeFile(target, out, path)
+	cache.markDir(path, size)
 }
 
-func (cache *dirCache) storeFile(target *core.BuildTarget, out, cacheDir string) {
+func (cache *dirCache) storeFile(target *core.BuildTarget, out, cacheDir string) uint64 {
 	log.Debug("Storing %s: %s in dir cache...", target.Label, out)
 	if dir := path.Dir(out); dir != "." {
 		if err := os.MkdirAll(path.Join(cacheDir, dir), core.DirPermissions); err != nil {
 			log.Warning("Failed to create cache directory %s: %s", path.Join(cacheDir, dir), err)
-			return
+			return 0
 		}
 	}
 	outFile := path.Join(core.RepoRoot, target.OutDir(), out)
@@ -64,11 +65,15 @@ func (cache *dirCache) storeFile(target *core.BuildTarget, out, cacheDir string)
 		log.Warning("Failed to remove existing cached file %s: %s", cachedFile, err)
 	} else if err := os.MkdirAll(cacheDir, core.DirPermissions); err != nil {
 		log.Warning("Failed to create cache directory %s: %s", cacheDir, err)
-		return
+		return 0
 	} else if err := core.RecursiveCopyFile(outFile, cachedFile, fileMode(target), true, true); err != nil {
 		// Cannot hardlink files into the cache, must copy them for reals.
 		log.Warning("Failed to store cache file %s: %s", cachedFile, err)
 	}
+	// TODO(peterebden): This is a little inefficient, it would be better to track the size in
+	//                   RecursiveCopyFile rather than walking again.
+	size, _ := findSize(cachedFile)
+	return size
 }
 
 func (cache *dirCache) Retrieve(target *core.BuildTarget, key []byte) bool {
@@ -137,24 +142,24 @@ func (cache *dirCache) getPath(target *core.BuildTarget, key []byte) string {
 }
 
 // markDir marks a directory as added to the cache, which saves it from later deletion.
-func (cache *dirCache) markDir(path string) {
+func (cache *dirCache) markDir(path string, size uint64) {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
-	cache.added[path] = struct{}{}
-	cache.added[path+"="] = struct{}{}
+	cache.added[path] = size
+	cache.added[path+"="] = size
 }
 
 // isMarked returns true if a directory has previously been passed to markDir.
-func (cache *dirCache) isMarked(path string) bool {
+func (cache *dirCache) isMarked(path string) (uint64, bool) {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
-	_, present := cache.added[path]
-	return present
+	size, present := cache.added[path]
+	return size, present
 }
 
 func newDirCache(config *core.Configuration) *dirCache {
 	cache := &dirCache{
-		added: map[string]struct{}{},
+		added: map[string]uint64{},
 	}
 	// Absolute paths are allowed. Relative paths are interpreted relative to the repo root.
 	if config.Cache.Dir[0] == '/' {
@@ -218,7 +223,8 @@ func (cache *dirCache) clean(highWaterMark, lowWaterMark uint64) uint64 {
 			// 28 == length of 20-byte sha1 hash, encoded to base64, which always gets a trailing =
 			// as padding so we can check that to be "sure".
 			// Also 29 in case we appended an extra = (see below)
-			if cache.isMarked(path) {
+			if size, marked := cache.isMarked(path); marked {
+				totalSize += size
 				return filepath.SkipDir // Already handled
 			}
 			size, err := findSize(path)
@@ -252,7 +258,7 @@ func (cache *dirCache) clean(highWaterMark, lowWaterMark uint64) uint64 {
 		return entries[i].Atime < entries[j].Atime
 	})
 	for _, entry := range entries {
-		if cache.isMarked(entry.Path) {
+		if _, marked := cache.isMarked(entry.Path); marked {
 			continue
 		}
 
