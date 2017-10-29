@@ -11,8 +11,13 @@ RUN emerge -q python:3.5 net-misc/curl unzip dev-vcs/git
 RUN emerge -q --newuse world
 
 # Go and Java, protobufs, linter
-RUN emerge -q dev-lang/go virtual/jdk, dev-libs/protobuf dev-go/golint
+# TODO(peterebden): Move this make.conf file up and upgrade portage earlier on.
+COPY make.conf.2 /etc/portage/make.conf
+# Unsure why sandbox breaks here?
+RUN FEATURES="-sandbox -usersandbox" emerge -q dev-lang/go
+RUN emerge -q virtual/jdk dev-libs/protobuf dev-go/golint
 
-# Login message
-COPY motd.txt /etc/motd
+# TODO move this to a more logical spot too.
+RUN emerge -q dev-python/cffi
+
 WORKDIR /tmp

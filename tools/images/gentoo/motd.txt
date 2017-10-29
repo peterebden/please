@@ -1,7 +1,0 @@
-This is a prebuilt Gentoo Linux image which contains a base
-system capable of building Please.
-
-Run the following to get started:
- git clone https://github.com/thought-machine/please.git
- cd please
- ./bootstrap.sh
