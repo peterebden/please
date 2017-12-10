@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 
 	"github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -39,10 +40,11 @@ func init() {
 
 // A RPCCacheServer implements our RPC cache, including communication in a cluster.
 type RPCCacheServer struct {
-	cache        *Cache
-	readonlyKeys map[string]*x509.Certificate
-	writableKeys map[string]*x509.Certificate
-	cluster      *cluster.Cluster
+	cache                                                                          *Cache
+	readonlyKeys                                                                   map[string]*x509.Certificate
+	writableKeys                                                                   map[string]*x509.Certificate
+	cluster                                                                        *cluster.Cluster
+	retrievedCounter, storedCounter, retrievedBytes, storedBytes, retrieveFailures *prometheus.CounterVec
 }
 
 // Store implements the Store RPC to store an artifact in the cache.
@@ -54,6 +56,14 @@ func (r *RPCCacheServer) Store(ctx context.Context, req *pb.StoreRequest) (*pb.S
 	if success && r.cluster != nil {
 		// Replicate this artifact to another node. Doesn't have to be done synchronously.
 		go r.cluster.ReplicateArtifacts(req)
+	}
+	if success {
+		r.storedCounter.WithLabelValues(req.Arch).Inc()
+		total := 0
+		for _, artifact := range artifacts {
+			total += len(artifact.Body)
+		}
+		r.storedBytes.WithLabelValues(req.Arch).Add(float64(total))
 	}
 	return &pb.StoreResponse{Success: success}, nil
 }
@@ -82,12 +92,15 @@ func (r *RPCCacheServer) Retrieve(ctx context.Context, req *pb.RetrieveRequest) 
 	response := pb.RetrieveResponse{Success: true}
 	arch := req.Os + "_" + req.Arch
 	hash := base64.RawURLEncoding.EncodeToString(req.Hash)
+	total := 0
+	archBytes := r.retrievedBytes.WithLabelValues(req.Arch)
 	for _, artifact := range req.Artifacts {
 		root := path.Join(arch, artifact.Package, artifact.Target, hash)
 		fileRoot := path.Join(root, artifact.File)
 		art, err := r.cache.RetrieveArtifact(fileRoot)
 		if err != nil {
 			log.Debug("Failed to retrieve artifact %s: %s", fileRoot, err)
+			r.retrieveFailures.WithLabelValues(req.Arch).Inc()
 			return &pb.RetrieveResponse{Success: false}, nil
 		}
 		for name, body := range art {
@@ -97,8 +110,10 @@ func (r *RPCCacheServer) Retrieve(ctx context.Context, req *pb.RetrieveRequest) 
 				File:    name[len(root)+1:],
 				Body:    body,
 			})
+			archBytes.Add(float64(len(body)))
 		}
 	}
+	r.retrievedCounter.WithLabelValues(req.Arch).Inc()
 	return &response, nil
 }
 
@@ -247,12 +262,40 @@ func BuildGrpcServer(port int, cache *Cache, cluster *cluster.Cluster, keyFile, 
 			}
 		}
 	}
-	r2 := &RPCServer{cache: cache, cluster: cluster}
+	r2 := &RPCServer{
+		cache:   cache,
+		cluster: cluster,
+		retrievedCounter: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "retrieved_count",
+			Help: "Number of artifacts successfully retrieved",
+		}, []string{"arch"}),
+		storedCounter: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "stored_count",
+			Help: "Number of artifacts successfully stored",
+		}, []string{"arch"}),
+		retrievedBytes: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "retrieved_bytes",
+			Help: "Number of bytes successfully retrieved",
+		}, []string{"arch"}),
+		storedBytes: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "stored_bytes",
+			Help: "Number of bytes successfully stored",
+		}, []string{"arch"}),
+		retrieveFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "retrieve_failures",
+			Help: "Number of failed retrieval attempts",
+		}, []string{"arch"}),
+	}
 	pb.RegisterRpcCacheServer(s, r)
 	pb.RegisterRpcServerServer(s, r2)
 	healthserver := health.NewServer()
 	healthserver.SetServingStatus("plz-rpc-cache", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(s, healthserver)
+	prometheus.MustRegister(r2.retrievedCounter)
+	prometheus.MustRegister(r2.storedCounter)
+	prometheus.MustRegister(r2.retrievedBytes)
+	prometheus.MustRegister(r2.storedBytes)
+	prometheus.MustRegister(r2.retrieveFailures)
 	return s, lis
 }
 
