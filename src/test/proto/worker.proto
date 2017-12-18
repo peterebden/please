@@ -4,16 +4,22 @@
 // It is still fairly naive in that it transmits the required data as binary
 // through the RPC, one can easily imagine wanting something more performant
 // but that'd be quite a bit more complex.
+//
+// There is also a separate service that coordinates the test runners; for performance
+// reasons it doesn't receive all communications so that it doesn't become a bottleneck.
 
 syntax = "proto3";
 
 package testworker;
-option java_package = "build.please.testworker";
-option java_outer_classname = "TestWorkerProto";
 
 service TestWorker {
     // A request to test a single target.
     rpc Test(TestRequest) returns (TestResponse);
+}
+
+service TestCoordinator {
+    // A request to get a test client.
+    rpc GetClient(ClientRequest) returns (ClientResponse);
 }
 
 message TestRequest {
@@ -72,4 +78,19 @@ message DataFile {
     string filename = 1;
     // Contents of it
     bytes contents = 2;
+}
+
+message ClientRequest {
+    // The rule label
+    BuildLabel rule = 1;
+    // Labels applied to this test. These may be interpreted by the coordinator to
+    // define which worker receives the test.
+    repeated string labels = 2;
+}
+
+message ClientResponse {
+    // True if a client was successfully found, false if not.
+    bool success = 1;
+    // URL of the client.
+    string client_url = 2;
 }

@@ -3,6 +3,7 @@
 package test
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -13,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -24,17 +24,30 @@ import (
 
 const remoteConnTimeout = 2 * time.Second
 
+type remoteCoordinator struct {
+	sync.Mutex
+	workers []*remoteWorker
+	init    sync.Once
+	client  pb.TestCoordinatorClient
+}
+
 type remoteWorker struct {
 	client pb.TestWorkerClient
 	id     int
 }
 
+var coordinator remoteCoordinator
+
 // RunRemotely runs a single test on a remote worker.
 func (worker *remoteWorker) RunRemotely(state *core.BuildState, target *core.BuildTarget) {
-	client, err := manager.GetClient(state.Config)
+	output, results, coverage, err := worker.runRemotely(state, target)
 	if err != nil {
-		return nil, nil, nil, err
+		// Failed
 	}
+}
+
+// runRemotely does the real work of RunRemotely and returns the output, test results, coverage and any error encountered.
+func (worker *remoteWorker) runRemotely(state *core.BuildState, target *core.BuildTarget) (output, results, coverage []byte, err error) {
 	timeout := target.TestTimeout
 	if timeout == 0 {
 		timeout = time.Duration(state.Config.Test.Timeout)
@@ -93,69 +106,74 @@ func (worker *remoteWorker) RunRemotely(state *core.BuildState, target *core.Bui
 	return response.Output, response.Results, response.Coverage, nil
 }
 
-// Dial dials the remote server and returns true if successful.
-func (worker *remoteWorker) Dial() bool {
-	// TODO(peterebden): One day we will do TLS here.
-	conn, err := grpc.Dial(getAddress(config), grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(remoteConnTimeout))
-	if s, ok := status.FromError(err); ok && s.Code() == codes.ResourceExhausted {
-		// This is a transient error from the remote; it indicates that the server is
-		// already busy but we got it anyway. Retry once
-		log.Debug("Got busy remote, will retry: %s", s.Err())
-		conn, err = grpc.Dial(getAddress(config), grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(remoteConnTimeout))
+// GetRemoteWorker returns a remote client to be used for this target.
+// TODO(peterebden): eventually we may want to be able to reuse one for future targets too
+//                   to save on the setup / communication costs.
+func (coordinator *remoteCoordinator) GetRemoteWorker(config *core.Configuration, target *core.BuildTarget) *remoteWorker {
+	coordinator.init.Do(func() {
+		conn, err := grpc.Dial(config.Test.RemoteWorker, grpc.WithInsecure(), grpc.WithTimeout(remoteConnTimeout))
+		if err != nil {
+			log.Warning("Failed to connect to remote test coordinator: %s", err)
+			return
+		}
+		coordinator.client = pb.NewTestCoordinatorClient(conn)
+		coordinator.workers = make([]*remoteWorker, config.Test.NumRemoteWorkers)
+	})
+	// Handle failure from init func
+	if coordinator.client == nil {
+		return nil
 	}
+	// Take a worker slot
+	worker := coordinator.getAvailableSlot()
+	if worker == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), remoteConnTimeout)
+	defer cancel()
+	response, err := coordinator.client.GetClient(ctx, &ClientRequest{
+		Rule: &pb.BuildLabel{
+			PackageName: target.Label.PackageName,
+			Name:        target.Label.Name,
+		},
+		Labels: target.Labels,
+	})
 	if err != nil {
-		return false
+		log.Warning("Failed to communicate with remote test coordinator: %s", err)
+		coordinator.releaseSlot(worker)
+		return nil
+	} else if !response.Success {
+		log.Info("Remote test worker not available, will run locally.")
+		coordinator.releaseSlot(worker)
+		return nil
+	}
+	// Dial the client here; grpc-go's Dial is non-blocking so it's easier to handle this way.
+	conn, err := grpc.Dial(response.URL, grpc.WithInsecure(), grpc.WithTimeout(remoteConnTimeout))
+	if err != nil {
+		log.Warning("Failed to dial remote worker: %s", err)
+		coordinator.releaseSlot(worker)
+		return nil
 	}
 	worker.client = pb.NewTestWorkerClient(conn)
-	return true
+	return worker
 }
 
-// Release releases this client back to the worker pool when done.
-func (worker *remoteWorker) Release() {
-	// It's a little unfortunate that we can't use these, but we need to load balance each request.
-	// We might consider using grpclb or something in the future.
-	worker.client = nil
-	clientsLock.Lock()
-	defer clientsLock.Unlock()
-	availableRemoteClients = append(availableRemoteClients, *remoteWorker)
-}
-
-var availableRemoteClients []remoteWorker
-var clientsLock sync.Mutex
-var clientsOnce sync.Once
-
-// getRemoteClient returns a client of one of our remote test workers, or nil
-// if none is available right now.
-func getRemoteClient(config *core.Configuration) *remoteWorker {
-	clientsOnce.Do(func() {
-		availableRemoteClients = make([]remoteWorker, len(config.Test.NumRemoteWorkers))
-		for i := range availableRemoteClients {
-			availableRemoteClients[i].id = i
+// getSlot returns an available remote worker, or nil if none is available.
+func (coordinator *remoteCoordinator) getSlot() *remoteWorker {
+	coordinator.Lock()
+	defer coordinator.Unlock()
+	for i, w := range coordinator.workers {
+		if w == nil {
+			w = &remoteWorker{id: i}
+			coordinator.workers[i] = w
+			return w
 		}
-	})
-	clientsLock.Lock()
-	if len(availableRemoteClients == 0) {
-		clientsLock.Unlock()
-		return nil
 	}
-	client := &availableRemoteClients[0]
-	availableRemoteClients = availableRemoteClients[1:]
-	clientsLock.Unlock()
-	// Establish a connection to the remote server before we give this guy back.
-	if !client.Dial() {
-		// Didn't work, release the client.
-		client.Release()
-		return nil
-	}
-	return client
+	return nil
 }
 
-// getAddress returns a remote address from the given config.
-func getAddress(config *core.Configuration) string {
-	if len(config.Test.RemoteWorker) == 1 {
-		return config.Test.RemoteWorker[0]
-	}
-	return config.Test.RemoteWorker[rand.Intn(len(config.Test.RemoteWorker))].String()
+// releaseSlot returns a previously received remote worker to the pool.
+func (coordinator *remoteCoordinator) releaseSlot(w *remoteWorker) {
+	coordinator.workers[w.id] = nil
 }
 
 // canRunRemotely returns true if the given target can be run on a remote worker.

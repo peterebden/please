@@ -135,11 +135,11 @@ func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.B
 	}
 	// Run the target remotely if we can.
 	if canRunRemotely(state.Config, target) {
-		if client := getRemoteClient(state.Config); client != nil {
+		if worker := coordinator.GetRemoteWorker(state.Config, target); worker != nil {
 			// Will be run remotely, detach it from us.
 			// We must mark an extra task so the core knows it's not done yet.
 			state.AddActiveTarget()
-			go client.RunRemotely(state, target)
+			go worker.RunRemotely(state, target)
 			state.LogBuildResult(tid, label, core.TargetTestingRemote, "Testing remotely")
 			return
 		}
