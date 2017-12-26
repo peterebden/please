@@ -249,3 +249,9 @@ go_get(
     get = 'golang.org/x/crypto/openpgp',
     revision = '077efaa604f994162e3307fafe5954640763fc08',
 )
+
+go_get(
+    name = 'participle',
+    get = 'github.com/alecthomas/participle',
+    revision = '48f3ab340563c5a91f83efdc0dc3f14f5d9364a2',
+)
