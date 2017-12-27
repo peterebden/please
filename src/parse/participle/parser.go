@@ -24,11 +24,11 @@ func NewParser() *parser {
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
-	p, err := participle.Build(&fileInput{})
+	p, err := participle.Build(&fileInput{}, lexer)
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
-	return parser{parser: p}
+	return &parser{parser: p}
 }
 
 // Parse parses the contents of a single file in the BUILD language.
@@ -55,6 +55,6 @@ func (p *parser) parse(filename string) ([]*statement, error) {
 }
 
 // interpret runs a series of statements in the context of the given package.
-func (p *parser) interpret(state *core.BuildState, pkg *core.Package) error {
+func (p *parser) interpret(state *core.BuildState, pkg *core.Package, statements []*statement) error {
 	return nil
 }
