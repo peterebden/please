@@ -10,6 +10,7 @@ go_library(
         '//third_party/go:logging',
         '//third_party/go:participle',
     ],
+    visibility = ['//src/parse/...'],
 )
 
 go_test(
