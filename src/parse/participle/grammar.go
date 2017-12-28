@@ -8,11 +8,12 @@ type fileInput struct {
 
 // A statement is the type we work with externally the most; it's a single Python statement.
 type statement struct {
-	FuncDef *funcDef `"def" @@`
+	FuncDef *funcDef `  @@`
+	Pass    string   `| @"pass"`
 }
 
 type funcDef struct {
-	Name       string       `@Ident`
+	Name       string       `"def" @Ident`
 	Arguments  []*argument  `"(" [ @@ { "," @@ } ] ")"`
 	Colon      string       `@Colon`
 	Statements []*statement `@@`
