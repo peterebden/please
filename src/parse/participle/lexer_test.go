@@ -129,3 +129,32 @@ func TestLexFunctionArgs(t *testing.T) {
 	assertToken(t, l.Next(), ')', ")", 1, 51, 51)
 	assertToken(t, l.Next(), Colon, ":", 1, 52, 52)
 }
+
+const inputFunction = `
+python_library(
+    name = 'lib',
+    srcs = [
+        'lib1.py',
+        'lib2.py',
+    ],
+)
+`
+
+func TestMoreComplexFunction(t *testing.T) {
+	l := NewLexer().Lex(strings.NewReader(inputFunction))
+	assertToken(t, l.Next(), Ident, "python_library", 2, 1, 2)
+	assertToken(t, l.Next(), '(', "(", 2, 15, 16)
+	assertToken(t, l.Next(), Ident, "name", 3, 5, 22)
+	assertToken(t, l.Next(), '=', "=", 3, 10, 27)
+	assertToken(t, l.Next(), String, "lib", 3, 12, 29)
+	assertToken(t, l.Next(), ',', ",", 3, 17, 34)
+	assertToken(t, l.Next(), Ident, "srcs", 4, 5, 40)
+	assertToken(t, l.Next(), '=', "=", 4, 10, 45)
+	assertToken(t, l.Next(), '[', "[", 4, 12, 47)
+	assertToken(t, l.Next(), String, "lib1.py", 5, 9, 57)
+	assertToken(t, l.Next(), ',', ",", 5, 18, 66)
+	assertToken(t, l.Next(), String, "lib2.py", 6, 9, 76)
+	assertToken(t, l.Next(), ',', ",", 6, 18, 85)
+	assertToken(t, l.Next(), ']', "]", 6, 5, 86)
+
+}
