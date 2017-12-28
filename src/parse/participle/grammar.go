@@ -11,18 +11,23 @@ type fileInput struct {
 // support backoff (i.e. if an earlier entry matches to its completion but can't consume
 // following tokens, it doesn't then make another choice :( )
 type statement struct {
-	FuncDef *funcDef `  @@`
-	Pass    string   `| @"pass"`
-	Literal *literal `| @@`
-	Ident   *ident   `| @@`
+	Pass    string        `  @"pass"`
+	FuncDef *funcDef      `| @@`
+	For     *forStatement `| @@`
+	Literal *literal      `| @@`
+	Ident   *ident        `| @@`
 }
 
 type funcDef struct {
 	Name       string       `"def" @Ident`
-	Arguments  []*argument  `"(" [ @@ { "," @@ } ] ")"`
-	Colon      string       `@Colon`
-	Statements []*statement `@@`
-	End        string       `@Unindent`
+	Arguments  []*argument  `"(" [ @@ { "," @@ } ] ")" Colon`
+	Statements []*statement `@@ Unindent`
+}
+
+type forStatement struct {
+	Names      []string     `"for" @Ident [ { "," @Ident } ] "in"`
+	Expr       expression   `@@ Colon`
+	Statements []*statement `@@ Unindent`
 }
 
 type argument struct {
@@ -60,7 +65,7 @@ type call struct {
 }
 
 type list struct {
-	Values []*literal `{ @@ [ "," ] }`
+	Values []*expression `{ @@ [ "," ] }`
 }
 
 type dict struct {

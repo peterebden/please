@@ -93,3 +93,18 @@ func TestParseAssignments(t *testing.T) {
 	assert.Equal(t, "goofy", ass.Items[2].Key)
 	assert.Equal(t, "riku", ass.Items[2].Value.Ident.Name)
 }
+
+func TestForStatement(t *testing.T) {
+	statements, err := NewParser().parse("src/parse/participle/test_data/for_statement.build")
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(statements))
+
+	assert.NotNil(t, statements[0].Ident.Action.Assign)
+	assert.Equal(t, "LANGUAGES", statements[0].Ident.Name)
+	assert.Equal(t, 2, len(statements[0].Ident.Action.Assign.List.Values))
+
+	assert.NotNil(t, statements[1].For)
+	assert.Equal(t, []string{"language"}, statements[1].For.Names)
+	assert.Equal(t, "LANGUAGES", statements[1].For.Expr.Ident.Name)
+	assert.Equal(t, 1, len(statements[1].For.Statements))
+}

@@ -1,0 +1,11 @@
+LANGUAGES = [
+    'python',
+    'go',
+]
+
+for language in LANGUAGES:
+    proto_library(
+        name = language,
+        srcs = ['test.proto'],
+        languages = [language],  # This makes no sense really, but it's just a test so who cares.
+    )
