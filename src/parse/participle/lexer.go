@@ -15,7 +15,6 @@ const (
 	Ident
 	Int
 	String
-	EOL
 	Unindent
 )
 
@@ -25,7 +24,6 @@ var symbols = map[string]rune{
 	"Ident":    Ident,
 	"Int":      Int,
 	"String":   String,
-	"EOL":      EOL,
 	"Unindent": Unindent,
 }
 
@@ -110,7 +108,6 @@ func (l *lex) nextToken() lexer.Token {
 	case '\n':
 		// End of line, read indent to next non-space character
 		lastIndent := l.indent
-	nextLine:
 		l.line++
 		l.col = 0
 		l.indent = 0
@@ -119,16 +116,15 @@ func (l *lex) nextToken() lexer.Token {
 			l.col++
 			l.indent++
 		}
-		if l.b[l.i] == '\n' {
-			goto nextLine
-		}
 
 		// TODO(peterebden): Account for being within parentheses here so we don't
 		//                   emit pseudo-tokens during implicit line continuations.
-		if lastIndent < l.indent {
+		if lastIndent > l.indent {
+			pos.Line++ // Works better if it's at the new position
+			pos.Column = l.col + 1
 			return lexer.Token{Type: Unindent, Pos: pos}
 		}
-		return lexer.Token{Type: EOL, Pos: pos}
+		return l.nextToken()
 	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 		// Integer literal, consume all digits.
 		s := make([]byte, 0, 10)
@@ -142,10 +138,12 @@ func (l *lex) nextToken() lexer.Token {
 	case '"', '\'':
 		// String literal, consume to end.
 		if l.b[l.i] == b && l.b[l.i+1] == b {
+			l.i += 2 // Jump over initial quote
+			l.col += 2
 			return l.consumeTripleQuotedString(b, pos)
 		}
 		return l.consumeString(b, pos)
-	case '(', ')', '[', ']', '{', '}', ':', ',':
+	case '(', ')', '[', ']', '{', '}', ':', ',', '+', '=', '.':
 		return lexer.Token{Type: rune(b), Value: string(b), Pos: pos}
 	case '#':
 		// Comment character, consume to end of line.
@@ -154,6 +152,8 @@ func (l *lex) nextToken() lexer.Token {
 			l.col++
 		}
 		return l.nextToken() // Comments aren't tokens themselves.
+	default:
+		lexer.Panicf(pos, "Unknown character %c", b)
 	}
 	panic("unreachable")
 }
@@ -164,9 +164,9 @@ func (l *lex) consumeString(quote byte, pos lexer.Position) lexer.Token {
 	s = append(s, quote)
 	escaped := false
 	for {
+		c := l.b[l.i]
 		l.i++
 		l.col++
-		c := l.b[l.i]
 		if escaped {
 			if c == 'n' {
 				s = append(s, '\n')
@@ -197,12 +197,13 @@ func (l *lex) consumeTripleQuotedString(quote byte, pos lexer.Position) lexer.To
 	s := make([]byte, 0, 1000) // Assume it's going to be fairly big...
 	s = append(s, quote)       // We break this down to a single quote character so these are identical to the parser.
 	for {
+		c := l.b[l.i]
+		s = append(s, c)
 		l.i++
 		l.col++
-		s = append(s, l.b[l.i])
-		switch l.b[l.i] {
+		switch c {
 		case quote:
-			if l.b[l.i+1] == quote && l.b[l.i+2] == quote {
+			if l.b[l.i] == quote && l.b[l.i+1] == quote {
 				// Terminated. Remember to consume more characters appropriately...
 				l.i += 2
 				l.col += 2
@@ -229,7 +230,7 @@ func (l *lex) consumeIdent(pos lexer.Position) lexer.Token {
 			l.i += n
 			l.col += n
 			if !unicode.IsLetter(c) && !unicode.IsDigit(c) {
-				lexer.Panic(pos, "Illegal Unicode identifier")
+				lexer.Panicf(pos, "Illegal Unicode identifier %c", c)
 			}
 			s = append(s, c)
 			continue

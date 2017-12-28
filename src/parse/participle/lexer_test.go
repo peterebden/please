@@ -14,11 +14,11 @@ func TestSymbols(t *testing.T) {
 }
 
 func assertToken(t *testing.T, tok lexer.Token, tokenType rune, value string, line, column, offset int) {
-	assert.EqualValues(t, tokenType, tok.Type)
-	assert.Equal(t, value, tok.Value)
-	assert.Equal(t, line, tok.Pos.Line)
-	assert.Equal(t, column, tok.Pos.Column)
-	assert.Equal(t, offset, tok.Pos.Offset)
+	assert.EqualValues(t, tokenType, tok.Type, "incorrect type")
+	assert.Equal(t, value, tok.Value, "incorrect value")
+	assert.Equal(t, line, tok.Pos.Line, "incorrect line")
+	assert.Equal(t, column, tok.Pos.Column, "incorrect column")
+	assert.Equal(t, offset, tok.Pos.Offset, "incorrect offset")
 }
 
 func TestLexBasic(t *testing.T) {
@@ -32,9 +32,78 @@ func TestLexBasic(t *testing.T) {
 func TestLexMultiline(t *testing.T) {
 	l := NewLexer().Lex(strings.NewReader("hello\nworld\n"))
 	assertToken(t, l.Next(), Ident, "hello", 1, 1, 1)
-	assertToken(t, l.Next(), EOL, "", 1, 6, 6)
 	assertToken(t, l.Next(), Ident, "world", 2, 1, 7)
-	assertToken(t, l.Peek(), EOL, "", 2, 6, 12)
-	assertToken(t, l.Next(), EOL, "", 2, 6, 12)
 	assertToken(t, l.Next(), EOF, "", 3, 1, 13)
+}
+
+const testFunction = `
+def func(x):
+    pass
+`
+
+func TestLexFunction(t *testing.T) {
+	l := NewLexer().Lex(strings.NewReader(testFunction))
+	assertToken(t, l.Next(), Ident, "def", 2, 1, 2)
+	assertToken(t, l.Next(), Ident, "func", 2, 5, 6)
+	assertToken(t, l.Next(), '(', "(", 2, 9, 10)
+	assertToken(t, l.Next(), Ident, "x", 2, 10, 11)
+	assertToken(t, l.Next(), ')', ")", 2, 11, 12)
+	assertToken(t, l.Next(), ':', ":", 2, 12, 13)
+	assertToken(t, l.Next(), Ident, "pass", 3, 5, 19)
+	assertToken(t, l.Next(), Unindent, "", 4, 1, 23)
+	assertToken(t, l.Next(), EOF, "", 4, 1, 24)
+}
+
+func TestLexUnicode(t *testing.T) {
+	l := NewLexer().Lex(strings.NewReader("懂了吗 你愁脸 有没有"))
+	assertToken(t, l.Next(), Ident, "懂了吗", 1, 1, 1)
+	assertToken(t, l.Next(), Ident, "你愁脸", 1, 11, 11)
+	assertToken(t, l.Next(), Ident, "有没有", 1, 21, 21)
+	assertToken(t, l.Next(), EOF, "", 1, 30, 30)
+}
+
+func TestLexString(t *testing.T) {
+	l := NewLexer().Lex(strings.NewReader(`x = "hello world"`))
+	assertToken(t, l.Next(), Ident, "x", 1, 1, 1)
+	assertToken(t, l.Next(), '=', "=", 1, 3, 3)
+	assertToken(t, l.Next(), String, `"hello world"`, 1, 5, 5)
+	assertToken(t, l.Next(), EOF, "", 1, 18, 18)
+}
+
+func TestLexStringEscape(t *testing.T) {
+	l := NewLexer().Lex(strings.NewReader(`x = '\n\\'`))
+	assertToken(t, l.Next(), Ident, "x", 1, 1, 1)
+	assertToken(t, l.Next(), '=', "=", 1, 3, 3)
+	assertToken(t, l.Next(), String, "'\n\\'", 1, 5, 5)
+	assertToken(t, l.Next(), EOF, "", 1, 11, 11)
+}
+
+const testMultilineString = `x = """
+hello\n
+world
+"""`
+
+// expected output after lexing; note quotes are broken to a single one and \n does not become a newline.
+const expectedMultilineString = `"
+hello\n
+world
+"`
+
+func TestLexMultilineString(t *testing.T) {
+	l := NewLexer().Lex(strings.NewReader(testMultilineString))
+	assertToken(t, l.Next(), Ident, "x", 1, 1, 1)
+	assertToken(t, l.Next(), '=', "=", 1, 3, 3)
+	assertToken(t, l.Next(), String, expectedMultilineString, 1, 5, 5)
+	assertToken(t, l.Next(), EOF, "", 4, 4, 26)
+}
+
+func TestLexAttributeAccess(t *testing.T) {
+	l := NewLexer().Lex(strings.NewReader(`x.call(y)`))
+	assertToken(t, l.Next(), Ident, "x", 1, 1, 1)
+	assertToken(t, l.Next(), '.', ".", 1, 2, 2)
+	assertToken(t, l.Next(), Ident, "call", 1, 3, 3)
+	assertToken(t, l.Next(), '(', "(", 1, 7, 7)
+	assertToken(t, l.Next(), Ident, "y", 1, 8, 8)
+	assertToken(t, l.Next(), ')', ")", 1, 9, 9)
+	assertToken(t, l.Next(), EOF, "", 1, 10, 10)
 }
