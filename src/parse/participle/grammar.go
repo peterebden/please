@@ -26,11 +26,17 @@ type argument struct {
 	Value expression `[ "=" @@ ]`
 }
 
+type literal struct {
+	String string `  @String`
+	Int    int    `| @Int`
+	List   *list  `| "[" @@ "]"`
+}
+
 type expression struct {
 	String string `  @String`
 	Int    int    `| @Int`
-	Ident  *ident `| @@`
 	List   *list  `| "[" @@ "]"`
+	Ident  *ident `| @@`
 }
 
 type ident struct {
@@ -42,9 +48,10 @@ type ident struct {
 }
 
 type call struct {
-	Arguments []*argument `{ @@ [ "," ] }`
+	Arguments      []*literal  `{ @@ [ "," ] }`
+	NamedArguments []*argument `{ @@ [ "," ] }`
 }
 
 type list struct {
-	Values []*expression `{ @@ [ "," ] }`
+	Values []*literal `{ @@ [ "," ] }`
 }

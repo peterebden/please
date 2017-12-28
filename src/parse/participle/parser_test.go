@@ -41,13 +41,13 @@ func TestParseDefaultArguments(t *testing.T) {
 func TestParseFunctionCalls(t *testing.T) {
 	statements, err := NewParser().parse("src/parse/participle/test_data/function_call.build")
 	assert.NoError(t, err)
-	assert.Equal(t, 4, len(statements))
+	assert.Equal(t, 5, len(statements))
 
 	assert.NotNil(t, statements[0].Expression)
 	assert.NotNil(t, statements[0].Expression.Ident)
 	assert.Equal(t, "package", statements[0].Expression.Ident.Name)
 	assert.NotNil(t, statements[0].Expression.Ident.Action.Call)
-	assert.Equal(t, 0, len(statements[0].Expression.Ident.Action.Call.Arguments))
+	assert.Equal(t, 0, len(statements[0].Expression.Ident.Action.Call.NamedArguments))
 
 	assert.NotNil(t, statements[1].Expression)
 	assert.NotNil(t, statements[1].Expression.Ident)
@@ -55,14 +55,14 @@ func TestParseFunctionCalls(t *testing.T) {
 	assert.NotNil(t, statements[1].Expression.Ident.Action.Property)
 	assert.Equal(t, "package", statements[1].Expression.Ident.Action.Property.Name)
 	assert.NotNil(t, statements[1].Expression.Ident.Action.Property.Action.Call)
-	assert.Equal(t, 0, len(statements[1].Expression.Ident.Action.Property.Action.Call.Arguments))
+	assert.Equal(t, 0, len(statements[1].Expression.Ident.Action.Property.Action.Call.NamedArguments))
 
 	assert.NotNil(t, statements[2].Expression)
 	assert.NotNil(t, statements[2].Expression.Ident)
 	assert.Equal(t, "package", statements[2].Expression.Ident.Name)
 	assert.NotNil(t, statements[2].Expression.Ident.Action.Call)
-	assert.Equal(t, 1, len(statements[2].Expression.Ident.Action.Call.Arguments))
-	arg := statements[2].Expression.Ident.Action.Call.Arguments[0]
+	assert.Equal(t, 1, len(statements[2].Expression.Ident.Action.Call.NamedArguments))
+	arg := statements[2].Expression.Ident.Action.Call.NamedArguments[0]
 	assert.Equal(t, "default_visibility", arg.Name)
 	assert.NotNil(t, arg.Value.List)
 	assert.Equal(t, 1, len(arg.Value.List.Values))
@@ -72,8 +72,8 @@ func TestParseFunctionCalls(t *testing.T) {
 	assert.NotNil(t, statements[3].Expression.Ident)
 	assert.Equal(t, "python_library", statements[3].Expression.Ident.Name)
 	assert.NotNil(t, statements[3].Expression.Ident.Action.Call)
-	assert.Equal(t, 2, len(statements[3].Expression.Ident.Action.Call.Arguments))
-	args := statements[3].Expression.Ident.Action.Call.Arguments
+	assert.Equal(t, 2, len(statements[3].Expression.Ident.Action.Call.NamedArguments))
+	args := statements[3].Expression.Ident.Action.Call.NamedArguments
 	assert.Equal(t, "name", args[0].Name)
 	assert.Equal(t, "lib", args[0].Value.String)
 	assert.Equal(t, "srcs", args[1].Name)
@@ -81,4 +81,12 @@ func TestParseFunctionCalls(t *testing.T) {
 	assert.Equal(t, 2, len(args[1].Value.List.Values))
 	assert.Equal(t, "lib1.py", args[1].Value.List.Values[0].String)
 	assert.Equal(t, "lib2.py", args[1].Value.List.Values[1].String)
+
+	assert.NotNil(t, statements[4].Expression)
+	assert.NotNil(t, statements[4].Expression.Ident)
+	assert.Equal(t, "subinclude", statements[4].Expression.Ident.Name)
+	assert.NotNil(t, statements[4].Expression.Ident.Action.Call)
+	assert.Equal(t, 1, len(statements[4].Expression.Ident.Action.Call.Arguments))
+	assert.Equal(t, 0, len(statements[4].Expression.Ident.Action.Call.NamedArguments))
+	assert.Equal(t, "//build_defs:version", statements[4].Expression.Ident.Action.Call.Arguments[0].String)
 }

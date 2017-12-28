@@ -11,3 +11,5 @@ python_library(
         'lib2.py',
     ],
 )
+
+subinclude('//build_defs:version')
