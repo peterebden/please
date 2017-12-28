@@ -41,7 +41,7 @@ func TestParseDefaultArguments(t *testing.T) {
 func TestParseFunctionCalls(t *testing.T) {
 	statements, err := NewParser().parse("src/parse/participle/test_data/function_call.build")
 	assert.NoError(t, err)
-	assert.Equal(t, 2, len(statements))
+	assert.Equal(t, 3, len(statements))
 
 	assert.NotNil(t, statements[0].Expression)
 	assert.NotNil(t, statements[0].Expression.Ident)
@@ -56,4 +56,15 @@ func TestParseFunctionCalls(t *testing.T) {
 	assert.Equal(t, "package", statements[1].Expression.Ident.Action.Property.Name)
 	assert.NotNil(t, statements[1].Expression.Ident.Action.Property.Action.Call)
 	assert.Equal(t, 0, len(statements[1].Expression.Ident.Action.Property.Action.Call.Arguments))
+
+	assert.NotNil(t, statements[2].Expression)
+	assert.NotNil(t, statements[2].Expression.Ident)
+	assert.Equal(t, "package", statements[2].Expression.Ident.Name)
+	assert.NotNil(t, statements[2].Expression.Ident.Action.Call)
+	assert.Equal(t, 1, len(statements[2].Expression.Ident.Action.Call.Arguments))
+	arg := statements[2].Expression.Ident.Action.Call.Arguments[0]
+	assert.Equal(t, "default_visibility", arg.Name)
+	assert.NotNil(t, arg.Value.List)
+	assert.Equal(t, 1, len(arg.Value.List.Values))
+	assert.Equal(t, "PUBLIC", arg.Value.List.Values[0].String)
 }

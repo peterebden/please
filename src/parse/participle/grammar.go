@@ -30,16 +30,21 @@ type expression struct {
 	String string `  @String`
 	Int    int    `| @Int`
 	Ident  *ident `| @@`
+	List   *list  `| "[" @@ "]"`
 }
 
 type ident struct {
 	Name   string `@Ident`
 	Action struct {
 		Property *ident `  "." @@`
-		Call     *call  `| @@`
+		Call     *call  `| "(" @@ ")"`
 	} `[ @@ ]`
 }
 
 type call struct {
-	Arguments []*argument `"(" { @@ [ "," ] } ")"`
+	Arguments []*argument `{ @@ [ "," ] }`
+}
+
+type list struct {
+	Values []*expression `{ @@ [ "," ] }`
 }
