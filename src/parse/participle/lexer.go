@@ -69,6 +69,8 @@ type lex struct {
 	// The next token. We always look one token ahead in order to facilitate both Peek() and Next().
 	next     lexer.Token
 	filename string
+	// Used to track how many braces we're within.
+	braces int
 }
 
 // Peek at the next token
@@ -118,10 +120,7 @@ func (l *lex) nextToken() lexer.Token {
 			l.col++
 			l.indent++
 		}
-
-		// TODO(peterebden): Account for being within parentheses here so we don't
-		//                   emit pseudo-tokens during implicit line continuations.
-		if lastIndent > l.indent {
+		if lastIndent > l.indent && l.braces == 0 {
 			pos.Line++ // Works better if it's at the new position
 			pos.Column = l.col + 1
 			return lexer.Token{Type: Unindent, Pos: pos}
@@ -140,7 +139,15 @@ func (l *lex) nextToken() lexer.Token {
 	case ':':
 		// As noted above, literal colons seem to break the parser.
 		return lexer.Token{Type: Colon, Value: ":", Pos: pos}
-	case '(', ')', '[', ']', '{', '}', ',', '+', '=', '.':
+	case '(', '[', '{':
+		l.braces++
+		return lexer.Token{Type: rune(b), Value: string(b), Pos: pos}
+	case ')', ']', '}':
+		if l.braces > 0 { // Don't let it go negative, it fouls things up
+			l.braces--
+		}
+		fallthrough
+	case ',', '+', '=', '.':
 		return lexer.Token{Type: rune(b), Value: string(b), Pos: pos}
 	case '#':
 		// Comment character, consume to end of line.

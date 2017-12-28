@@ -155,6 +155,7 @@ func TestMoreComplexFunction(t *testing.T) {
 	assertToken(t, l.Next(), ',', ",", 5, 18, 66)
 	assertToken(t, l.Next(), String, "lib2.py", 6, 9, 76)
 	assertToken(t, l.Next(), ',', ",", 6, 18, 85)
-	assertToken(t, l.Next(), ']', "]", 6, 5, 86)
-
+	assertToken(t, l.Next(), ']', "]", 7, 5, 91)
+	assertToken(t, l.Next(), ',', ",", 7, 6, 92)
+	assertToken(t, l.Next(), ')', ")", 8, 1, 94)
 }

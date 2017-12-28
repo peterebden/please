@@ -70,10 +70,10 @@ func TestParseFunctionCalls(t *testing.T) {
 
 	assert.NotNil(t, statements[3].Expression)
 	assert.NotNil(t, statements[3].Expression.Ident)
-	assert.Equal(t, "python_test", statements[3].Expression.Ident.Name)
+	assert.Equal(t, "python_library", statements[3].Expression.Ident.Name)
 	assert.NotNil(t, statements[3].Expression.Ident.Action.Call)
-	assert.Equal(t, 2, len(statements[2].Expression.Ident.Action.Call.Arguments))
-	args := statements[2].Expression.Ident.Action.Call.Arguments
+	assert.Equal(t, 2, len(statements[3].Expression.Ident.Action.Call.Arguments))
+	args := statements[3].Expression.Ident.Action.Call.Arguments
 	assert.Equal(t, "name", args[0].Name)
 	assert.Equal(t, "lib", args[0].Value.String)
 	assert.Equal(t, "srcs", args[1].Name)
