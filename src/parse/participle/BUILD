@@ -15,8 +15,19 @@ go_library(
 go_test(
     name = 'parser_test',
     srcs = ['parser_test.go'],
+    data = ['test_data'],
     deps = [
         ':participle',
+        '//third_party/go:testify',
+    ],
+)
+
+go_test(
+    name = 'lexer_test',
+    srcs = ['lexer_test.go'],
+    deps = [
+        ':participle',
+        '//third_party/go:participle',
         '//third_party/go:testify',
     ],
 )

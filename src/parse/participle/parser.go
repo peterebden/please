@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/alecthomas/participle"
-	"github.com/alecthomas/participle/lexer"
 	"gopkg.in/op/go-logging.v1"
 
 	"core"
@@ -20,11 +19,7 @@ type parser struct {
 
 // NewParser creates a new parser instance. One is normally sufficient for a process lifetime.
 func NewParser() *parser {
-	lexer, err := lexer.EBNF(ebnf)
-	if err != nil {
-		log.Fatalf("%s", err)
-	}
-	p, err := participle.Build(&fileInput{}, lexer)
+	p, err := participle.Build(&fileInput{}, NewLexer())
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
