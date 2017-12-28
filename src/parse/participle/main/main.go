@@ -5,6 +5,7 @@ package main
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gopkg.in/op/go-logging.v1"
@@ -35,15 +36,18 @@ func main() {
 	ch := make(chan string, 100)
 	var wg sync.WaitGroup
 	wg.Add(opts.NumThreads)
+	total := len(opts.Args.BuildFiles)
 	state := core.NewBuildState(opts.NumThreads, nil, opts.Verbosity, core.DefaultConfiguration())
 
 	start := time.Now()
+	var errors int64
 	for i := 0; i < opts.NumThreads; i++ {
 		go func() {
 			for file := range ch {
 				pkg := core.NewPackage(file)
 				if err := p.ParseFile(state, pkg, file); err != nil {
 					log.Error("Error parsing %s: %s", file, err)
+					atomic.AddInt64(&errors, 1)
 				}
 			}
 			wg.Done()
@@ -56,5 +60,6 @@ func main() {
 	close(ch)
 	wg.Wait()
 
-	log.Notice("Parsed %d files in %s", len(opts.Args.BuildFiles), time.Since(start))
+	log.Notice("Parsed %d files in %s", total, time.Since(start))
+	log.Notice("Success: %d / %d (%0.2f%%)", total-int(errors), total, 100.0*float64(total-int(errors))/float64(total))
 }
