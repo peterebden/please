@@ -48,7 +48,7 @@ func TestLexFunction(t *testing.T) {
 	assertToken(t, l.Next(), '(', "(", 2, 9, 10)
 	assertToken(t, l.Next(), Ident, "x", 2, 10, 11)
 	assertToken(t, l.Next(), ')', ")", 2, 11, 12)
-	assertToken(t, l.Next(), ':', ":", 2, 12, 13)
+	assertToken(t, l.Next(), Colon, ":", 2, 12, 13)
 	assertToken(t, l.Next(), Ident, "pass", 3, 5, 19)
 	assertToken(t, l.Next(), Unindent, "", 4, 1, 23)
 	assertToken(t, l.Next(), EOF, "", 4, 1, 24)
@@ -66,7 +66,7 @@ func TestLexString(t *testing.T) {
 	l := NewLexer().Lex(strings.NewReader(`x = "hello world"`))
 	assertToken(t, l.Next(), Ident, "x", 1, 1, 1)
 	assertToken(t, l.Next(), '=', "=", 1, 3, 3)
-	assertToken(t, l.Next(), String, `"hello world"`, 1, 5, 5)
+	assertToken(t, l.Next(), String, "hello world", 1, 5, 5)
 	assertToken(t, l.Next(), EOF, "", 1, 18, 18)
 }
 
@@ -74,7 +74,7 @@ func TestLexStringEscape(t *testing.T) {
 	l := NewLexer().Lex(strings.NewReader(`x = '\n\\'`))
 	assertToken(t, l.Next(), Ident, "x", 1, 1, 1)
 	assertToken(t, l.Next(), '=', "=", 1, 3, 3)
-	assertToken(t, l.Next(), String, "'\n\\'", 1, 5, 5)
+	assertToken(t, l.Next(), String, "\n\\", 1, 5, 5)
 	assertToken(t, l.Next(), EOF, "", 1, 11, 11)
 }
 
@@ -84,10 +84,10 @@ world
 """`
 
 // expected output after lexing; note quotes are broken to a single one and \n does not become a newline.
-const expectedMultilineString = `"
+const expectedMultilineString = `
 hello\n
 world
-"`
+`
 
 func TestLexMultilineString(t *testing.T) {
 	l := NewLexer().Lex(strings.NewReader(testMultilineString))
@@ -106,4 +106,26 @@ func TestLexAttributeAccess(t *testing.T) {
 	assertToken(t, l.Next(), Ident, "y", 1, 8, 8)
 	assertToken(t, l.Next(), ')', ")", 1, 9, 9)
 	assertToken(t, l.Next(), EOF, "", 1, 10, 10)
+}
+
+func TestLexFunctionArgs(t *testing.T) {
+	l := NewLexer().Lex(strings.NewReader(`def test(name='name', timeout=10, args=CONFIG.ARGS):`))
+	assertToken(t, l.Next(), Ident, "def", 1, 1, 1)
+	assertToken(t, l.Next(), Ident, "test", 1, 5, 5)
+	assertToken(t, l.Next(), '(', "(", 1, 9, 9)
+	assertToken(t, l.Next(), Ident, "name", 1, 10, 10)
+	assertToken(t, l.Next(), '=', "=", 1, 14, 14)
+	assertToken(t, l.Next(), String, "name", 1, 15, 15)
+	assertToken(t, l.Next(), ',', ",", 1, 21, 21)
+	assertToken(t, l.Next(), Ident, "timeout", 1, 23, 23)
+	assertToken(t, l.Next(), '=', "=", 1, 30, 30)
+	assertToken(t, l.Next(), Int, "10", 1, 31, 31)
+	assertToken(t, l.Next(), ',', ",", 1, 33, 33)
+	assertToken(t, l.Next(), Ident, "args", 1, 35, 35)
+	assertToken(t, l.Next(), '=', "=", 1, 39, 39)
+	assertToken(t, l.Next(), Ident, "CONFIG", 1, 40, 40)
+	assertToken(t, l.Next(), '.', ".", 1, 46, 46)
+	assertToken(t, l.Next(), Ident, "ARGS", 1, 47, 47)
+	assertToken(t, l.Next(), ')', ")", 1, 51, 51)
+	assertToken(t, l.Next(), Colon, ":", 1, 52, 52)
 }

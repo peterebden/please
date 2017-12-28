@@ -128,15 +128,7 @@ func (l *lex) nextToken() lexer.Token {
 		}
 		return l.nextToken()
 	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-		// Integer literal, consume all digits.
-		s := make([]byte, 0, 10)
-		for b >= '0' && b <= '9' {
-			s = append(s, b)
-			l.i++
-			l.col++
-			b = l.b[l.i]
-		}
-		return lexer.Token{Type: Int, Value: string(s), Pos: pos}
+		return l.consumeInteger(b, pos)
 	case '"', '\'':
 		// String literal, consume to end.
 		if l.b[l.i] == b && l.b[l.i+1] == b {
@@ -163,10 +155,21 @@ func (l *lex) nextToken() lexer.Token {
 	panic("unreachable")
 }
 
+// consumeInteger consumes all characters until the end of an integer literal is reached.
+func (l *lex) consumeInteger(initial byte, pos lexer.Position) lexer.Token {
+	s := make([]byte, 1, 10)
+	s[0] = initial
+	for c := l.b[l.i]; c >= '0' && c <= '9'; c = l.b[l.i] {
+		l.i++
+		l.col++
+		s = append(s, c)
+	}
+	return lexer.Token{Type: Int, Value: string(s), Pos: pos}
+}
+
 // consumeString consumes all characters until the end of a string literal is reached.
 func (l *lex) consumeString(quote byte, pos lexer.Position) lexer.Token {
 	s := make([]byte, 0, 100) // 100 chars is typically enough for a single string literal.
-	s = append(s, quote)
 	escaped := false
 	for {
 		c := l.b[l.i]
@@ -185,7 +188,6 @@ func (l *lex) consumeString(quote byte, pos lexer.Position) lexer.Token {
 		case '\\':
 			escaped = true
 		case quote:
-			s = append(s, quote)
 			return lexer.Token{Type: String, Value: string(s), Pos: pos}
 		case '\n', 0:
 			lexer.Panic(pos, "Unterminated string literal")
@@ -200,10 +202,8 @@ func (l *lex) consumeString(quote byte, pos lexer.Position) lexer.Token {
 // also convenient since we don't support r' syntax for raw strings either...
 func (l *lex) consumeTripleQuotedString(quote byte, pos lexer.Position) lexer.Token {
 	s := make([]byte, 0, 1000) // Assume it's going to be fairly big...
-	s = append(s, quote)       // We break this down to a single quote character so these are identical to the parser.
 	for {
 		c := l.b[l.i]
-		s = append(s, c)
 		l.i++
 		l.col++
 		switch c {
@@ -217,8 +217,11 @@ func (l *lex) consumeTripleQuotedString(quote byte, pos lexer.Position) lexer.To
 		case '\n':
 			l.col = 0
 			l.line++
+			s = append(s, c)
 		case 0:
 			lexer.Panic(pos, "Unterminated string literal")
+		default:
+			s = append(s, c)
 		}
 	}
 }
