@@ -1,7 +1,5 @@
 package()
-
-globals.package()
-
+package()
 package(default_visibility = ['PUBLIC'])
 
 python_library(
