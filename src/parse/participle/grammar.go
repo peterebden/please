@@ -12,10 +12,11 @@ type statement struct {
 }
 
 type funcDef struct {
-	Name      string      `@Ident`
-	Arguments []*argument `"(" [ @@ { "," @@ } ] ")" ":"`
-	//	Statements []*statement `@@`
-	End string `@Unindent`
+	Name       string       `@Ident`
+	Arguments  []*argument  `"(" [ @@ { "," @@ } ] ")"`
+	Colon      string       `@Colon`
+	Statements []*statement `@@`
+	End        string       `@Unindent`
 }
 
 type argument struct {

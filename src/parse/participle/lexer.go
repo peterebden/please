@@ -16,6 +16,7 @@ const (
 	Int
 	String
 	Unindent
+	Colon // Would prefer not to have this but literal colons seem to deeply upset the parser.
 )
 
 // symbols defines our mapping of lexer symbols.
@@ -25,6 +26,7 @@ var symbols = map[string]rune{
 	"Int":      Int,
 	"String":   String,
 	"Unindent": Unindent,
+	"Colon":    Colon,
 }
 
 // A definition is an implementation of participle's lexer.Definition,
@@ -143,7 +145,10 @@ func (l *lex) nextToken() lexer.Token {
 			return l.consumeTripleQuotedString(b, pos)
 		}
 		return l.consumeString(b, pos)
-	case '(', ')', '[', ']', '{', '}', ':', ',', '+', '=', '.':
+	case ':':
+		// As noted above, literal colons seem to break the parser.
+		return lexer.Token{Type: Colon, Value: ":", Pos: pos}
+	case '(', ')', '[', ']', '{', '}', ',', '+', '=', '.':
 		return lexer.Token{Type: rune(b), Value: string(b), Pos: pos}
 	case '#':
 		// Comment character, consume to end of line.
