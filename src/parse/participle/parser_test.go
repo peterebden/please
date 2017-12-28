@@ -41,7 +41,7 @@ func TestParseDefaultArguments(t *testing.T) {
 func TestParseFunctionCalls(t *testing.T) {
 	statements, err := NewParser().parse("src/parse/participle/test_data/function_call.build")
 	assert.NoError(t, err)
-	assert.Equal(t, 3, len(statements))
+	assert.Equal(t, 4, len(statements))
 
 	assert.NotNil(t, statements[0].Expression)
 	assert.NotNil(t, statements[0].Expression.Ident)
@@ -67,4 +67,18 @@ func TestParseFunctionCalls(t *testing.T) {
 	assert.NotNil(t, arg.Value.List)
 	assert.Equal(t, 1, len(arg.Value.List.Values))
 	assert.Equal(t, "PUBLIC", arg.Value.List.Values[0].String)
+
+	assert.NotNil(t, statements[3].Expression)
+	assert.NotNil(t, statements[3].Expression.Ident)
+	assert.Equal(t, "python_test", statements[3].Expression.Ident.Name)
+	assert.NotNil(t, statements[3].Expression.Ident.Action.Call)
+	assert.Equal(t, 2, len(statements[2].Expression.Ident.Action.Call.Arguments))
+	args := statements[2].Expression.Ident.Action.Call.Arguments
+	assert.Equal(t, "name", args[0].Name)
+	assert.Equal(t, "lib", args[0].Value.String)
+	assert.Equal(t, "srcs", args[1].Name)
+	assert.NotNil(t, args[1].Value.List)
+	assert.Equal(t, 2, len(args[1].Value.List.Values))
+	assert.Equal(t, "lib1.py", args[1].Value.List.Values[0].String)
+	assert.Equal(t, "lib2.py", args[1].Value.List.Values[1].String)
 }

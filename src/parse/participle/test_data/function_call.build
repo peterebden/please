@@ -3,3 +3,11 @@ package()
 globals.package()
 
 package(default_visibility = ['PUBLIC'])
+
+python_library(
+    name = 'lib',
+    srcs = [
+        'lib1.py',
+        'lib2.py',
+    ],
+)
