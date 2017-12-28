@@ -108,3 +108,28 @@ func TestForStatement(t *testing.T) {
 	assert.Equal(t, "LANGUAGES", statements[1].For.Expr.Ident.Name)
 	assert.Equal(t, 1, len(statements[1].For.Statements))
 }
+
+func TestOperators(t *testing.T) {
+	statements, err := NewParser().parse("src/parse/participle/test_data/operators.build")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(statements))
+
+	assert.NotNil(t, statements[0].Ident.Action.Call)
+	assert.Equal(t, "genrule", statements[0].Ident.Name)
+	assert.Equal(t, 2, len(statements[0].Ident.Action.Call.NamedArguments))
+
+	arg := statements[0].Ident.Action.Call.NamedArguments[1]
+	assert.Equal(t, "srcs", arg.Name)
+	assert.NotNil(t, arg.Value.List)
+	assert.Equal(t, 1, len(arg.Value.List.Values))
+	assert.Equal(t, "//something:test_go", arg.Value.List.Values[0].String)
+	assert.NotNil(t, arg.Value.Op)
+	assert.Equal(t, "+", arg.Value.Op.Op)
+	call := arg.Value.Op.Expr.Ident.Action.Call
+	assert.Equal(t, "glob", arg.Value.Op.Expr.Ident.Name)
+	assert.NotNil(t, call)
+	assert.Equal(t, 1, len(call.Arguments))
+	assert.NotNil(t, call.Arguments[0].List)
+	assert.Equal(t, 1, len(call.Arguments[0].List.Values))
+	assert.Equal(t, "*.go", call.Arguments[0].List.Values[0].String)
+}

@@ -43,11 +43,12 @@ type literal struct {
 }
 
 type expression struct {
-	String string `  @String`
-	Int    int    `| @Int`
-	List   *list  `| "[" @@ "]"`
-	Dict   *dict  `| "{" @@ "}"`
-	Ident  *ident `| @@`
+	String string    `( @String`
+	Int    int       `| @Int`
+	List   *list     `| "[" @@ "]"`
+	Dict   *dict     `| "{" @@ "}"`
+	Ident  *ident    `| @@ )`
+	Op     *operator `[ @@ ]`
 }
 
 type ident struct {
@@ -75,4 +76,9 @@ type dict struct {
 type dictItem struct {
 	Key   string     `@String ":"`
 	Value expression `@@`
+}
+
+type operator struct {
+	Op   string      `@"+"` // Can support others if needed.
+	Expr *expression `@@`
 }
