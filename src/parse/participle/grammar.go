@@ -21,10 +21,28 @@ type funcDef struct {
 }
 
 type argument struct {
-	Name    string `@Ident`
-	Default struct {
-		Ident  string `  @Ident`
-		String string `| @String`
-		Int    int    `| @Int`
-	} `[ "=" @@ ]`
+	Name  string     `@Ident`
+	Value expression `[ "=" @@ ]`
+}
+
+type expression struct {
+	Ident    string    `  @Ident`
+	String   string    `| @String`
+	Int      int       `| @Int`
+	Property *member   `| @@`
+	Call     *funcCall `| @@`
+}
+
+type member struct {
+	Name   string `@Ident "."`
+	Target struct {
+		Property string    `  @Ident`
+		Call     *funcCall `| @@`
+		Member   *member   `| @@`
+	} `@@`
+}
+
+type funcCall struct {
+	Name      string      `@Ident`
+	Arguments []*argument `"(" [ @@ { "," @@ } ] ")"`
 }
