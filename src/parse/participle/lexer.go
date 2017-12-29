@@ -19,6 +19,9 @@ const (
 	Colon // Would prefer not to have this but literal colons seem to deeply upset the parser.
 )
 
+// indentation is the number of spaces we recognise for indentation - right now it's four spaces only.
+const indentation = 4
+
 // symbols defines our mapping of lexer symbols.
 var symbols = map[string]rune{
 	"EOF":      EOF,
@@ -71,6 +74,9 @@ type lex struct {
 	filename string
 	// Used to track how many braces we're within.
 	braces int
+	// Pending unindent tokens. This is a bit yuck but means the parser doesn't need to
+	// concern itself about indentation (which is good because our parser doesn't do that...)
+	unindents int
 }
 
 // Peek at the next token
@@ -99,6 +105,10 @@ func (l *lex) nextToken() lexer.Token {
 		Line:   l.line + 1,
 		Column: l.col + 1,
 	}
+	if l.unindents > 0 {
+		l.unindents--
+		return lexer.Token{Type: Unindent, Pos: pos}
+	}
 	b := l.b[l.i]
 	if (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_' || b >= utf8.RuneSelf {
 		return l.consumeIdent(pos)
@@ -123,6 +133,7 @@ func (l *lex) nextToken() lexer.Token {
 		if lastIndent > l.indent && l.braces == 0 {
 			pos.Line++ // Works better if it's at the new position
 			pos.Column = l.col + 1
+			l.unindents = ((lastIndent - l.indent) / indentation) - 1 // -1 because we're handling one now
 			return lexer.Token{Type: Unindent, Pos: pos}
 		}
 		return l.nextToken()

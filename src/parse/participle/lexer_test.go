@@ -159,3 +159,33 @@ func TestMoreComplexFunction(t *testing.T) {
 	assertToken(t, l.Next(), ',', ",", 7, 6, 92)
 	assertToken(t, l.Next(), ')', ")", 8, 1, 94)
 }
+
+const multiUnindent = `
+for y in x:
+    for z in y:
+        for a in z:
+            pass
+`
+
+func TestMultiUnindent(t *testing.T) {
+	l := NewLexer().Lex(strings.NewReader(multiUnindent))
+	assertToken(t, l.Next(), Ident, "for", 2, 1, 2)
+	assertToken(t, l.Next(), Ident, "y", 2, 5, 6)
+	assertToken(t, l.Next(), Ident, "in", 2, 7, 8)
+	assertToken(t, l.Next(), Ident, "x", 2, 10, 11)
+	assertToken(t, l.Next(), Colon, ":", 2, 11, 12)
+	assertToken(t, l.Next(), Ident, "for", 3, 5, 18)
+	assertToken(t, l.Next(), Ident, "z", 3, 9, 22)
+	assertToken(t, l.Next(), Ident, "in", 3, 11, 24)
+	assertToken(t, l.Next(), Ident, "y", 3, 14, 27)
+	assertToken(t, l.Next(), Colon, ":", 3, 15, 28)
+	assertToken(t, l.Next(), Ident, "for", 4, 9, 38)
+	assertToken(t, l.Next(), Ident, "a", 4, 13, 42)
+	assertToken(t, l.Next(), Ident, "in", 4, 15, 44)
+	assertToken(t, l.Next(), Ident, "z", 4, 18, 47)
+	assertToken(t, l.Next(), Colon, ":", 4, 19, 48)
+	assertToken(t, l.Next(), Ident, "pass", 5, 13, 62)
+	assertToken(t, l.Next(), Unindent, "", 6, 1, 66)
+	assertToken(t, l.Next(), Unindent, "", 6, 1, 67)
+	assertToken(t, l.Next(), Unindent, "", 6, 1, 67)
+}

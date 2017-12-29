@@ -197,3 +197,21 @@ func TestIfStatement(t *testing.T) {
 	assert.Equal(t, 1, len(ifs.Statements))
 	assert.Equal(t, "genrule", ifs.Statements[0].Ident.Name)
 }
+
+func TestDoubleUnindent(t *testing.T) {
+	statements, err := NewParser().parse("src/parse/participle/test_data/double_unindent.build")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(statements))
+
+	assert.NotNil(t, statements[0].For)
+	assert.Equal(t, "y", statements[0].For.Names[0])
+	assert.Equal(t, "x", statements[0].For.Expr.Ident.Name)
+	assert.Equal(t, 1, len(statements[0].For.Statements))
+
+	for2 := statements[0].For.Statements[0].For
+	assert.NotNil(t, for2)
+	assert.Equal(t, "z", for2.Names[0])
+	assert.Equal(t, "y", for2.Expr.Ident.Name)
+	assert.Equal(t, 1, len(for2.Statements))
+	assert.Equal(t, "genrule", for2.Statements[0].Ident.Name)
+}
