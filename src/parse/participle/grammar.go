@@ -46,6 +46,7 @@ type literal struct {
 	Int    int    `| @Int`
 	List   *list  `| "[" @@ "]"`
 	Dict   *dict  `| "{" @@ "}"`
+	Tuple  *list  `| "(" @@ ")"` // Tuples don't have a separate implementation.
 }
 
 type expression struct {
@@ -53,6 +54,7 @@ type expression struct {
 	Int    int       `| @Int`
 	List   *list     `| "[" @@ "]"`
 	Dict   *dict     `| "{" @@ "}"`
+	Tuple  *list     `| "(" @@ ")"`
 	Ident  *ident    `| @@ )`
 	Op     *operator `[ @@ ]`
 	Slice  *slice    `[ @@ ]`
