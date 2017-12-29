@@ -106,7 +106,7 @@ func TestForStatement(t *testing.T) {
 	assert.NotNil(t, statements[1].For)
 	assert.Equal(t, []string{"language"}, statements[1].For.Names)
 	assert.Equal(t, "LANGUAGES", statements[1].For.Expr.Ident.Name)
-	assert.Equal(t, 1, len(statements[1].For.Statements))
+	assert.Equal(t, 2, len(statements[1].For.Statements))
 }
 
 func TestOperators(t *testing.T) {

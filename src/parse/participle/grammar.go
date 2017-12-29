@@ -28,12 +28,12 @@ type funcDef struct {
 type forStatement struct {
 	Names      []string     `"for" @Ident [ { "," @Ident } ] "in"`
 	Expr       expression   `@@ Colon`
-	Statements []*statement `@@ Unindent`
+	Statements []*statement `{ @@ } Unindent`
 }
 
 type ifStatement struct {
 	Condition  expression   `"if" @@ Colon`
-	Statements []*statement `@@ Unindent`
+	Statements []*statement `{ @@ } Unindent`
 }
 
 type argument struct {
@@ -89,7 +89,7 @@ type dictItem struct {
 }
 
 type operator struct {
-	Op   string      `@("+" | "%" | "and" | "or" | "is")`
+	Op   string      `@("+" | "%" | "and" | "or" | "is" | "in")`
 	Expr *expression `@@`
 }
 
