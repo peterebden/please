@@ -93,7 +93,8 @@ type operator struct {
 }
 
 type slice struct {
-	Start int    `"[" [ @Int ]`
-	Colon string `[ @":" ]`
-	End   int    `[ @Int ] "]"`
+	// Implements indexing as well as slicing.
+	Start *expression `"[" [ @@ ]`
+	Colon string      `[ @":" ]`
+	End   *expression `[ @@ ] "]"`
 }
