@@ -240,3 +240,15 @@ func TestFunctionDef(t *testing.T) {
 	assert.Equal(t, 1, len(statements))
 	assert.Equal(t, 4, len(statements[0].FuncDef.Statements))
 }
+
+func TestComprehension(t *testing.T) {
+	statements, err := NewParser().parse("src/parse/participle/test_data/comprehension.build")
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(statements))
+
+	assert.NotNil(t, statements[0].Ident.Action.Assign)
+	assert.NotNil(t, statements[1].Ident.Action.Assign)
+	assert.Equal(t, 1, len(statements[0].Ident.Action.Assign.List.Values))
+	assert.NotNil(t, statements[0].Ident.Action.Assign.List.Comprehension)
+	assert.NotNil(t, statements[1].Ident.Action.Assign.Dict.Comprehension)
+}

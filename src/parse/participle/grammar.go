@@ -76,15 +76,17 @@ type call struct {
 }
 
 type list struct {
-	Values []*expression `{ @@ [ "," ] }`
+	Values        []*expression  `[ @@ ] { "," [ @@ ] }`
+	Comprehension *comprehension `[ @@ ]`
 }
 
 type dict struct {
-	Items []*dictItem `{ @@ [ "," ] }`
+	Items         []*dictItem    `[ @@ ] { "," [ @@ ] }`
+	Comprehension *comprehension `[ @@ ]`
 }
 
 type dictItem struct {
-	Key   string     `@String ":"`
+	Key   string     `@( Ident | String ) ":"`
 	Value expression `@@`
 }
 
@@ -102,5 +104,11 @@ type slice struct {
 
 type inlineIf struct {
 	Condition *expression `"if" @@`
-	Else      *expression `"else" @@`
+	Else      *expression `[ "else" @@ ]`
+}
+
+type comprehension struct {
+	Names []string    `"for" @Ident [ { "," @Ident } ] "in"`
+	Expr  *expression `@@`
+	If    *expression `[ "if" @@ ]`
 }
