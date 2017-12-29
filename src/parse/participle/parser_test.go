@@ -215,3 +215,21 @@ func TestDoubleUnindent(t *testing.T) {
 	assert.Equal(t, 1, len(for2.Statements))
 	assert.Equal(t, "genrule", for2.Statements[0].Ident.Name)
 }
+
+func TestInlineIf(t *testing.T) {
+	statements, err := NewParser().parse("src/parse/participle/test_data/inline_if.build")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(statements))
+
+	assert.Equal(t, "x", statements[0].Ident.Name)
+	ass := statements[0].Ident.Action.Assign
+	assert.NotNil(t, ass)
+	assert.NotNil(t, ass.List)
+	assert.Equal(t, 1, len(ass.List.Values))
+	assert.NotNil(t, ass.If)
+	assert.Equal(t, "y", ass.If.Condition.Ident.Name)
+	assert.Equal(t, "is", ass.If.Condition.Op.Op)
+	assert.Equal(t, "None", ass.If.Condition.Op.Expr.Ident.Name)
+	assert.NotNil(t, ass.If.Else.List)
+	assert.Equal(t, 1, len(ass.If.Else.List.Values))
+}

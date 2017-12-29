@@ -58,6 +58,7 @@ type expression struct {
 	Ident  *ident    `| @@ )`
 	Op     *operator `[ @@ ]`
 	Slice  *slice    `[ @@ ]`
+	If     *inlineIf `[ @@ ]`
 }
 
 type ident struct {
@@ -88,7 +89,7 @@ type dictItem struct {
 }
 
 type operator struct {
-	Op   string      `@("+" | "%" | "and" | "or")`
+	Op   string      `@("+" | "%" | "and" | "or" | "is")`
 	Expr *expression `@@`
 }
 
@@ -97,4 +98,9 @@ type slice struct {
 	Start *expression `"[" [ @@ ]`
 	Colon string      `[ @":" ]`
 	End   *expression `[ @@ ] "]"`
+}
+
+type inlineIf struct {
+	Condition *expression `"if" @@`
+	Else      *expression `"else" @@`
 }
