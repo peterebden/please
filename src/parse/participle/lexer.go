@@ -124,11 +124,14 @@ func (l *lex) nextToken() lexer.Token {
 		lastIndent := l.indent
 		l.line++
 		l.col = 0
-		l.indent = 0
+		indent := 0
 		for l.b[l.i] == ' ' {
 			l.i++
 			l.col++
-			l.indent++
+			indent++
+		}
+		if l.braces == 0 {
+			l.indent = indent
 		}
 		if lastIndent > l.indent && l.braces == 0 {
 			pos.Line++ // Works better if it's at the new position

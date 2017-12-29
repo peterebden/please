@@ -189,3 +189,33 @@ func TestMultiUnindent(t *testing.T) {
 	assertToken(t, l.Next(), Unindent, "", 6, 1, 67)
 	assertToken(t, l.Next(), Unindent, "", 6, 1, 67)
 }
+
+const multiLineFunctionArgs = `
+def test(name='name', timeout=10,
+         args=CONFIG.ARGS):
+    pass
+`
+
+func TestMultiLineFunctionArgs(t *testing.T) {
+	l := NewLexer().Lex(strings.NewReader(multiLineFunctionArgs))
+	assertToken(t, l.Next(), Ident, "def", 2, 1, 2)
+	assertToken(t, l.Next(), Ident, "test", 2, 5, 6)
+	assertToken(t, l.Next(), '(', "(", 2, 9, 10)
+	assertToken(t, l.Next(), Ident, "name", 2, 10, 11)
+	assertToken(t, l.Next(), '=', "=", 2, 14, 15)
+	assertToken(t, l.Next(), String, "name", 2, 15, 16)
+	assertToken(t, l.Next(), ',', ",", 2, 21, 22)
+	assertToken(t, l.Next(), Ident, "timeout", 2, 23, 24)
+	assertToken(t, l.Next(), '=', "=", 2, 30, 31)
+	assertToken(t, l.Next(), Int, "10", 2, 31, 32)
+	assertToken(t, l.Next(), ',', ",", 2, 33, 34)
+	assertToken(t, l.Next(), Ident, "args", 3, 10, 45)
+	assertToken(t, l.Next(), '=', "=", 3, 14, 49)
+	assertToken(t, l.Next(), Ident, "CONFIG", 3, 15, 50)
+	assertToken(t, l.Next(), '.', ".", 3, 21, 56)
+	assertToken(t, l.Next(), Ident, "ARGS", 3, 22, 57)
+	assertToken(t, l.Next(), ')', ")", 3, 26, 61)
+	assertToken(t, l.Next(), Colon, ":", 3, 27, 62)
+	assertToken(t, l.Next(), Ident, "pass", 4, 5, 68)
+	assertToken(t, l.Next(), Unindent, "", 5, 1, 72)
+}

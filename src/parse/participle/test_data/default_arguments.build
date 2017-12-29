@@ -1,2 +1,3 @@
-def test(name='name', timeout=10, args=CONFIG.ARGS):
+def test(name='name', timeout=10,
+         args=CONFIG.ARGS):
     pass
