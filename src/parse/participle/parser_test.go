@@ -133,3 +133,45 @@ func TestOperators(t *testing.T) {
 	assert.Equal(t, 1, len(call.Arguments[0].List.Values))
 	assert.Equal(t, "*.go", call.Arguments[0].List.Values[0].String)
 }
+
+func TestIndexing(t *testing.T) {
+	statements, err := NewParser().parse("src/parse/participle/test_data/indexing.build")
+	assert.NoError(t, err)
+	assert.Equal(t, 5, len(statements))
+
+	assert.Equal(t, "x", statements[0].Ident.Name)
+	assert.NotNil(t, statements[0].Ident.Action.Assign)
+	assert.Equal(t, "test", statements[0].Ident.Action.Assign.String)
+
+	assert.Equal(t, "y", statements[1].Ident.Name)
+	assert.NotNil(t, statements[1].Ident.Action.Assign)
+	assert.Equal(t, "x", statements[1].Ident.Action.Assign.Ident.Name)
+	assert.NotNil(t, statements[1].Ident.Action.Assign.Slice)
+	assert.Equal(t, 2, statements[1].Ident.Action.Assign.Slice.Start)
+	assert.Equal(t, "", statements[1].Ident.Action.Assign.Slice.Colon)
+	assert.Equal(t, 0, statements[1].Ident.Action.Assign.Slice.End)
+
+	assert.Equal(t, "z", statements[2].Ident.Name)
+	assert.NotNil(t, statements[2].Ident.Action.Assign)
+	assert.Equal(t, "x", statements[2].Ident.Action.Assign.Ident.Name)
+	assert.NotNil(t, statements[2].Ident.Action.Assign.Slice)
+	assert.Equal(t, 1, statements[2].Ident.Action.Assign.Slice.Start)
+	assert.Equal(t, ":", statements[2].Ident.Action.Assign.Slice.Colon)
+	assert.Equal(t, -1, statements[2].Ident.Action.Assign.Slice.End)
+
+	assert.Equal(t, "a", statements[3].Ident.Name)
+	assert.NotNil(t, statements[3].Ident.Action.Assign)
+	assert.Equal(t, "x", statements[3].Ident.Action.Assign.Ident.Name)
+	assert.NotNil(t, statements[3].Ident.Action.Assign.Slice)
+	assert.Equal(t, 2, statements[3].Ident.Action.Assign.Slice.Start)
+	assert.Equal(t, ":", statements[3].Ident.Action.Assign.Slice.Colon)
+	assert.Equal(t, 0, statements[3].Ident.Action.Assign.Slice.End)
+
+	assert.Equal(t, "b", statements[4].Ident.Name)
+	assert.NotNil(t, statements[4].Ident.Action.Assign)
+	assert.Equal(t, "x", statements[4].Ident.Action.Assign.Ident.Name)
+	assert.NotNil(t, statements[4].Ident.Action.Assign.Slice)
+	assert.Equal(t, 0, statements[4].Ident.Action.Assign.Slice.Start)
+	assert.Equal(t, ":", statements[4].Ident.Action.Assign.Slice.Colon)
+	assert.Equal(t, 2, statements[4].Ident.Action.Assign.Slice.End)
+}

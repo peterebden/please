@@ -147,7 +147,7 @@ func (l *lex) nextToken() lexer.Token {
 			l.braces--
 		}
 		fallthrough
-	case ',', '+', '=', '.':
+	case ',', '+', '=', '.', '%':
 		return lexer.Token{Type: rune(b), Value: string(b), Pos: pos}
 	case '#':
 		// Comment character, consume to end of line.
@@ -156,6 +156,12 @@ func (l *lex) nextToken() lexer.Token {
 			l.col++
 		}
 		return l.nextToken() // Comments aren't tokens themselves.
+	case '-':
+		// We only allow unary -, in which case we lex it with the integer.
+		if l.b[l.i] >= '0' && l.b[l.i] <= '9' {
+			return l.consumeInteger(b, pos)
+		}
+		fallthrough
 	default:
 		lexer.Panicf(pos, "Unknown character %c", b)
 	}

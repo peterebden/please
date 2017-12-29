@@ -49,6 +49,7 @@ type expression struct {
 	Dict   *dict     `| "{" @@ "}"`
 	Ident  *ident    `| @@ )`
 	Op     *operator `[ @@ ]`
+	Slice  *slice    `[ @@ ]`
 }
 
 type ident struct {
@@ -79,6 +80,12 @@ type dictItem struct {
 }
 
 type operator struct {
-	Op   string      `@"+"` // Can support others if needed.
+	Op   string      `@("+" | "%")` // Can support others if needed.
 	Expr *expression `@@`
+}
+
+type slice struct {
+	Start int    `"[" [ @Int ]`
+	Colon string `[ @":" ]`
+	End   int    `[ @Int ] "]"`
 }
