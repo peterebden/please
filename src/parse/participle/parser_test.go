@@ -233,3 +233,10 @@ func TestInlineIf(t *testing.T) {
 	assert.NotNil(t, ass.If.Else.List)
 	assert.Equal(t, 1, len(ass.If.Else.List.Values))
 }
+
+func TestFunctionDef(t *testing.T) {
+	statements, err := NewParser().parse("src/parse/participle/test_data/function_def.build")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(statements))
+	assert.Equal(t, 4, len(statements[0].FuncDef.Statements))
+}

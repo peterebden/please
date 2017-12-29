@@ -22,7 +22,7 @@ type statement struct {
 type funcDef struct {
 	Name       string       `"def" @Ident`
 	Arguments  []*argument  `"(" [ @@ { "," @@ } ] ")" Colon`
-	Statements []*statement `@@ Unindent`
+	Statements []*statement `{ @@ } Unindent`
 }
 
 type forStatement struct {
