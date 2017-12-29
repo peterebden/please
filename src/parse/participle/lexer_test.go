@@ -219,3 +219,11 @@ func TestMultiLineFunctionArgs(t *testing.T) {
 	assertToken(t, l.Next(), Ident, "pass", 4, 5, 68)
 	assertToken(t, l.Next(), Unindent, "", 5, 1, 72)
 }
+
+func TestComparisonOperator(t *testing.T) {
+	l := NewLexer().Lex(strings.NewReader("x = y == z"))
+	assertToken(t, l.Next(), Ident, "x", 1, 1, 1)
+	assertToken(t, l.Next(), '=', "=", 1, 3, 3)
+	assertToken(t, l.Next(), Ident, "y", 1, 5, 5)
+	assertToken(t, l.Next(), Comparison, "==", 1, 7, 7)
+}

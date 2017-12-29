@@ -16,7 +16,9 @@ const (
 	Int
 	String
 	Unindent
-	Colon // Would prefer not to have this but literal colons seem to deeply upset the parser.
+	Colon      // Would prefer not to have this but literal colons seem to deeply upset the parser.
+	Comparison // Similarly this, it doesn't seem to be able to handle == otherwise.
+	AugAdd     // Augmented addition, i.e. +=, is the only augmented assignment operation we support.
 )
 
 // indentation is the number of spaces we recognise for indentation - right now it's four spaces only.
@@ -160,8 +162,23 @@ func (l *lex) nextToken() lexer.Token {
 		if l.braces > 0 { // Don't let it go negative, it fouls things up
 			l.braces--
 		}
+		return lexer.Token{Type: rune(b), Value: string(b), Pos: pos}
+	case '=':
+		// Look ahead one byte to see if this is an augmented assignment or comparison.
+		if l.b[l.i] == '=' {
+			l.i++
+			l.col++
+			return lexer.Token{Type: Comparison, Value: "==", Pos: pos}
+		}
 		fallthrough
-	case ',', '+', '=', '.', '%':
+	case '+':
+		if l.b[l.i] == '=' {
+			l.i++
+			l.col++
+			return lexer.Token{Type: AugAdd, Value: "+=", Pos: pos}
+		}
+		fallthrough
+	case ',', '.', '%':
 		return lexer.Token{Type: rune(b), Value: string(b), Pos: pos}
 	case '#':
 		// Comment character, consume to end of line.
