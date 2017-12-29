@@ -175,3 +175,17 @@ func TestIndexing(t *testing.T) {
 	assert.Equal(t, ":", statements[4].Ident.Action.Assign.Slice.Colon)
 	assert.Equal(t, 2, statements[4].Ident.Action.Assign.Slice.End)
 }
+
+func TestIfStatement(t *testing.T) {
+	statements, err := NewParser().parse("src/parse/participle/test_data/if_statement.build")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(statements))
+
+	ifs := statements[0].If
+	assert.NotNil(t, ifs)
+	assert.Equal(t, "condition_a", ifs.Condition.Ident.Name)
+	assert.Equal(t, "and", ifs.Condition.Op.Op)
+	assert.Equal(t, "condition_b", ifs.Condition.Op.Expr.Ident.Name)
+	assert.Equal(t, 1, len(ifs.Statements))
+	assert.Equal(t, "genrule", ifs.Statements[0].Ident.Name)
+}

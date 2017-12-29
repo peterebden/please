@@ -14,6 +14,7 @@ type statement struct {
 	Pass    string        `  @"pass"`
 	FuncDef *funcDef      `| @@`
 	For     *forStatement `| @@`
+	If      *ifStatement  `| @@`
 	Literal *literal      `| @@`
 	Ident   *ident        `| @@`
 }
@@ -27,6 +28,11 @@ type funcDef struct {
 type forStatement struct {
 	Names      []string     `"for" @Ident [ { "," @Ident } ] "in"`
 	Expr       expression   `@@ Colon`
+	Statements []*statement `@@ Unindent`
+}
+
+type ifStatement struct {
+	Condition  expression   `"if" @@ Colon`
 	Statements []*statement `@@ Unindent`
 }
 
@@ -80,7 +86,7 @@ type dictItem struct {
 }
 
 type operator struct {
-	Op   string      `@("+" | "%")` // Can support others if needed.
+	Op   string      `@("+" | "%" | "and" | "or")`
 	Expr *expression `@@`
 }
 
