@@ -798,7 +798,7 @@ def _library_transitive_labels(c, compiler_flags, pkg_config_libs, archive=True)
         labels = get_labels(name, 'cc:')
         flags = ['-isystem %s' % l[4:] for l in labels if l.startswith('inc:')]
         flags.extend(['-D' + l[4:] for l in labels if l.startswith('def:')])
-        pkg_config_libs.extend(l[3:] for l in labels if l.startswith('pc:') and l[3:] not in pkg_config_libs)
+        pkg_config_libs.extend([l[3:] for l in labels if l.startswith('pc:') and l[3:] not in pkg_config_libs])
         if flags:  # Don't update if there aren't any relevant labels
             cmds, _ = _library_cmds(c, compiler_flags, pkg_config_libs, ' '.join(flags), archive=archive)
             for k, v in cmds.items():
@@ -812,10 +812,10 @@ def _binary_transitive_labels(c, linker_flags, pkg_config_libs, shared=False):
         labels = get_labels(name, 'cc:')
         linker_prefix = '' if CONFIG.LINK_WITH_LD_TOOL else '-Wl,'
         flags = [linker_prefix + l[3:] for l in labels if l.startswith('ld:')]
-        flags.extend('`pkg-config --libs %s`' % l[3:] for l in labels if l.startswith('pc:'))
+        flags.extend(['`pkg-config --libs %s`' % l[3:] for l in labels if l.startswith('pc:')])
         # ./ here because some weak linkers don't realise ./lib.a is the same file as lib.a
         # and report duplicate symbol errors as a result.
-        alwayslink = ' '.join('./' + l[3:] for l in labels if l.startswith('al:'))
+        alwayslink = ' '.join(['./' + l[3:] for l in labels if l.startswith('al:')])
         # Probably a little optimistic to check this (most binaries are likely to have *some*
         # kind of linker flags to apply), but we might as well.
         if flags or alwayslink:

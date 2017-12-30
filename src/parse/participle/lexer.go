@@ -246,7 +246,12 @@ func (l *lex) consumeString(quote byte, pos lexer.Position, multiline, raw bool)
 			if c == 'n' {
 				s = append(s, '\n')
 			} else {
-				s = append(s, c)
+				if c == '\n' && multiline {
+					l.line++
+					l.col = 0
+				} else {
+					s = append(s, c)
+				}
 			}
 			escaped = false
 			continue

@@ -57,9 +57,6 @@ func printErrorMessage(err *lexer.Error, filename string) bool {
 		} else if charsBefore >= len(line) {
 			line = line + "  "
 		}
-		if charsBefore > len(line) {
-			return false // Not sure why this happens right now, probably off by a line...
-		}
 		fmt.Printf("%s%s%s:%s%d%s:%s%d%s: %serror:%s %s%s%s\n%s%s\n%s%s%s%c%s%s\n%s^\n%s%s%s\n",
 			boldWhite, filename, reset,
 			boldWhite, err.Pos.Line, reset,
