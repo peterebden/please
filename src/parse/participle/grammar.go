@@ -78,9 +78,10 @@ type unaryOp struct {
 type ident struct {
 	Name   string `@Ident`
 	Action struct {
-		Property *ident      `  "." @@`
-		Call     *call       `| "(" @@ ")"`
-		Assign   *expression `| "=" @@`
+		Property  *ident      `  "." @@`
+		Call      *call       `| "(" @@ ")"`
+		Assign    *expression `| "=" @@`
+		AugAssign *expression `| "+=" @@`
 	} `[ @@ ]`
 }
 
@@ -105,7 +106,7 @@ type dictItem struct {
 }
 
 type operator struct {
-	Op   string      `@("+" | "%" | "and" | "or" | "is" | "in" | "not" | "==" | "+=")`
+	Op   string      `@("+" | "%" | "and" | "or" | "is" | "in" | "not" | "==")`
 	Expr *expression `@@`
 }
 

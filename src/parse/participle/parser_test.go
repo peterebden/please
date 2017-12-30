@@ -271,3 +271,10 @@ func TestUnaryOp(t *testing.T) {
 	assert.Equal(t, "not", statements[1].Ident.Action.Assign.UnaryOp.Op)
 	assert.Equal(t, "x", statements[1].Ident.Action.Assign.UnaryOp.Expr.Ident.Name)
 }
+
+func TestAugmentedAssignment(t *testing.T) {
+	statements, err := NewParser().parse("src/parse/participle/test_data/aug_assign.build")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(statements))
+	assert.NotNil(t, statements[0].Ident.Action.AugAssign)
+}
