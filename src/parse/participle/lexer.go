@@ -85,6 +85,8 @@ type lex struct {
 	// Pending unindent tokens. This is a bit yuck but means the parser doesn't need to
 	// concern itself about indentation (which is good because our parser doesn't do that...)
 	unindents int
+	// Remember whether the last token we output was an end-of-line so we don't emit multiple in sequence.
+	lastEOL bool
 }
 
 // Peek at the next token
@@ -96,6 +98,7 @@ func (l *lex) Peek() lexer.Token {
 func (l *lex) Next() lexer.Token {
 	ret := l.next
 	l.next = l.nextToken()
+	l.lastEOL = l.next.Type == EOL
 	return ret
 }
 
@@ -149,7 +152,7 @@ func (l *lex) nextToken() lexer.Token {
 			pos.Column = l.col + 1
 			l.unindents = ((lastIndent - l.indent) / indentation)
 		}
-		if l.braces == 0 {
+		if l.braces == 0 && !l.lastEOL {
 			return lexer.Token{Type: EOL, Pos: pos}
 		}
 		return l.nextToken()

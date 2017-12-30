@@ -260,3 +260,17 @@ func TestBlankLinesInFunction(t *testing.T) {
 	assertToken(t, l.Next(), EOL, "", 6, 1, 40)
 	assertToken(t, l.Next(), Unindent, "", 6, 1, 41)
 }
+
+const commentsAndEOLs = `
+pass
+
+# something
+
+`
+
+func TestCommentsAndEOLs(t *testing.T) {
+	l := NewLexer().Lex(strings.NewReader(commentsAndEOLs))
+	assertToken(t, l.Next(), Ident, "pass", 2, 1, 2)
+	assertToken(t, l.Next(), EOL, "", 3, 1, 7)
+	assertToken(t, l.Next(), EOF, "", 6, 1, 21)
+}
