@@ -4,7 +4,7 @@ Go has a strong built-in concept of packages so it's probably a good idea to mat
 rules to Go packages.
 """
 
-_GOPATH = ' '.join('-I %s -I %s/pkg/%s_%s' % (p, p, CONFIG.OS, CONFIG.ARCH) for p in CONFIG.GOPATH.split(':'))
+_GOPATH = ' '.join(['-I %s -I %s/pkg/%s_%s' % (p, p, CONFIG.OS, CONFIG.ARCH) for p in CONFIG.GOPATH.split(':')])
 # This links all the .a files up one level. This is necessary for some Go tools to find them.
 _LINK_PKGS_CMD = ' '.join([
     'for FN in `find . -name "*.a" | sort`; do ',

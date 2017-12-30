@@ -15,6 +15,7 @@ type statement struct {
 	FuncDef *funcDef      `| @@`
 	For     *forStatement `| @@`
 	If      *ifStatement  `| @@`
+	Return  *expression   `| "return" @@ EOL`
 	Literal *literal      `| @@ EOL`
 	Ident   *ident        `| @@ EOL)`
 }
@@ -106,7 +107,7 @@ type dictItem struct {
 }
 
 type operator struct {
-	Op   string      `@("+" | "%" | "<" | ">" | "and" | "or" | "is" | "in" | "not" | "==" | "!=")`
+	Op   string      `@("+" | "%" | "<" | ">" | "and" | "or" | "is" | "in" | "not" "in" | "not" | "==" | "!=")`
 	Expr *expression `@@`
 }
 
