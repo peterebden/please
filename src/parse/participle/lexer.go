@@ -188,11 +188,11 @@ func (l *lex) nextToken() lexer.Token {
 		}
 		return l.nextToken() // Comments aren't tokens themselves.
 	case '-':
-		// We only allow unary -, in which case we lex it with the integer.
+		// We lex unary - with the integer if possible.
 		if l.b[l.i] >= '0' && l.b[l.i] <= '9' {
 			return l.consumeInteger(b, pos)
 		}
-		fallthrough
+		return lexer.Token{Type: rune(b), Value: string(b), Pos: pos}
 	default:
 		lexer.Panicf(pos, "Unknown character %c", b)
 	}

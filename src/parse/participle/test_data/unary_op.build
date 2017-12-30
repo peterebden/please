@@ -1,0 +1,3 @@
+x = -len('.build')
+
+y = not x

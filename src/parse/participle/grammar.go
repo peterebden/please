@@ -42,7 +42,8 @@ type argument struct {
 }
 
 type literal struct {
-	String   string    `( @String`
+	UnaryOp  *unaryOp  `( @@`
+	String   string    `| @String`
 	Int      int       `| @Int`
 	List     *list     `| "[" @@ "]"`
 	Dict     *dict     `| "{" @@ "}"`
@@ -55,7 +56,8 @@ type literal struct {
 }
 
 type expression struct {
-	String   string    `( @String`
+	UnaryOp  *unaryOp  `( @@`
+	String   string    `| @String`
 	Int      int       `| @Int`
 	List     *list     `| "[" @@ "]"`
 	Dict     *dict     `| "{" @@ "}"`
@@ -66,6 +68,11 @@ type expression struct {
 	If       *inlineIf `[ @@ ]`
 	Property *ident    `[ ( "." @@`
 	Call     *call     `| "(" @@ ")" ) ]`
+}
+
+type unaryOp struct {
+	Op   string     `@( "-" | "not" )`
+	Expr expression `@@`
 }
 
 type ident struct {

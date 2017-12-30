@@ -258,3 +258,16 @@ func TestMethodsOnLiterals(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(statements))
 }
+
+func TestUnaryOp(t *testing.T) {
+	statements, err := NewParser().parse("src/parse/participle/test_data/unary_op.build")
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(statements))
+
+	assert.NotNil(t, statements[0].Ident.Action.Assign.UnaryOp)
+	assert.Equal(t, "-", statements[0].Ident.Action.Assign.UnaryOp.Op)
+	assert.Equal(t, "len", statements[0].Ident.Action.Assign.UnaryOp.Expr.Ident.Name)
+	assert.NotNil(t, statements[1].Ident.Action.Assign.UnaryOp)
+	assert.Equal(t, "not", statements[1].Ident.Action.Assign.UnaryOp.Op)
+	assert.Equal(t, "x", statements[1].Ident.Action.Assign.UnaryOp.Expr.Ident.Name)
+}
