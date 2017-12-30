@@ -659,7 +659,7 @@ inline char* ${BINARY_NAME}_end_nc() {
 
 # We duplicate the symbols with _ and __ preceding, the compiler fails if _ is not
 # present and the linker fails if __ isn't.
-_CC_DARWIN_ASM_CONTENTS = r"""
+_CC_DARWIN_ASM_CONTENTS = """
 bits 64
 
 section .rodata
@@ -671,12 +671,12 @@ global __binary_${ENCODED_FILENAME}_end
 global _binary_${ENCODED_FILENAME}_size
 global __binary_${ENCODED_FILENAME}_size
 
-_binary_${ENCODED_FILENAME}_start:    incbin \"${SRCS}\"
-__binary_${ENCODED_FILENAME}_start:   incbin \"${SRCS}\"
+_binary_${ENCODED_FILENAME}_start:    incbin \\"${SRCS}\\"
+__binary_${ENCODED_FILENAME}_start:   incbin \\"${SRCS}\\"
 _binary_${ENCODED_FILENAME}_end:
 __binary_${ENCODED_FILENAME}_end:
-_binary_${ENCODED_FILENAME}_size:     dd \\$-_binary_${ENCODED_FILENAME}_start
-__binary_${ENCODED_FILENAME}_size:    dd \\$-_binary_${ENCODED_FILENAME}_start
+_binary_${ENCODED_FILENAME}_size:     dd \\\\$-_binary_${ENCODED_FILENAME}_start
+__binary_${ENCODED_FILENAME}_size:    dd \\\\$-_binary_${ENCODED_FILENAME}_start
 """
 
 

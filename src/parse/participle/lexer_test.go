@@ -89,7 +89,8 @@ world
 
 // expected output after lexing; note quotes are broken to a single one and \n does not become a newline.
 const expectedMultilineString = `"
-hello\n
+hello
+
 world
 "`
 

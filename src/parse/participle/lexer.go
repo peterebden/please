@@ -173,9 +173,9 @@ func (l *lex) nextToken() lexer.Token {
 		if l.b[l.i] == b && l.b[l.i+1] == b {
 			l.i += 2 // Jump over initial quote
 			l.col += 2
-			return l.consumeTripleQuotedString(b, pos)
+			return l.consumeString(b, pos, true)
 		}
-		return l.consumeString(b, pos)
+		return l.consumeString(b, pos, false)
 	case ':':
 		// As noted above, literal colons seem to break the parser.
 		return lexer.Token{Type: Colon, Value: ":", Pos: pos}
@@ -229,7 +229,7 @@ func (l *lex) consumeInteger(initial byte, pos lexer.Position) lexer.Token {
 }
 
 // consumeString consumes all characters until the end of a string literal is reached.
-func (l *lex) consumeString(quote byte, pos lexer.Position) lexer.Token {
+func (l *lex) consumeString(quote byte, pos lexer.Position, multiline bool) lexer.Token {
 	s := make([]byte, 1, 100) // 100 chars is typically enough for a single string literal.
 	s[0] = '"'
 	escaped := false
@@ -250,39 +250,22 @@ func (l *lex) consumeString(quote byte, pos lexer.Position) lexer.Token {
 		case '\\':
 			escaped = true
 		case quote:
-			s = append(s, '"')
-			return lexer.Token{Type: String, Value: string(s), Pos: pos}
-		case '\n', 0:
-			lexer.Panic(pos, "Unterminated string literal")
-		default:
-			s = append(s, c)
-		}
-	}
-}
-
-// consumeTripleQuotedString consumes all characters until the end of a triple-quoted string literal is reached.
-// Note that unlike Python, we don't support escaping in here, so these are always raw strings; that's
-// also convenient since we don't support r' syntax for raw strings either...
-func (l *lex) consumeTripleQuotedString(quote byte, pos lexer.Position) lexer.Token {
-	s := make([]byte, 1, 1000) // Assume it's going to be fairly big...
-	s[0] = '"'
-	for {
-		c := l.b[l.i]
-		l.i++
-		l.col++
-		switch c {
-		case quote:
-			if l.b[l.i] == quote && l.b[l.i+1] == quote {
-				// Terminated. Remember to consume more characters appropriately...
-				l.i += 2
-				l.col += 2
+			if !multiline || (l.b[l.i] == quote && l.b[l.i+1] == quote) {
 				s = append(s, '"')
+				if multiline {
+					l.i += 2
+					l.col += 2
+				}
 				return lexer.Token{Type: String, Value: string(s), Pos: pos}
 			}
 		case '\n':
-			l.col = 0
-			l.line++
-			s = append(s, c)
+			if multiline {
+				l.line++
+				l.col = 0
+				s = append(s, c)
+				continue
+			}
+			fallthrough
 		case 0:
 			lexer.Panic(pos, "Unterminated string literal")
 		default:
