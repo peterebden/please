@@ -74,10 +74,10 @@ type expression struct {
 	Lambda   *lambda   `| "lambda" @@`
 	Ident    *ident    `| @@ )`
 	Slice    *slice    `[ @@ ]`
-	If       *inlineIf `[ @@ ]`
 	Property *ident    `[ ( "." @@`
 	Call     *call     `| "(" @@ ")" ) ]`
 	Op       *operator `[ @@ ]`
+	If       *inlineIf `[ @@ ]`
 }
 
 type unaryOp struct {
@@ -126,7 +126,7 @@ type dictItem struct {
 }
 
 type operator struct {
-	Op   string      `@("+" | "%" | "<" | ">" | "and" | "or" | "is" | "in" | "not" "in" | "not" | "==" | "!=")`
+	Op   string      `@("+" | "%" | "<" | ">" | "and" | "or" | "is" | "in" | "not" "in" | "not" | "==" | "!=" | ">=" | "<=")`
 	Expr *expression `@@`
 }
 

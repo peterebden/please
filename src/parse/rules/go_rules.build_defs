@@ -664,13 +664,13 @@ def _go_binary_cmds(static=False, ldflags='', pkg_config=''):
     else:
         flags = ''
 
-    return {
+    return ({
         'dbg': '%s && %s %s $SRCS' % (prefix, _link_cmd, flags),
         'opt': '%s && %s %s -s -w $SRCS' % (prefix, _link_cmd, flags),
     }, {
         'go': [CONFIG.GO_TOOL],
         'ld': [CONFIG.LD_TOOL if CONFIG.LINK_WITH_LD_TOOL else CONFIG.CC_TOOL],
-    }
+    })
 
 
 def _go_import_path_cmd(import_path):
@@ -699,6 +699,6 @@ def _collect_linker_flags(static):
 def _get_ldflags_and_pkgconfig(name):
     """Returns the ldflags and pkg-config invocations for a target."""
     labels = get_labels(name, 'cc:')
-    ldflags = ' '.join(l[3:] for l in labels if l.startswith('ld:'))
-    pkg_config = ' '.join(l[3:] for l in labels if l.startswith('pc:'))
+    ldflags = ' '.join([l[3:] for l in labels if l.startswith('ld:')])
+    pkg_config = ' '.join([l[3:] for l in labels if l.startswith('pc:')])
     return (ldflags, '`pkg-config --libs %s`' % pkg_config) if pkg_config else (ldflags, '')

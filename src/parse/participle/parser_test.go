@@ -332,3 +332,13 @@ func TestExample4(t *testing.T) {
 	_, err := NewParser().parse("src/parse/participle/test_data/example_4.build")
 	assert.NoError(t, err)
 }
+
+func TestExample5(t *testing.T) {
+	_, err := NewParser().parse("src/parse/participle/test_data/example_5.build")
+	assert.NoError(t, err)
+}
+
+func TestExample6(t *testing.T) {
+	_, err := NewParser().parse("src/parse/participle/test_data/example_6.build")
+	assert.NoError(t, err)
+}
