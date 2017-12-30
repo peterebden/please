@@ -45,34 +45,33 @@ func TestParseFunctionCalls(t *testing.T) {
 
 	assert.NotNil(t, statements[0].Ident.Action.Call)
 	assert.Equal(t, "package", statements[0].Ident.Name)
-	assert.Equal(t, 0, len(statements[0].Ident.Action.Call.NamedArguments))
+	assert.Equal(t, 0, len(statements[0].Ident.Action.Call.Arguments))
 
 	assert.NotNil(t, statements[2].Ident.Action.Call)
 	assert.Equal(t, "package", statements[2].Ident.Name)
-	assert.Equal(t, 1, len(statements[2].Ident.Action.Call.NamedArguments))
-	arg := statements[2].Ident.Action.Call.NamedArguments[0]
-	assert.Equal(t, "default_visibility", arg.Name)
-	assert.NotNil(t, arg.Value.List)
-	assert.Equal(t, 1, len(arg.Value.List.Values))
-	assert.Equal(t, "\"PUBLIC\"", arg.Value.List.Values[0].String)
+	assert.Equal(t, 1, len(statements[2].Ident.Action.Call.Arguments))
+	arg := statements[2].Ident.Action.Call.Arguments[0]
+	assert.Equal(t, "default_visibility", arg.Ident.Name)
+	assert.NotNil(t, arg.Ident.Action.Assign)
+	assert.Equal(t, 1, len(arg.Ident.Action.Assign.List.Values))
+	assert.Equal(t, "\"PUBLIC\"", arg.Ident.Action.Assign.List.Values[0].String)
 
 	assert.NotNil(t, statements[3].Ident.Action.Call)
 	assert.Equal(t, "python_library", statements[3].Ident.Name)
-	assert.Equal(t, 2, len(statements[3].Ident.Action.Call.NamedArguments))
-	args := statements[3].Ident.Action.Call.NamedArguments
-	assert.Equal(t, "name", args[0].Name)
-	assert.Equal(t, "\"lib\"", args[0].Value.String)
-	assert.Equal(t, "srcs", args[1].Name)
-	assert.NotNil(t, args[1].Value.List)
-	assert.Equal(t, 2, len(args[1].Value.List.Values))
-	assert.Equal(t, "\"lib1.py\"", args[1].Value.List.Values[0].String)
-	assert.Equal(t, "\"lib2.py\"", args[1].Value.List.Values[1].String)
+	assert.Equal(t, 2, len(statements[3].Ident.Action.Call.Arguments))
+	args := statements[3].Ident.Action.Call.Arguments
+	assert.Equal(t, "name", args[0].Ident.Name)
+	assert.Equal(t, "\"lib\"", args[0].Ident.Action.Assign.String)
+	assert.Equal(t, "srcs", args[1].Ident.Name)
+	assert.NotNil(t, args[1].Ident.Action.Assign.List)
+	assert.Equal(t, 2, len(args[1].Ident.Action.Assign.List.Values))
+	assert.Equal(t, "\"lib1.py\"", args[1].Ident.Action.Assign.List.Values[0].String)
+	assert.Equal(t, "\"lib2.py\"", args[1].Ident.Action.Assign.List.Values[1].String)
 
 	assert.NotNil(t, statements[4].Ident.Action.Call)
 	assert.Equal(t, "subinclude", statements[4].Ident.Name)
 	assert.NotNil(t, statements[4].Ident.Action.Call)
 	assert.Equal(t, 1, len(statements[4].Ident.Action.Call.Arguments))
-	assert.Equal(t, 0, len(statements[4].Ident.Action.Call.NamedArguments))
 	assert.Equal(t, "\"//build_defs:version\"", statements[4].Ident.Action.Call.Arguments[0].String)
 }
 
@@ -116,17 +115,17 @@ func TestOperators(t *testing.T) {
 
 	assert.NotNil(t, statements[0].Ident.Action.Call)
 	assert.Equal(t, "genrule", statements[0].Ident.Name)
-	assert.Equal(t, 2, len(statements[0].Ident.Action.Call.NamedArguments))
+	assert.Equal(t, 2, len(statements[0].Ident.Action.Call.Arguments))
 
-	arg := statements[0].Ident.Action.Call.NamedArguments[1]
-	assert.Equal(t, "srcs", arg.Name)
-	assert.NotNil(t, arg.Value.List)
-	assert.Equal(t, 1, len(arg.Value.List.Values))
-	assert.Equal(t, "\"//something:test_go\"", arg.Value.List.Values[0].String)
-	assert.NotNil(t, arg.Value.Op)
-	assert.Equal(t, "+", arg.Value.Op.Op)
-	call := arg.Value.Op.Expr.Ident.Action.Call
-	assert.Equal(t, "glob", arg.Value.Op.Expr.Ident.Name)
+	arg := statements[0].Ident.Action.Call.Arguments[1]
+	assert.Equal(t, "srcs", arg.Ident.Name)
+	assert.NotNil(t, arg.Ident.Action.Assign.List)
+	assert.Equal(t, 1, len(arg.Ident.Action.Assign.List.Values))
+	assert.Equal(t, "\"//something:test_go\"", arg.Ident.Action.Assign.List.Values[0].String)
+	assert.NotNil(t, arg.Ident.Action.Assign.Op)
+	assert.Equal(t, "+", arg.Ident.Action.Assign.Op.Op)
+	call := arg.Ident.Action.Assign.Op.Expr.Ident.Action.Call
+	assert.Equal(t, "glob", arg.Ident.Action.Assign.Op.Expr.Ident.Name)
 	assert.NotNil(t, call)
 	assert.Equal(t, 1, len(call.Arguments))
 	assert.NotNil(t, call.Arguments[0].List)
