@@ -66,7 +66,7 @@ func TestLexString(t *testing.T) {
 	l := NewLexer().Lex(strings.NewReader(`x = "hello world"`))
 	assertToken(t, l.Next(), Ident, "x", 1, 1, 1)
 	assertToken(t, l.Next(), '=', "=", 1, 3, 3)
-	assertToken(t, l.Next(), String, "hello world", 1, 5, 5)
+	assertToken(t, l.Next(), String, "\"hello world\"", 1, 5, 5)
 	assertToken(t, l.Next(), EOF, "", 1, 18, 18)
 }
 
@@ -74,7 +74,7 @@ func TestLexStringEscape(t *testing.T) {
 	l := NewLexer().Lex(strings.NewReader(`x = '\n\\'`))
 	assertToken(t, l.Next(), Ident, "x", 1, 1, 1)
 	assertToken(t, l.Next(), '=', "=", 1, 3, 3)
-	assertToken(t, l.Next(), String, "\n\\", 1, 5, 5)
+	assertToken(t, l.Next(), String, "\"\n\\\"", 1, 5, 5)
 	assertToken(t, l.Next(), EOF, "", 1, 11, 11)
 }
 
@@ -84,10 +84,10 @@ world
 """`
 
 // expected output after lexing; note quotes are broken to a single one and \n does not become a newline.
-const expectedMultilineString = `
+const expectedMultilineString = `"
 hello\n
 world
-`
+"`
 
 func TestLexMultilineString(t *testing.T) {
 	l := NewLexer().Lex(strings.NewReader(testMultilineString))
@@ -115,7 +115,7 @@ func TestLexFunctionArgs(t *testing.T) {
 	assertToken(t, l.Next(), '(', "(", 1, 9, 9)
 	assertToken(t, l.Next(), Ident, "name", 1, 10, 10)
 	assertToken(t, l.Next(), '=', "=", 1, 14, 14)
-	assertToken(t, l.Next(), String, "name", 1, 15, 15)
+	assertToken(t, l.Next(), String, "\"name\"", 1, 15, 15)
 	assertToken(t, l.Next(), ',', ",", 1, 21, 21)
 	assertToken(t, l.Next(), Ident, "timeout", 1, 23, 23)
 	assertToken(t, l.Next(), '=', "=", 1, 30, 30)
@@ -146,14 +146,14 @@ func TestMoreComplexFunction(t *testing.T) {
 	assertToken(t, l.Next(), '(', "(", 2, 15, 16)
 	assertToken(t, l.Next(), Ident, "name", 3, 5, 22)
 	assertToken(t, l.Next(), '=', "=", 3, 10, 27)
-	assertToken(t, l.Next(), String, "lib", 3, 12, 29)
+	assertToken(t, l.Next(), String, "\"lib\"", 3, 12, 29)
 	assertToken(t, l.Next(), ',', ",", 3, 17, 34)
 	assertToken(t, l.Next(), Ident, "srcs", 4, 5, 40)
 	assertToken(t, l.Next(), '=', "=", 4, 10, 45)
 	assertToken(t, l.Next(), '[', "[", 4, 12, 47)
-	assertToken(t, l.Next(), String, "lib1.py", 5, 9, 57)
+	assertToken(t, l.Next(), String, "\"lib1.py\"", 5, 9, 57)
 	assertToken(t, l.Next(), ',', ",", 5, 18, 66)
-	assertToken(t, l.Next(), String, "lib2.py", 6, 9, 76)
+	assertToken(t, l.Next(), String, "\"lib2.py\"", 6, 9, 76)
 	assertToken(t, l.Next(), ',', ",", 6, 18, 85)
 	assertToken(t, l.Next(), ']', "]", 7, 5, 91)
 	assertToken(t, l.Next(), ',', ",", 7, 6, 92)
@@ -203,7 +203,7 @@ func TestMultiLineFunctionArgs(t *testing.T) {
 	assertToken(t, l.Next(), '(', "(", 2, 9, 10)
 	assertToken(t, l.Next(), Ident, "name", 2, 10, 11)
 	assertToken(t, l.Next(), '=', "=", 2, 14, 15)
-	assertToken(t, l.Next(), String, "name", 2, 15, 16)
+	assertToken(t, l.Next(), String, "\"name\"", 2, 15, 16)
 	assertToken(t, l.Next(), ',', ",", 2, 21, 22)
 	assertToken(t, l.Next(), Ident, "timeout", 2, 23, 24)
 	assertToken(t, l.Next(), '=', "=", 2, 30, 31)
@@ -226,4 +226,24 @@ func TestComparisonOperator(t *testing.T) {
 	assertToken(t, l.Next(), '=', "=", 1, 3, 3)
 	assertToken(t, l.Next(), Ident, "y", 1, 5, 5)
 	assertToken(t, l.Next(), Comparison, "==", 1, 7, 7)
+}
+
+const blankLinesInFunction = `
+def x():
+    """test"""
+
+    return 42
+`
+
+func TestBlankLinesInFunction(t *testing.T) {
+	l := NewLexer().Lex(strings.NewReader(blankLinesInFunction))
+	assertToken(t, l.Next(), Ident, "def", 2, 1, 2)
+	assertToken(t, l.Next(), Ident, "x", 2, 5, 6)
+	assertToken(t, l.Next(), '(', "(", 2, 6, 7)
+	assertToken(t, l.Next(), ')', ")", 2, 7, 8)
+	assertToken(t, l.Next(), Colon, ":", 2, 8, 9)
+	assertToken(t, l.Next(), String, "\"test\"", 3, 5, 15)
+	assertToken(t, l.Next(), Ident, "return", 5, 5, 31)
+	assertToken(t, l.Next(), Int, "42", 5, 12, 38)
+	assertToken(t, l.Next(), Unindent, "", 6, 1, 40)
 }

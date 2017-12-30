@@ -132,6 +132,9 @@ func (l *lex) nextToken() lexer.Token {
 			l.col++
 			indent++
 		}
+		if l.b[l.i] == '\n' {
+			return l.nextToken()
+		}
 		if l.braces == 0 {
 			l.indent = indent
 		}

@@ -3,5 +3,7 @@ def cc_library(name, srcs=None, hdrs=None, private_hdrs=None, deps=None, visibil
                alwayslink=False, _c=False):
     """Generate a C or C++ library target."""
     srcs = srcs or []
+
     hdrs = hdrs or []
+
     deps = deps or []
