@@ -66,7 +66,7 @@ def cc_library(name, srcs=None, hdrs=None, private_hdrs=None, deps=None, visibil
 
     # Handle defines being passed as a dict, as a nicety for the user.
     if isinstance(defines, dict):
-        defines = [k if v is None else '%s=\\"%s\\"' % (k, v) for k, v in sorted(defines.items())]
+        defines = [k if v is None else r'%s=\"%s\"' % (k, v) for k, v in sorted(defines.items())]
 
     labels = (['cc:ld:' + flag for flag in linker_flags] +
               ['cc:pc:' + lib for lib in pkg_config_libs] +
@@ -239,7 +239,7 @@ def cc_object(name, src, hdrs=None, private_hdrs=None, out=None, test_only=False
 
     # Handle defines being passed as a dict, as a nicety for the user.
     if isinstance(defines, dict):
-        defines = [k if v is None else '%s=\\"%s\\"' % (k, v) for k, v in sorted(defines.items())]
+        defines = [k if v is None else r'%s=\"%s\"' % (k, v) for k, v in sorted(defines.items())]
 
     labels = (['cc:ld:' + flag for flag in linker_flags] +
               ['cc:pc:' + lib for lib in pkg_config_libs] +
@@ -659,7 +659,7 @@ inline char* ${BINARY_NAME}_end_nc() {
 
 # We duplicate the symbols with _ and __ preceding, the compiler fails if _ is not
 # present and the linker fails if __ isn't.
-_CC_DARWIN_ASM_CONTENTS = """
+_CC_DARWIN_ASM_CONTENTS = r"""
 bits 64
 
 section .rodata
@@ -671,12 +671,12 @@ global __binary_${ENCODED_FILENAME}_end
 global _binary_${ENCODED_FILENAME}_size
 global __binary_${ENCODED_FILENAME}_size
 
-_binary_${ENCODED_FILENAME}_start:    incbin \\"${SRCS}\\"
-__binary_${ENCODED_FILENAME}_start:   incbin \\"${SRCS}\\"
+_binary_${ENCODED_FILENAME}_start:    incbin \"${SRCS}\"
+__binary_${ENCODED_FILENAME}_start:   incbin \"${SRCS}\"
 _binary_${ENCODED_FILENAME}_end:
 __binary_${ENCODED_FILENAME}_end:
-_binary_${ENCODED_FILENAME}_size:     dd \\\\$-_binary_${ENCODED_FILENAME}_start
-__binary_${ENCODED_FILENAME}_size:    dd \\\\$-_binary_${ENCODED_FILENAME}_start
+_binary_${ENCODED_FILENAME}_size:     dd \\$-_binary_${ENCODED_FILENAME}_start
+__binary_${ENCODED_FILENAME}_size:    dd \\$-_binary_${ENCODED_FILENAME}_start
 """
 
 

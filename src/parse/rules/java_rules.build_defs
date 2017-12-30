@@ -54,7 +54,7 @@ def java_library(name, srcs=None, src_dir=None, resources=None, resources_root=N
         else:
             javac_cmd = 'mkdir -p _tmp/META-INF && $TOOLS_JAVAC %s -classpath .:%s -d _tmp %s' % (
                 javac_flags,
-                '`find $TMP_DIR -name "*.jar" | tr \\\\\\\\n :`',
+                r'`find $TMP_DIR -name "*.jar" | tr \\\\n :`',
                 '$SRCS' if srcs else '`find $SRCS -name "*.java"`',
             )
 
