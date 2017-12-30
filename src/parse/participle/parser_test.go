@@ -288,3 +288,8 @@ func TestExample2(t *testing.T) {
 	_, err := NewParser().parse("src/parse/participle/test_data/example_2.build")
 	assert.NoError(t, err)
 }
+
+func TestExample3(t *testing.T) {
+	_, err := NewParser().parse("src/parse/participle/test_data/example_3.build")
+	assert.NoError(t, err)
+}

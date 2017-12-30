@@ -92,10 +92,18 @@ func readLine(filename string, line int) (string, string, string) {
 		return "", "", ""
 	}
 	lines := bytes.Split(b, []byte{'\n'})
-	if len(lines) <= line+1 {
+	if len(lines) <= line {
 		return "", "", ""
 	}
-	return string(lines[line-1]), string(lines[line]), string(lines[line+1])
+	before := ""
+	if line > 0 {
+		before = string(lines[line-1])
+	}
+	after := ""
+	if line < len(lines)-1 {
+		after = string(lines[line+1])
+	}
+	return before, string(lines[line]), after
 }
 
 // reverseSymbol looks up a symbol's name from the lexer. This is not efficient.
