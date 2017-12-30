@@ -35,6 +35,11 @@ type forStatement struct {
 type ifStatement struct {
 	Condition  expression   `"if" @@ Colon EOL`
 	Statements []*statement `{ @@ } Unindent`
+	Elif       []struct {
+		Condition  *expression  `"elif" @@ Colon EOL`
+		Statements []*statement `{ @@ } Unindent`
+	} `{ @@ }`
+	ElseStatements []*statement `[ "else" Colon EOL { @@ } Unindent ]`
 }
 
 type argument struct {

@@ -278,6 +278,20 @@ func TestAugmentedAssignment(t *testing.T) {
 	assert.NotNil(t, statements[0].Ident.Action.AugAssign)
 }
 
+func TestElseStatement(t *testing.T) {
+	statements, err := NewParser().parse("src/parse/participle/test_data/else.build")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(statements))
+	assert.NotNil(t, statements[0].If)
+	assert.Equal(t, 1, len(statements[0].If.Statements))
+	assert.Equal(t, 2, len(statements[0].If.Elif))
+	assert.Equal(t, 1, len(statements[0].If.Elif[0].Statements))
+	assert.NotNil(t, statements[0].If.Elif[0].Condition)
+	assert.Equal(t, 1, len(statements[0].If.Elif[1].Statements))
+	assert.NotNil(t, statements[0].If.Elif[1].Condition)
+	assert.Equal(t, 1, len(statements[0].If.ElseStatements))
+}
+
 func TestExample1(t *testing.T) {
 	_, err := NewParser().parse("src/parse/participle/test_data/example_1.build")
 	assert.NoError(t, err)
