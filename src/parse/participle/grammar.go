@@ -85,8 +85,8 @@ type ident struct {
 }
 
 type call struct {
-	Arguments      []*literal  `{ @@ [ "," ] }`
-	NamedArguments []*argument `{ @@ [ "," ] }`
+	Arguments      []*literal  `[ @@ ] { "," [ @@ ] }`
+	NamedArguments []*argument `[ @@ ] { "," [ @@ ] }`
 }
 
 type list struct {

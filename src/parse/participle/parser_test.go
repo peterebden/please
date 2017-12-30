@@ -30,7 +30,7 @@ func TestParseDefaultArguments(t *testing.T) {
 
 	args := statements[0].FuncDef.Arguments
 	assert.Equal(t, "name", args[0].Name)
-	assert.Equal(t, "name", args[0].Value.String)
+	assert.Equal(t, "\"name\"", args[0].Value.String)
 	assert.Equal(t, "timeout", args[1].Name)
 	assert.Equal(t, 10, args[1].Value.Int)
 	assert.Equal(t, "args", args[2].Name)
@@ -54,26 +54,26 @@ func TestParseFunctionCalls(t *testing.T) {
 	assert.Equal(t, "default_visibility", arg.Name)
 	assert.NotNil(t, arg.Value.List)
 	assert.Equal(t, 1, len(arg.Value.List.Values))
-	assert.Equal(t, "PUBLIC", arg.Value.List.Values[0].String)
+	assert.Equal(t, "\"PUBLIC\"", arg.Value.List.Values[0].String)
 
 	assert.NotNil(t, statements[3].Ident.Action.Call)
 	assert.Equal(t, "python_library", statements[3].Ident.Name)
 	assert.Equal(t, 2, len(statements[3].Ident.Action.Call.NamedArguments))
 	args := statements[3].Ident.Action.Call.NamedArguments
 	assert.Equal(t, "name", args[0].Name)
-	assert.Equal(t, "lib", args[0].Value.String)
+	assert.Equal(t, "\"lib\"", args[0].Value.String)
 	assert.Equal(t, "srcs", args[1].Name)
 	assert.NotNil(t, args[1].Value.List)
 	assert.Equal(t, 2, len(args[1].Value.List.Values))
-	assert.Equal(t, "lib1.py", args[1].Value.List.Values[0].String)
-	assert.Equal(t, "lib2.py", args[1].Value.List.Values[1].String)
+	assert.Equal(t, "\"lib1.py\"", args[1].Value.List.Values[0].String)
+	assert.Equal(t, "\"lib2.py\"", args[1].Value.List.Values[1].String)
 
 	assert.NotNil(t, statements[4].Ident.Action.Call)
 	assert.Equal(t, "subinclude", statements[4].Ident.Name)
 	assert.NotNil(t, statements[4].Ident.Action.Call)
 	assert.Equal(t, 1, len(statements[4].Ident.Action.Call.Arguments))
 	assert.Equal(t, 0, len(statements[4].Ident.Action.Call.NamedArguments))
-	assert.Equal(t, "//build_defs:version", statements[4].Ident.Action.Call.Arguments[0].String)
+	assert.Equal(t, "\"//build_defs:version\"", statements[4].Ident.Action.Call.Arguments[0].String)
 }
 
 func TestParseAssignments(t *testing.T) {
@@ -86,11 +86,11 @@ func TestParseAssignments(t *testing.T) {
 	ass := statements[0].Ident.Action.Assign.Dict
 	assert.NotNil(t, ass)
 	assert.Equal(t, 3, len(ass.Items))
-	assert.Equal(t, "mickey", ass.Items[0].Key)
+	assert.Equal(t, "\"mickey\"", ass.Items[0].Key)
 	assert.Equal(t, 3, ass.Items[0].Value.Int)
-	assert.Equal(t, "donald", ass.Items[1].Key)
-	assert.Equal(t, "sora", ass.Items[1].Value.String)
-	assert.Equal(t, "goofy", ass.Items[2].Key)
+	assert.Equal(t, "\"donald\"", ass.Items[1].Key)
+	assert.Equal(t, "\"sora\"", ass.Items[1].Value.String)
+	assert.Equal(t, "\"goofy\"", ass.Items[2].Key)
 	assert.Equal(t, "riku", ass.Items[2].Value.Ident.Name)
 }
 
@@ -122,7 +122,7 @@ func TestOperators(t *testing.T) {
 	assert.Equal(t, "srcs", arg.Name)
 	assert.NotNil(t, arg.Value.List)
 	assert.Equal(t, 1, len(arg.Value.List.Values))
-	assert.Equal(t, "//something:test_go", arg.Value.List.Values[0].String)
+	assert.Equal(t, "\"//something:test_go\"", arg.Value.List.Values[0].String)
 	assert.NotNil(t, arg.Value.Op)
 	assert.Equal(t, "+", arg.Value.Op.Op)
 	call := arg.Value.Op.Expr.Ident.Action.Call
@@ -131,7 +131,7 @@ func TestOperators(t *testing.T) {
 	assert.Equal(t, 1, len(call.Arguments))
 	assert.NotNil(t, call.Arguments[0].List)
 	assert.Equal(t, 1, len(call.Arguments[0].List.Values))
-	assert.Equal(t, "*.go", call.Arguments[0].List.Values[0].String)
+	assert.Equal(t, "\"*.go\"", call.Arguments[0].List.Values[0].String)
 }
 
 func TestIndexing(t *testing.T) {
@@ -141,7 +141,7 @@ func TestIndexing(t *testing.T) {
 
 	assert.Equal(t, "x", statements[0].Ident.Name)
 	assert.NotNil(t, statements[0].Ident.Action.Assign)
-	assert.Equal(t, "test", statements[0].Ident.Action.Assign.String)
+	assert.Equal(t, "\"test\"", statements[0].Ident.Action.Assign.String)
 
 	assert.Equal(t, "y", statements[1].Ident.Name)
 	assert.NotNil(t, statements[1].Ident.Action.Assign)
@@ -262,7 +262,7 @@ func TestMethodsOnLiterals(t *testing.T) {
 func TestUnaryOp(t *testing.T) {
 	statements, err := NewParser().parse("src/parse/participle/test_data/unary_op.build")
 	assert.NoError(t, err)
-	assert.Equal(t, 2, len(statements))
+	assert.Equal(t, 3, len(statements))
 
 	assert.NotNil(t, statements[0].Ident.Action.Assign.UnaryOp)
 	assert.Equal(t, "-", statements[0].Ident.Action.Assign.UnaryOp.Op)

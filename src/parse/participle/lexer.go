@@ -213,7 +213,8 @@ func (l *lex) consumeInteger(initial byte, pos lexer.Position) lexer.Token {
 
 // consumeString consumes all characters until the end of a string literal is reached.
 func (l *lex) consumeString(quote byte, pos lexer.Position) lexer.Token {
-	s := make([]byte, 0, 100) // 100 chars is typically enough for a single string literal.
+	s := make([]byte, 1, 100) // 100 chars is typically enough for a single string literal.
+	s[0] = '"'
 	escaped := false
 	for {
 		c := l.b[l.i]
@@ -232,6 +233,7 @@ func (l *lex) consumeString(quote byte, pos lexer.Position) lexer.Token {
 		case '\\':
 			escaped = true
 		case quote:
+			s = append(s, '"')
 			return lexer.Token{Type: String, Value: string(s), Pos: pos}
 		case '\n', 0:
 			lexer.Panic(pos, "Unterminated string literal")
@@ -245,7 +247,8 @@ func (l *lex) consumeString(quote byte, pos lexer.Position) lexer.Token {
 // Note that unlike Python, we don't support escaping in here, so these are always raw strings; that's
 // also convenient since we don't support r' syntax for raw strings either...
 func (l *lex) consumeTripleQuotedString(quote byte, pos lexer.Position) lexer.Token {
-	s := make([]byte, 0, 1000) // Assume it's going to be fairly big...
+	s := make([]byte, 1, 1000) // Assume it's going to be fairly big...
+	s[0] = '"'
 	for {
 		c := l.b[l.i]
 		l.i++
@@ -256,6 +259,7 @@ func (l *lex) consumeTripleQuotedString(quote byte, pos lexer.Position) lexer.To
 				// Terminated. Remember to consume more characters appropriately...
 				l.i += 2
 				l.col += 2
+				s = append(s, '"')
 				return lexer.Token{Type: String, Value: string(s), Pos: pos}
 			}
 		case '\n':
