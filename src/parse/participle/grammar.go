@@ -49,6 +49,7 @@ type literal struct {
 	List     *list     `| "[" @@ "]"`
 	Dict     *dict     `| "{" @@ "}"`
 	Tuple    *list     `| "(" @@ ")" )` // Tuples don't have a separate implementation.
+	Lambda   *lambda   `| "lambda" @@`
 	Op       *operator `[ @@ ]`
 	Slice    *slice    `[ @@ ]`
 	If       *inlineIf `[ @@ ]`
@@ -63,6 +64,7 @@ type expression struct {
 	List     *list     `| "[" @@ "]"`
 	Dict     *dict     `| "{" @@ "}"`
 	Tuple    *list     `| "(" @@ ")"`
+	Lambda   *lambda   `| "lambda" @@`
 	Ident    *ident    `| @@ )`
 	Op       *operator `[ @@ ]`
 	Slice    *slice    `[ @@ ]`
@@ -127,4 +129,9 @@ type comprehension struct {
 	Names []string    `"for" @Ident [ { "," @Ident } ] "in"`
 	Expr  *expression `@@`
 	If    *expression `[ "if" @@ ]`
+}
+
+type lambda struct {
+	Arguments []*argument `[ @@ { "," @@ } ] Colon`
+	Expr      literal     `@@`
 }
