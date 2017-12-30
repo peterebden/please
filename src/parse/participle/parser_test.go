@@ -278,3 +278,8 @@ func TestAugmentedAssignment(t *testing.T) {
 	assert.Equal(t, 1, len(statements))
 	assert.NotNil(t, statements[0].Ident.Action.AugAssign)
 }
+
+func TestExample1(t *testing.T) {
+	_, err := NewParser().parse("src/parse/participle/test_data/example_1.build")
+	assert.NoError(t, err)
+}
