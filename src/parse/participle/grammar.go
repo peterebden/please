@@ -87,22 +87,22 @@ type unaryOp struct {
 
 type identStatement struct {
 	Name   string `@Ident`
-	Action struct {
+	Action []struct {
 		Property    *ident          `  "." @@`
 		Call        *call           `| "(" @@ ")"`
 		Assign      *expression     `| "=" @@`
 		AugAssign   *expression     `| "+=" @@`
 		Destructure *identStatement `| "," @@`
-	} `[ @@ ]`
+	} `{ @@ }`
 }
 
 type ident struct {
 	Name   string `@Ident`
-	Action struct {
+	Action []struct {
 		Property *ident      `  "." @@`
 		Call     *call       `| "(" @@ ")"`
 		Assign   *expression `| "=" @@`
-	} `[ @@ ]`
+	} `{ @@ }`
 }
 
 type call struct {
