@@ -298,8 +298,8 @@ func TestUnevenUnindent(t *testing.T) {
 	assertToken(t, l.Next(), Ident, "pass", 4, 13, 36)
 	assertToken(t, l.Next(), EOL, "", 5, 5, 40)
 	assertToken(t, l.Next(), Unindent, "", 5, 5, 45)
-	assertToken(t, l.Next(), Ident, "return", 5, 5, 44)
-	assertToken(t, l.Next(), EOL, "", 5, 11, 50)
-	assertToken(t, l.Next(), Unindent, "", 6, 1, 51)
-	assertToken(t, l.Next(), EOF, "", 6, 1, 51)
+	assertToken(t, l.Next(), Ident, "return", 5, 5, 45)
+	assertToken(t, l.Next(), EOL, "", 6, 1, 51)
+	assertToken(t, l.Next(), Unindent, "", 6, 1, 52)
+	assertToken(t, l.Next(), EOF, "", 6, 1, 52)
 }
