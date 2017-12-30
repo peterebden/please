@@ -499,7 +499,7 @@ def _parse_maven_artifact(id, sources=True, licences=None):
         group, artifact, version = parts
     else:
         raise ParseError('Unknown artifact format: %s (should be group:artifact:version)' % id)
-    return (group, artifact, version, sources, licences)
+    return group, artifact, version, sources, licences
 
 
 def _jarcat_cmd(main_class=None, preamble=None, manifest=None):
@@ -511,7 +511,7 @@ def _jarcat_cmd(main_class=None, preamble=None, manifest=None):
         cmd += " -p '%s'" % preamble
     if manifest:
         cmd += ' --manifest "$SRCS"'
-    return (cmd, {'jarcat': [CONFIG.JARCAT_TOOL]})
+    return cmd, {'jarcat': [CONFIG.JARCAT_TOOL]}
 
 
 if CONFIG.BAZEL_COMPATIBILITY:

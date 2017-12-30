@@ -488,9 +488,9 @@ def _handle_zip_safe(cmd, zip_safe):
         return lambda name: ((set_command(name, cmd.replace('--zip_safe', ' --nozip_safe'))
                               if has_label(name, 'py:zip-unsafe') else None), cmd)
     elif zip_safe:
-        return (None, cmd)
+        return None, cmd
     else:
-        return (None, cmd.replace('--zip_safe', ' --nozip_safe'))
+        return None, cmd.replace('--zip_safe', ' --nozip_safe')
 
 
 def _add_licences(name, output):

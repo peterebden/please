@@ -15,7 +15,7 @@ type statement struct {
 	FuncDef *funcDef        `| @@`
 	For     *forStatement   `| @@`
 	If      *ifStatement    `| @@`
-	Return  *expression     `| "return" [ @@ ] EOL`
+	Return  []*expression   `| "return" @@ { "," @@ } EOL`
 	Raise   *expression     `| "raise" @@ EOL`
 	Assert  *expression     `| "assert" @@ EOL`
 	Literal *literal        `| @@ EOL`

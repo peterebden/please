@@ -384,10 +384,10 @@ def decompose(label):
       ValueError: if the given label is not a correctly formatted build label.
     """
     if label.startswith(':'):
-        return (get_base_path(), label.lstrip(':'))
+        return get_base_path(), label.lstrip(':')
     elif label.startswith('//'):
         package, _, name = label.partition(':')
-        return (package.lstrip('/'), name)
+        return package.lstrip('/'), name
     else:
         raise ValueError("%s doesn't look like a build label" % label)
 
@@ -419,7 +419,7 @@ def _test_size_and_timeout(size, timeout, labels):
             timeout = _SIZE_TIMEOUTS.get(size, 0)
     if isinstance(timeout, str):
         timeout = _TIMEOUT_NAMES[timeout]
-    return (timeout, labels)
+    return timeout, labels
 
 
 _SIZE_TIMEOUTS = {

@@ -773,10 +773,10 @@ def _library_cmds(c, compiler_flags, pkg_config_libs, extra_flags='', archive=Tr
     }
     if CONFIG.CPP_COVERAGE:
         cmds['cover'] = cmd_template % (dbg_flags + _COVERAGE_FLAGS, extra_flags)
-    return (cmds, {
+    return cmds, {
         'cc': [CONFIG.CC_TOOL if c else CONFIG.CPP_TOOL],
         'ar': [CONFIG.AR_TOOL if archive else None],
-    })
+    }
 
 
 def _binary_cmds(c, linker_flags, pkg_config_libs, extra_flags='', shared=False, alwayslink=''):
@@ -788,8 +788,8 @@ def _binary_cmds(c, linker_flags, pkg_config_libs, extra_flags='', shared=False,
     }
     if CONFIG.CPP_COVERAGE:
         cmds['cover'] = '$TOOL -o ${OUT} %s %s %s' % (flags, extra_flags, _COVERAGE_FLAGS)
-    return (cmds, [CONFIG.LD_TOOL if CONFIG.LINK_WITH_LD_TOOL else
-                   CONFIG.CC_TOOL if c else CONFIG.CPP_TOOL])
+    return cmds, [CONFIG.LD_TOOL if CONFIG.LINK_WITH_LD_TOOL else
+                  CONFIG.CC_TOOL if c else CONFIG.CPP_TOOL]
 
 
 def _library_transitive_labels(c, compiler_flags, pkg_config_libs, archive=True):

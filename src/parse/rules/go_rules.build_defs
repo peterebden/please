@@ -664,13 +664,13 @@ def _go_binary_cmds(static=False, ldflags='', pkg_config=''):
     else:
         flags = ''
 
-    return ({
+    return {
         'dbg': '%s && %s %s $SRCS' % (prefix, _link_cmd, flags),
         'opt': '%s && %s %s -s -w $SRCS' % (prefix, _link_cmd, flags),
     }, {
         'go': [CONFIG.GO_TOOL],
         'ld': [CONFIG.LD_TOOL if CONFIG.LINK_WITH_LD_TOOL else CONFIG.CC_TOOL],
-    })
+    }
 
 
 def _go_import_path_cmd(import_path):
