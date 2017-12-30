@@ -6,5 +6,6 @@ go_binary(
         '//src/core',
         '//src/parse/participle',
         '//third_party/go:logging',
+        '//third_party/go:participle',
     ],
 )

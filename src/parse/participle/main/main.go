@@ -4,10 +4,15 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
+	"io/ioutil"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/alecthomas/participle/lexer"
 	"gopkg.in/op/go-logging.v1"
 
 	"cli"
@@ -28,6 +33,53 @@ var opts = struct {
 	Usage: `Test parser for BUILD files using our standalone parser.`,
 }
 
+const (
+	// ANSI formatting codes
+	reset     = "\033[0m"
+	boldRed   = "\033[31;1m"
+	boldWhite = "\033[37;1m"
+	red       = "\033[31m"
+	white     = "\033[37m"
+)
+
+// printErrorMessage prints a detailed error message for a lexer error.
+// Not quite sure why it's a lexer error not a parser error, but not to worry.
+func printErrorMessage(err *lexer.Error, filename string) bool {
+	// -1's follow for 0-indexing
+	if line := readLine(filename, err.Pos.Line-1); line != "" {
+		charsBefore := err.Pos.Column - 1
+		if charsBefore < 0 { // strings.Repeat panics if negative
+			charsBefore = 0
+		}
+		fmt.Printf("%s%s%s:%s%d%s:%s%d%s: %serror:%s %s%s%s\n%s%s%s%c%s%s\n%s^%s\n",
+			boldWhite, filename, reset,
+			boldWhite, err.Pos.Line, reset,
+			boldWhite, err.Pos.Column, reset,
+			boldRed, reset,
+			boldWhite, err.Message, reset,
+			white, line[:charsBefore],
+			red, line[charsBefore],
+			white, line[charsBefore+1:],
+			strings.Repeat(" ", charsBefore), reset,
+		)
+		return true
+	}
+	return false
+}
+
+// readLine reads a file and returns a particular line of it.
+func readLine(filename string, line int) string {
+	b, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return ""
+	}
+	lines := bytes.Split(b, []byte{'\n'})
+	if len(lines) <= line {
+		return ""
+	}
+	return string(lines[line])
+}
+
 func main() {
 	cli.ParseFlagsOrDie("parser", "11.0.0", &opts)
 	cli.InitLogging(opts.Verbosity)
@@ -46,8 +98,13 @@ func main() {
 			for file := range ch {
 				pkg := core.NewPackage(file)
 				if err := p.ParseFile(state, pkg, file); err != nil {
-					log.Error("Error parsing %s: %s", file, err)
 					atomic.AddInt64(&errors, 1)
+					if lerr, ok := err.(*lexer.Error); ok {
+						if printErrorMessage(lerr, file) {
+							continue
+						}
+					}
+					log.Error("Error parsing %s: %s", file, err)
 				}
 			}
 			wg.Done()

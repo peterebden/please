@@ -91,7 +91,7 @@ type dictItem struct {
 }
 
 type operator struct {
-	Op   string      `@("+" | "%" | "and" | "or" | "is" | "in" | "==" | "+=")`
+	Op   string      `@("+" | "%" | "and" | "or" | "is" | "in" | "not" | "==" | "+=")`
 	Expr *expression `@@`
 }
 
