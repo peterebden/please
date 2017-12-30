@@ -283,3 +283,8 @@ func TestExample1(t *testing.T) {
 	_, err := NewParser().parse("src/parse/participle/test_data/example_1.build")
 	assert.NoError(t, err)
 }
+
+func TestExample2(t *testing.T) {
+	_, err := NewParser().parse("src/parse/participle/test_data/example_2.build")
+	assert.NoError(t, err)
+}
