@@ -235,7 +235,7 @@ func TestComparisonOperator(t *testing.T) {
 	assertToken(t, l.Next(), Ident, "x", 1, 1, 1)
 	assertToken(t, l.Next(), '=', "=", 1, 3, 3)
 	assertToken(t, l.Next(), Ident, "y", 1, 5, 5)
-	assertToken(t, l.Next(), Comparison, "==", 1, 7, 7)
+	assertToken(t, l.Next(), Operator, "==", 1, 7, 7)
 }
 
 const blankLinesInFunction = `
@@ -273,4 +273,33 @@ func TestCommentsAndEOLs(t *testing.T) {
 	assertToken(t, l.Next(), Ident, "pass", 2, 1, 2)
 	assertToken(t, l.Next(), EOL, "", 3, 1, 7)
 	assertToken(t, l.Next(), EOF, "", 6, 1, 21)
+}
+
+// This is a much-simplified version of the true motivating case.
+const unevenIndent = `
+def x():
+    if True:
+            pass
+    return
+`
+
+func TestUnevenUnindent(t *testing.T) {
+	l := NewLexer().Lex(strings.NewReader(unevenIndent))
+	assertToken(t, l.Next(), Ident, "def", 2, 1, 2)
+	assertToken(t, l.Next(), Ident, "x", 2, 5, 6)
+	assertToken(t, l.Next(), '(', "(", 2, 6, 7)
+	assertToken(t, l.Next(), ')', ")", 2, 7, 8)
+	assertToken(t, l.Next(), Colon, ":", 2, 8, 9)
+	assertToken(t, l.Next(), EOL, "", 2, 9, 10)
+	assertToken(t, l.Next(), Ident, "if", 3, 5, 15)
+	assertToken(t, l.Next(), Ident, "True", 3, 8, 18)
+	assertToken(t, l.Next(), Colon, ":", 3, 12, 22)
+	assertToken(t, l.Next(), EOL, "", 3, 13, 23)
+	assertToken(t, l.Next(), Ident, "pass", 4, 13, 36)
+	assertToken(t, l.Next(), EOL, "", 5, 5, 40)
+	assertToken(t, l.Next(), Unindent, "", 5, 5, 45)
+	assertToken(t, l.Next(), Ident, "return", 5, 5, 44)
+	assertToken(t, l.Next(), EOL, "", 5, 11, 50)
+	assertToken(t, l.Next(), Unindent, "", 6, 1, 51)
+	assertToken(t, l.Next(), EOF, "", 6, 1, 51)
 }
