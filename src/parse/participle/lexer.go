@@ -200,7 +200,7 @@ func (l *lex) nextToken() lexer.Token {
 			return lexer.Token{Type: Operator, Value: string([]byte{b, l.b[l.i-1]}), Pos: pos}
 		}
 		fallthrough
-	case ',', '.', '%':
+	case ',', '.', '%', '*':
 		return lexer.Token{Type: rune(b), Value: string(b), Pos: pos}
 	case '#':
 		// Comment character, consume to end of line.

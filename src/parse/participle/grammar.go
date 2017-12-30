@@ -23,9 +23,10 @@ type statement struct {
 }
 
 type funcDef struct {
-	Name       string       `"def" @Ident`
-	Arguments  []*argument  `"(" [ @@ { "," @@ } ] ")" Colon EOL`
-	Statements []*statement `{ @@ } Unindent`
+	Name string `"def" @Ident`
+	// *args and **kwargs are not properly supported but we allow them here for some level of compatibility.
+	Arguments  []*argument  `"(" [ @@ { "," { "*" } @@ } ]`
+	Statements []*statement ` ")" Colon EOL { @@ } Unindent`
 }
 
 type forStatement struct {
