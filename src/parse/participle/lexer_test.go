@@ -32,7 +32,9 @@ func TestLexBasic(t *testing.T) {
 func TestLexMultiline(t *testing.T) {
 	l := NewLexer().Lex(strings.NewReader("hello\nworld\n"))
 	assertToken(t, l.Next(), Ident, "hello", 1, 1, 1)
+	assertToken(t, l.Next(), EOL, "", 1, 6, 6)
 	assertToken(t, l.Next(), Ident, "world", 2, 1, 7)
+	assertToken(t, l.Next(), EOL, "", 2, 6, 12)
 	assertToken(t, l.Next(), EOF, "", 3, 1, 13)
 }
 
@@ -49,8 +51,10 @@ func TestLexFunction(t *testing.T) {
 	assertToken(t, l.Next(), Ident, "x", 2, 10, 11)
 	assertToken(t, l.Next(), ')', ")", 2, 11, 12)
 	assertToken(t, l.Next(), Colon, ":", 2, 12, 13)
+	assertToken(t, l.Next(), EOL, "", 2, 13, 14)
 	assertToken(t, l.Next(), Ident, "pass", 3, 5, 19)
-	assertToken(t, l.Next(), Unindent, "", 4, 1, 23)
+	assertToken(t, l.Next(), EOL, "", 4, 1, 23)
+	assertToken(t, l.Next(), Unindent, "", 4, 1, 24)
 	assertToken(t, l.Next(), EOF, "", 4, 1, 24)
 }
 
@@ -174,18 +178,22 @@ func TestMultiUnindent(t *testing.T) {
 	assertToken(t, l.Next(), Ident, "in", 2, 7, 8)
 	assertToken(t, l.Next(), Ident, "x", 2, 10, 11)
 	assertToken(t, l.Next(), Colon, ":", 2, 11, 12)
+	assertToken(t, l.Next(), EOL, "", 2, 12, 13)
 	assertToken(t, l.Next(), Ident, "for", 3, 5, 18)
 	assertToken(t, l.Next(), Ident, "z", 3, 9, 22)
 	assertToken(t, l.Next(), Ident, "in", 3, 11, 24)
 	assertToken(t, l.Next(), Ident, "y", 3, 14, 27)
 	assertToken(t, l.Next(), Colon, ":", 3, 15, 28)
+	assertToken(t, l.Next(), EOL, "", 3, 16, 29)
 	assertToken(t, l.Next(), Ident, "for", 4, 9, 38)
 	assertToken(t, l.Next(), Ident, "a", 4, 13, 42)
 	assertToken(t, l.Next(), Ident, "in", 4, 15, 44)
 	assertToken(t, l.Next(), Ident, "z", 4, 18, 47)
 	assertToken(t, l.Next(), Colon, ":", 4, 19, 48)
+	assertToken(t, l.Next(), EOL, "", 4, 20, 49)
 	assertToken(t, l.Next(), Ident, "pass", 5, 13, 62)
-	assertToken(t, l.Next(), Unindent, "", 6, 1, 66)
+	assertToken(t, l.Next(), EOL, "", 6, 1, 66)
+	assertToken(t, l.Next(), Unindent, "", 6, 1, 67)
 	assertToken(t, l.Next(), Unindent, "", 6, 1, 67)
 	assertToken(t, l.Next(), Unindent, "", 6, 1, 67)
 }
@@ -216,8 +224,10 @@ func TestMultiLineFunctionArgs(t *testing.T) {
 	assertToken(t, l.Next(), Ident, "ARGS", 3, 22, 57)
 	assertToken(t, l.Next(), ')', ")", 3, 26, 61)
 	assertToken(t, l.Next(), Colon, ":", 3, 27, 62)
+	assertToken(t, l.Next(), EOL, "", 3, 28, 63)
 	assertToken(t, l.Next(), Ident, "pass", 4, 5, 68)
-	assertToken(t, l.Next(), Unindent, "", 5, 1, 72)
+	assertToken(t, l.Next(), EOL, "", 5, 1, 72)
+	assertToken(t, l.Next(), Unindent, "", 5, 1, 73)
 }
 
 func TestComparisonOperator(t *testing.T) {
@@ -242,8 +252,11 @@ func TestBlankLinesInFunction(t *testing.T) {
 	assertToken(t, l.Next(), '(', "(", 2, 6, 7)
 	assertToken(t, l.Next(), ')', ")", 2, 7, 8)
 	assertToken(t, l.Next(), Colon, ":", 2, 8, 9)
+	assertToken(t, l.Next(), EOL, "", 2, 9, 10)
 	assertToken(t, l.Next(), String, "\"test\"", 3, 5, 15)
+	assertToken(t, l.Next(), EOL, "", 4, 1, 26)
 	assertToken(t, l.Next(), Ident, "return", 5, 5, 31)
 	assertToken(t, l.Next(), Int, "42", 5, 12, 38)
-	assertToken(t, l.Next(), Unindent, "", 6, 1, 40)
+	assertToken(t, l.Next(), EOL, "", 6, 1, 40)
+	assertToken(t, l.Next(), Unindent, "", 6, 1, 41)
 }

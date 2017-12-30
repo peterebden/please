@@ -3,7 +3,7 @@ package participle
 // A fileInput is the top-level structure of a BUILD file.
 type fileInput struct {
 	Statements []*statement `{ @@ }`
-	EOF        string       `@EOF`
+	EOF        string       `EOF`
 }
 
 // A statement is the type we work with externally the most; it's a single Python statement.
@@ -11,28 +11,28 @@ type fileInput struct {
 // support backoff (i.e. if an earlier entry matches to its completion but can't consume
 // following tokens, it doesn't then make another choice :( )
 type statement struct {
-	Pass    string        `  @"pass"`
+	Pass    string        `( @"pass" EOL`
 	FuncDef *funcDef      `| @@`
 	For     *forStatement `| @@`
 	If      *ifStatement  `| @@`
-	Literal *literal      `| @@`
-	Ident   *ident        `| @@`
+	Literal *literal      `| @@ EOL`
+	Ident   *ident        `| @@ EOL)`
 }
 
 type funcDef struct {
 	Name       string       `"def" @Ident`
-	Arguments  []*argument  `"(" [ @@ { "," @@ } ] ")" Colon`
+	Arguments  []*argument  `"(" [ @@ { "," @@ } ] ")" Colon EOL`
 	Statements []*statement `{ @@ } Unindent`
 }
 
 type forStatement struct {
 	Names      []string     `"for" @Ident [ { "," @Ident } ] "in"`
-	Expr       expression   `@@ Colon`
+	Expr       expression   `@@ Colon EOL`
 	Statements []*statement `{ @@ } Unindent`
 }
 
 type ifStatement struct {
-	Condition  expression   `"if" @@ Colon`
+	Condition  expression   `"if" @@ Colon EOL`
 	Statements []*statement `{ @@ } Unindent`
 }
 

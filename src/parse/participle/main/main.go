@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -24,8 +25,9 @@ var log = logging.MustGetLogger("parser")
 
 var opts = struct {
 	Usage      string
-	Verbosity  int `short:"v" long:"verbose" default:"2" description:"Verbosity of output (higher number = more output)"`
-	NumThreads int `short:"n" long:"num_threads" default:"10" description:"Number of concurrent parse threads to run"`
+	Verbosity  int  `short:"v" long:"verbose" default:"2" description:"Verbosity of output (higher number = more output)"`
+	NumThreads int  `short:"n" long:"num_threads" default:"10" description:"Number of concurrent parse threads to run"`
+	Lex        bool `short:"l" long:"lex" description:"Print lexer output for any failing files."`
 	Args       struct {
 		BuildFiles []string `positional-arg-name:"files" description:"BUILD files to parse"`
 	} `positional-args:"true"`
@@ -50,6 +52,8 @@ func printErrorMessage(err *lexer.Error, filename string) bool {
 		charsBefore := err.Pos.Column - 1
 		if charsBefore < 0 { // strings.Repeat panics if negative
 			charsBefore = 0
+		} else if charsBefore >= len(line) {
+			line = line + "  "
 		}
 		fmt.Printf("%s%s%s:%s%d%s:%s%d%s: %serror:%s %s%s%s\n%s%s%s%c%s%s\n%s^%s\n",
 			boldWhite, filename, reset,
@@ -63,6 +67,16 @@ func printErrorMessage(err *lexer.Error, filename string) bool {
 			strings.Repeat(" ", charsBefore), reset,
 		)
 		return true
+	}
+	if opts.Lex {
+		f, _ := os.Open(filename)
+		defer f.Close()
+		d := participle.NewLexer()
+		l := d.Lex(f)
+		fmt.Printf("%sLexer output:%s\n", boldWhite, reset)
+		for tok := l.Next(); tok.Type != participle.EOF; tok = l.Next() {
+			fmt.Printf("%3d:%3d: %10s   %s\n", tok.Pos.Line, tok.Pos.Column, reverseSymbol(d, tok.Type), tok.Value)
+		}
 	}
 	return false
 }
@@ -78,6 +92,16 @@ func readLine(filename string, line int) string {
 		return ""
 	}
 	return string(lines[line])
+}
+
+// reverseSymbol looks up a symbol's name from the lexer. This is not efficient.
+func reverseSymbol(d lexer.Definition, sym rune) string {
+	for k, v := range d.Symbols() {
+		if v == sym {
+			return k
+		}
+	}
+	return string(sym) // Must be a literal char
 }
 
 func main() {

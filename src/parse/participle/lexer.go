@@ -15,6 +15,7 @@ const (
 	Ident
 	Int
 	String
+	EOL
 	Unindent
 	Colon      // Would prefer not to have this but literal colons seem to deeply upset the parser.
 	Comparison // Similarly this, it doesn't seem to be able to handle == otherwise.
@@ -30,6 +31,7 @@ var symbols = map[string]rune{
 	"Ident":    Ident,
 	"Int":      Int,
 	"String":   String,
+	"EOL":      EOL,
 	"Unindent": Unindent,
 	"Colon":    Colon,
 }
@@ -56,6 +58,10 @@ func (d *definition) Lex(r io.Reader) lexer.Lexer {
 		filename: lexer.NameOfReader(r),
 	}
 	l.Next() // Initial value is zero, this forces it to populate itself.
+	// Discard any leading newlines, they are just an annoyance.
+	for l.Peek().Type == EOL {
+		l.Next()
+	}
 	return l
 }
 
@@ -141,8 +147,10 @@ func (l *lex) nextToken() lexer.Token {
 		if lastIndent > l.indent && l.braces == 0 {
 			pos.Line++ // Works better if it's at the new position
 			pos.Column = l.col + 1
-			l.unindents = ((lastIndent - l.indent) / indentation) - 1 // -1 because we're handling one now
-			return lexer.Token{Type: Unindent, Pos: pos}
+			l.unindents = ((lastIndent - l.indent) / indentation)
+		}
+		if l.braces == 0 {
+			return lexer.Token{Type: EOL, Pos: pos}
 		}
 		return l.nextToken()
 	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
