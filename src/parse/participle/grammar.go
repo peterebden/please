@@ -16,6 +16,7 @@ type statement struct {
 	For     *forStatement `| @@`
 	If      *ifStatement  `| @@`
 	Return  *expression   `| "return" @@ EOL`
+	Raise   *expression   `| "raise" @@ EOL`
 	Literal *literal      `| @@ EOL`
 	Ident   *ident        `| @@ EOL)`
 }
