@@ -123,7 +123,12 @@ func (l *lex) nextToken() lexer.Token {
 		return lexer.Token{Type: Unindent, Pos: pos}
 	}
 	b := l.b[l.i]
-	if (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_' || b >= utf8.RuneSelf {
+	rawString := b == 'r' && (l.b[l.i+1] == '"' || l.b[l.i+1] == '\'')
+	if rawString {
+		l.i++
+		l.col++
+		b = l.b[l.i]
+	} else if (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_' || b >= utf8.RuneSelf {
 		return l.consumeIdent(pos)
 	}
 	l.i++
@@ -173,9 +178,9 @@ func (l *lex) nextToken() lexer.Token {
 		if l.b[l.i] == b && l.b[l.i+1] == b {
 			l.i += 2 // Jump over initial quote
 			l.col += 2
-			return l.consumeString(b, pos, true)
+			return l.consumeString(b, pos, true, rawString)
 		}
-		return l.consumeString(b, pos, false)
+		return l.consumeString(b, pos, false, rawString)
 	case ':':
 		// As noted above, literal colons seem to break the parser.
 		return lexer.Token{Type: Colon, Value: ":", Pos: pos}
@@ -229,7 +234,7 @@ func (l *lex) consumeInteger(initial byte, pos lexer.Position) lexer.Token {
 }
 
 // consumeString consumes all characters until the end of a string literal is reached.
-func (l *lex) consumeString(quote byte, pos lexer.Position, multiline bool) lexer.Token {
+func (l *lex) consumeString(quote byte, pos lexer.Position, multiline, raw bool) lexer.Token {
 	s := make([]byte, 1, 100) // 100 chars is typically enough for a single string literal.
 	s[0] = '"'
 	escaped := false
@@ -247,8 +252,6 @@ func (l *lex) consumeString(quote byte, pos lexer.Position, multiline bool) lexe
 			continue
 		}
 		switch c {
-		case '\\':
-			escaped = true
 		case quote:
 			if !multiline || (l.b[l.i] == quote && l.b[l.i+1] == quote) {
 				s = append(s, '"')
@@ -268,6 +271,12 @@ func (l *lex) consumeString(quote byte, pos lexer.Position, multiline bool) lexe
 			fallthrough
 		case 0:
 			lexer.Panic(pos, "Unterminated string literal")
+		case '\\':
+			if !raw {
+				escaped = true
+				continue
+			}
+			fallthrough
 		default:
 			s = append(s, c)
 		}

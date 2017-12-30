@@ -82,6 +82,14 @@ func TestLexStringEscape(t *testing.T) {
 	assertToken(t, l.Next(), EOF, "", 1, 11, 11)
 }
 
+func TestLexRawString(t *testing.T) {
+	l := NewLexer().Lex(strings.NewReader(`x = r'\n\\'`))
+	assertToken(t, l.Next(), Ident, "x", 1, 1, 1)
+	assertToken(t, l.Next(), '=', "=", 1, 3, 3)
+	assertToken(t, l.Next(), String, `"\n\\"`, 1, 5, 5)
+	assertToken(t, l.Next(), EOF, "", 1, 12, 12)
+}
+
 const testMultilineString = `x = """
 hello\n
 world
