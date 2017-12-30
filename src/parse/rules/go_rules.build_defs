@@ -535,8 +535,8 @@ def go_get(name, get=None, outs=None, deps=None, exported_deps=None, visibility=
         # all available in the GOPATH by detecting their pkg/ folder and using its parent
         'export GOPATH="$TMP_DIR"',
         # loop done like this because the GOPATH export should not be in a SubShell
-        'while IFS= read -r dep_dir; do '
-        'if [ -n "$dep_dir" ]; then export GOPATH="${dep_dir}:${GOPATH}" ; fi ; done '
+        'while IFS= read -r dep_dir; do ' +
+        'if [ -n "$dep_dir" ]; then export GOPATH="${dep_dir}:${GOPATH}" ; fi ; done ' +
         '< <(echo "$existing" | sed -e \'s|pkg/.*||g\' | sort -u)',
 
         'export INSTALL_DIR=$(mktemp -d ${TMP_DIR}/tmp.XXXXX)',
@@ -557,7 +557,7 @@ def go_get(name, get=None, outs=None, deps=None, exported_deps=None, visibility=
         # go_get built dependencies could be in different dirs so we strip the prefix
         # leading up to `/pkg/`. These have been cached in the "$INSTALL_DIR/pkg/.."
         # during the `go install`. So clean them up from this target's outputs
-        'echo "$existing" | while IFS= read -r pathname; do '
+        'echo "$existing" | while IFS= read -r pathname; do ' +
         'if [ -n "$pathname" ]; then rm -f "$INSTALL_DIR/pkg/${pathname#*/pkg/}" ; fi ; done',
         'cd $TMP_DIR',
         # delete all other dirs with deps. Only src,pkg and maybe bin will remain
@@ -570,7 +570,7 @@ def go_get(name, get=None, outs=None, deps=None, exported_deps=None, visibility=
             'find pkg -name "*.a" | sort',
         ])
     if strip:
-        cmd.extend('rm -rf %s/%s' % (subdir, s) for s in strip)
+        cmd.extend(['rm -rf %s/%s' % (subdir, s) for s in strip])
     build_rule(
         name=name,
         srcs=[patch] if patch else [],
@@ -595,17 +595,11 @@ def _extra_outs(get):
     def _inner(name, output):
         last = '<>'
         for archive in output:
-            try:
-                add_out(name, archive)
-                subpath = archive[archive.find('/', 6) + 1:-2]
-                if (not subpath.startswith(get) and not subpath.startswith(last) and
-                    not get.startswith(subpath) and not last.startswith(subpath)):
-                        add_out(name, 'src/' + subpath)
-            except ParseError:
-                log.error("Looks like you have two go_get rules trying to output the "
-                          "same file; most likely you need to add some dependencies so "
-                          "that shared file is built independently.")
-                raise
+            add_out(name, archive)
+            subpath = archive[archive.find('/', 6) + 1:-2]
+            if (not subpath.startswith(get) and not subpath.startswith(last) and
+                not get.startswith(subpath) and not last.startswith(subpath)):
+                    add_out(name, 'src/' + subpath)
             last = subpath
     return _inner
 
