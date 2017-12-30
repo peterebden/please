@@ -43,29 +43,30 @@ const (
 	boldWhite = "\033[37;1m"
 	red       = "\033[31m"
 	white     = "\033[37m"
+	grey      = "\033[30m"
 )
 
 // printErrorMessage prints a detailed error message for a lexer error.
 // Not quite sure why it's a lexer error not a parser error, but not to worry.
 func printErrorMessage(err *lexer.Error, filename string) bool {
 	// -1's follow for 0-indexing
-	if line := readLine(filename, err.Pos.Line-1); line != "" {
+	if before, line, after := readLine(filename, err.Pos.Line-1); line != "" || before != "" || after != "" {
 		charsBefore := err.Pos.Column - 1
 		if charsBefore < 0 { // strings.Repeat panics if negative
 			charsBefore = 0
 		} else if charsBefore >= len(line) {
 			line = line + "  "
 		}
-		fmt.Printf("%s%s%s:%s%d%s:%s%d%s: %serror:%s %s%s%s\n%s%s%s%c%s%s\n%s^%s\n",
+		fmt.Printf("%s%s%s:%s%d%s:%s%d%s: %serror:%s %s%s%s\n%s%s\n%s%s%s%c%s%s\n%s^\n%s%s%s\n",
 			boldWhite, filename, reset,
 			boldWhite, err.Pos.Line, reset,
 			boldWhite, err.Pos.Column, reset,
 			boldRed, reset,
 			boldWhite, err.Message, reset,
-			white, line[:charsBefore],
-			red, line[charsBefore],
-			white, line[charsBefore+1:],
-			strings.Repeat(" ", charsBefore), reset,
+			grey, before,
+			white, line[:charsBefore], red, line[charsBefore], white, line[charsBefore+1:],
+			strings.Repeat(" ", charsBefore),
+			grey, after, reset,
 		)
 		if opts.Lex {
 			f, _ := os.Open(filename)
@@ -85,16 +86,16 @@ func printErrorMessage(err *lexer.Error, filename string) bool {
 }
 
 // readLine reads a file and returns a particular line of it.
-func readLine(filename string, line int) string {
+func readLine(filename string, line int) (string, string, string) {
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return ""
+		return "", "", ""
 	}
 	lines := bytes.Split(b, []byte{'\n'})
-	if len(lines) <= line {
-		return ""
+	if len(lines) <= line+1 {
+		return "", "", ""
 	}
-	return string(lines[line])
+	return string(lines[line-1]), string(lines[line]), string(lines[line+1])
 }
 
 // reverseSymbol looks up a symbol's name from the lexer. This is not efficient.

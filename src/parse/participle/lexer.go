@@ -97,7 +97,7 @@ func (l *lex) Peek() lexer.Token {
 func (l *lex) Next() lexer.Token {
 	ret := l.next
 	l.next = l.nextToken()
-	l.lastEOL = l.next.Type == EOL
+	l.lastEOL = l.next.Type == EOL || l.next.Type == Unindent
 	return ret
 }
 
