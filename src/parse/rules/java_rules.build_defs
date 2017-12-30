@@ -298,9 +298,9 @@ def maven_jars(name, id='', ids=None, repository=None, exclude=None, hashes=None
                 add_exported_dep(source_name, ':' + artifact)
 
     deps = deps or []
-    exclusions = ' '.join('-e ' + excl for excl in exclude)
-    options = ' '.join('-o ' + option for option in optional) if optional else ''
-    repo_flags = ' '.join('-r ' + repo for repo in repos)
+    exclusions = ' '.join(['-e ' + excl for excl in exclude])
+    options = ' '.join(['-o ' + option for option in optional]) if optional else ''
+    repo_flags = ' '.join(['-r ' + repo for repo in repos])
     build_rule(
         name='_%s#deps' % name,
         cmd='$TOOL %s %s %s %s' % (repo_flags, ' '.join(ids), exclusions, options),

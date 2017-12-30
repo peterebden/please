@@ -419,7 +419,7 @@ def _test_size_and_timeout(size, timeout, labels):
             timeout = _SIZE_TIMEOUTS.get(size, 0)
     if isinstance(timeout, str):
         timeout = _TIMEOUT_NAMES[timeout]
-    return timeout, labels
+    return (timeout, labels)
 
 
 _SIZE_TIMEOUTS = {
