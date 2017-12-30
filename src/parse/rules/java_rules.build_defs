@@ -40,7 +40,7 @@ def java_library(name, srcs=None, src_dir=None, resources=None, resources_root=N
         if javac_flags:
             # See http://bazel.io/blog/2015/06/25/ErrorProne.html for more info about this flag;
             # it doesn't mean anything to us so we must filter it out.
-            javac_flags = ' '.join(flag for flag in javac_flags if flag != '-extra_checks:off')
+            javac_flags = ' '.join([flag for flag in javac_flags if flag != '-extra_checks:off'])
         else:
             javac_flags = CONFIG.JAVAC_TEST_FLAGS if test_only else CONFIG.JAVAC_FLAGS
         javac_flags = '-encoding utf8 -source %s -target %s -g %s' % (
@@ -54,7 +54,7 @@ def java_library(name, srcs=None, src_dir=None, resources=None, resources_root=N
         else:
             javac_cmd = 'mkdir -p _tmp/META-INF && $TOOLS_JAVAC %s -classpath .:%s -d _tmp %s' % (
                 javac_flags,
-                r'`find $TMP_DIR -name "*.jar" | tr \\\\n :`',
+                '`find $TMP_DIR -name "*.jar" | tr \\\\\\\\n :`',
                 '$SRCS' if srcs else '`find $SRCS -name "*.java"`',
             )
 
