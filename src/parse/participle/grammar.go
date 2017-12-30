@@ -17,6 +17,7 @@ type statement struct {
 	If      *ifStatement    `| @@`
 	Return  *expression     `| "return" @@ EOL`
 	Raise   *expression     `| "raise" @@ EOL`
+	Assert  *expression     `| "assert" @@ EOL`
 	Literal *literal        `| @@ EOL`
 	Ident   *identStatement `| @@ EOL)`
 }
