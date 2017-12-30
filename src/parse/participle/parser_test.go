@@ -292,6 +292,18 @@ func TestElseStatement(t *testing.T) {
 	assert.Equal(t, 1, len(statements[0].If.ElseStatements))
 }
 
+func TestDestructuringAssignment(t *testing.T) {
+	statements, err := NewParser().parse("src/parse/participle/test_data/destructuring_assign.build")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(statements))
+	assert.NotNil(t, statements[0].Ident)
+	assert.Equal(t, "x", statements[0].Ident.Name)
+	assert.NotNil(t, statements[0].Ident.Action.Destructure)
+	assert.Equal(t, "y", statements[0].Ident.Action.Destructure.Name)
+	assert.NotNil(t, statements[0].Ident.Action.Destructure.Action.Assign)
+	assert.Equal(t, "something", statements[0].Ident.Action.Destructure.Action.Assign.Ident.Name)
+}
+
 func TestExample1(t *testing.T) {
 	_, err := NewParser().parse("src/parse/participle/test_data/example_1.build")
 	assert.NoError(t, err)

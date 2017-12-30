@@ -11,14 +11,14 @@ type fileInput struct {
 // support backoff (i.e. if an earlier entry matches to its completion but can't consume
 // following tokens, it doesn't then make another choice :( )
 type statement struct {
-	Pass    string        `( @"pass" EOL`
-	FuncDef *funcDef      `| @@`
-	For     *forStatement `| @@`
-	If      *ifStatement  `| @@`
-	Return  *expression   `| "return" @@ EOL`
-	Raise   *expression   `| "raise" @@ EOL`
-	Literal *literal      `| @@ EOL`
-	Ident   *ident        `| @@ EOL)`
+	Pass    string          `( @"pass" EOL`
+	FuncDef *funcDef        `| @@`
+	For     *forStatement   `| @@`
+	If      *ifStatement    `| @@`
+	Return  *expression     `| "return" @@ EOL`
+	Raise   *expression     `| "raise" @@ EOL`
+	Literal *literal        `| @@ EOL`
+	Ident   *identStatement `| @@ EOL)`
 }
 
 type funcDef struct {
@@ -84,13 +84,23 @@ type unaryOp struct {
 	Expr expression `@@`
 }
 
+type identStatement struct {
+	Name   string `@Ident`
+	Action struct {
+		Property    *ident          `  "." @@`
+		Call        *call           `| "(" @@ ")"`
+		Assign      *expression     `| "=" @@`
+		AugAssign   *expression     `| "+=" @@`
+		Destructure *identStatement `| "," @@`
+	} `[ @@ ]`
+}
+
 type ident struct {
 	Name   string `@Ident`
 	Action struct {
-		Property  *ident      `  "." @@`
-		Call      *call       `| "(" @@ ")"`
-		Assign    *expression `| "=" @@`
-		AugAssign *expression `| "+=" @@`
+		Property *ident      `  "." @@`
+		Call     *call       `| "(" @@ ")"`
+		Assign   *expression `| "=" @@`
 	} `[ @@ ]`
 }
 
@@ -138,5 +148,5 @@ type comprehension struct {
 
 type lambda struct {
 	Arguments []*argument `[ @@ { "," @@ } ] Colon`
-	Expr      literal     `@@`
+	Expr      expression  `@@`
 }
