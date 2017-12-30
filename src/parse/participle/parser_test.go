@@ -307,7 +307,7 @@ func TestDestructuringAssignment(t *testing.T) {
 func TestMultipleActions(t *testing.T) {
 	statements, err := NewParser().parse("src/parse/participle/test_data/multiple_action.build")
 	assert.NoError(t, err)
-	assert.Equal(t, 1, len(statements))
+	assert.Equal(t, 2, len(statements))
 	assert.NotNil(t, statements[0].Ident.Action[0].Assign)
 	assert.Equal(t, "y", statements[0].Ident.Action[0].Assign.Ident.Name)
 }

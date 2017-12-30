@@ -92,6 +92,7 @@ type identStatement struct {
 		Call        *call           `| "(" @@ ")"`
 		Assign      *expression     `| "=" @@`
 		AugAssign   *expression     `| "+=" @@`
+		Index       *slice          `| @@`
 		Destructure *identStatement `| "," @@`
 	} `{ @@ }`
 }
