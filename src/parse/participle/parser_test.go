@@ -252,3 +252,9 @@ func TestComprehension(t *testing.T) {
 	assert.NotNil(t, statements[0].Ident.Action.Assign.List.Comprehension)
 	assert.NotNil(t, statements[1].Ident.Action.Assign.Dict.Comprehension)
 }
+
+func TestMethodsOnLiterals(t *testing.T) {
+	statements, err := NewParser().parse("src/parse/participle/test_data/literal_methods.build")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(statements))
+}

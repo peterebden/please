@@ -42,23 +42,30 @@ type argument struct {
 }
 
 type literal struct {
-	String string `  @String`
-	Int    int    `| @Int`
-	List   *list  `| "[" @@ "]"`
-	Dict   *dict  `| "{" @@ "}"`
-	Tuple  *list  `| "(" @@ ")"` // Tuples don't have a separate implementation.
+	String   string    `( @String`
+	Int      int       `| @Int`
+	List     *list     `| "[" @@ "]"`
+	Dict     *dict     `| "{" @@ "}"`
+	Tuple    *list     `| "(" @@ ")" )` // Tuples don't have a separate implementation.
+	Op       *operator `[ @@ ]`
+	Slice    *slice    `[ @@ ]`
+	If       *inlineIf `[ @@ ]`
+	Property *ident    `[ ( "." @@`
+	Call     *call     `| "(" @@ ")" ) ]`
 }
 
 type expression struct {
-	String string    `( @String`
-	Int    int       `| @Int`
-	List   *list     `| "[" @@ "]"`
-	Dict   *dict     `| "{" @@ "}"`
-	Tuple  *list     `| "(" @@ ")"`
-	Ident  *ident    `| @@ )`
-	Op     *operator `[ @@ ]`
-	Slice  *slice    `[ @@ ]`
-	If     *inlineIf `[ @@ ]`
+	String   string    `( @String`
+	Int      int       `| @Int`
+	List     *list     `| "[" @@ "]"`
+	Dict     *dict     `| "{" @@ "}"`
+	Tuple    *list     `| "(" @@ ")"`
+	Ident    *ident    `| @@ )`
+	Op       *operator `[ @@ ]`
+	Slice    *slice    `[ @@ ]`
+	If       *inlineIf `[ @@ ]`
+	Property *ident    `[ ( "." @@`
+	Call     *call     `| "(" @@ ")" ) ]`
 }
 
 type ident struct {
