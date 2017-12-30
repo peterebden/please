@@ -28,6 +28,7 @@ var opts = struct {
 	Verbosity  int  `short:"v" long:"verbose" default:"2" description:"Verbosity of output (higher number = more output)"`
 	NumThreads int  `short:"n" long:"num_threads" default:"10" description:"Number of concurrent parse threads to run"`
 	Lex        bool `short:"l" long:"lex" description:"Print lexer output for any failing files."`
+	LexContext int  `short:"c" long:"lex_context" default:"3" description:"Number of lines to show on either side of failing line"`
 	Args       struct {
 		BuildFiles []string `positional-arg-name:"files" description:"BUILD files to parse"`
 	} `positional-args:"true"`
@@ -66,17 +67,19 @@ func printErrorMessage(err *lexer.Error, filename string) bool {
 			white, line[charsBefore+1:],
 			strings.Repeat(" ", charsBefore), reset,
 		)
-		return true
-	}
-	if opts.Lex {
-		f, _ := os.Open(filename)
-		defer f.Close()
-		d := participle.NewLexer()
-		l := d.Lex(f)
-		fmt.Printf("%sLexer output:%s\n", boldWhite, reset)
-		for tok := l.Next(); tok.Type != participle.EOF; tok = l.Next() {
-			fmt.Printf("%3d:%3d: %10s   %s\n", tok.Pos.Line, tok.Pos.Column, reverseSymbol(d, tok.Type), tok.Value)
+		if opts.Lex {
+			f, _ := os.Open(filename)
+			defer f.Close()
+			d := participle.NewLexer()
+			l := d.Lex(f)
+			fmt.Printf("%sLexer output:%s\n", boldWhite, reset)
+			for tok := l.Next(); tok.Type != participle.EOF; tok = l.Next() {
+				if tok.Pos.Line >= err.Pos.Line-opts.LexContext && tok.Pos.Line <= err.Pos.Line+opts.LexContext {
+					fmt.Printf("%3d:%3d: %10s   %s\n", tok.Pos.Line, tok.Pos.Column, reverseSymbol(d, tok.Type), tok.Value)
+				}
+			}
 		}
+		return true
 	}
 	return false
 }
