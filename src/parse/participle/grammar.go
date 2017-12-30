@@ -73,11 +73,11 @@ type expression struct {
 	Tuple    *list     `| "(" @@ ")"`
 	Lambda   *lambda   `| "lambda" @@`
 	Ident    *ident    `| @@ )`
-	Op       *operator `[ @@ ]`
 	Slice    *slice    `[ @@ ]`
 	If       *inlineIf `[ @@ ]`
 	Property *ident    `[ ( "." @@`
 	Call     *call     `| "(" @@ ")" ) ]`
+	Op       *operator `[ @@ ]`
 }
 
 type unaryOp struct {

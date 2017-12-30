@@ -313,6 +313,7 @@ func TestMultipleActions(t *testing.T) {
 }
 
 func TestExample1(t *testing.T) {
+	// These tests are specific examples that turned out to fail.
 	_, err := NewParser().parse("src/parse/participle/test_data/example_1.build")
 	assert.NoError(t, err)
 }
@@ -324,5 +325,10 @@ func TestExample2(t *testing.T) {
 
 func TestExample3(t *testing.T) {
 	_, err := NewParser().parse("src/parse/participle/test_data/example_3.build")
+	assert.NoError(t, err)
+}
+
+func TestExample4(t *testing.T) {
+	_, err := NewParser().parse("src/parse/participle/test_data/example_4.build")
 	assert.NoError(t, err)
 }
