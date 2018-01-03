@@ -3,7 +3,7 @@
 ; main advantage is automatic invocation of buildifier.
 ;
 ; Add this to .emacs to make this load automatically.
-;(add-to-list 'auto-mode-alist '("BUILD" . please-mode))
+; (add-to-list 'auto-mode-alist '("BUILD" . please-mode))
 ; And add this to run buildifier on the current buffer when saving:
 ; (add-hook 'after-save-hook 'please-buildify-on-save).
 
