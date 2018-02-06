@@ -9,6 +9,7 @@ package parse
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path"
 	"sync"
 
@@ -86,11 +87,17 @@ func Parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, noD
 
 // PrintRuleArgs prints the arguments of all builtin rules (plus any associated ones from the given targets)
 func PrintRuleArgs(state *core.BuildState, labels []core.BuildLabel) {
-	p := asp.NewParser()
+	p := newAspParser(state)
 	for _, l := range labels {
-
+		for _, out := range state.Graph.TargetOrDie(l).Outputs() {
+			p.MustLoadBuiltins(out, nil, nil)
+		}
 	}
-	p.PrintRuleArgs()
+	b, err := json.Marshal(p.Environment())
+	if err != nil {
+		log.Fatalf("Failed JSON encoding: %s", err)
+	}
+	os.Stdout.Write(b)
 }
 
 // activateTarget marks a target as active (ie. to be built) and adds its dependencies as pending parses.
