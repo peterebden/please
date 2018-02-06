@@ -7,6 +7,7 @@
 package parse
 
 import (
+	"encoding/json"
 	"fmt"
 	"path"
 	"sync"
@@ -81,6 +82,15 @@ func Parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, noD
 		}
 	}
 	state.LogBuildResult(tid, label, core.PackageParsed, "Parsed")
+}
+
+// PrintRuleArgs prints the arguments of all builtin rules (plus any associated ones from the given targets)
+func PrintRuleArgs(state *core.BuildState, labels []core.BuildLabel) {
+	p := asp.NewParser()
+	for _, l := range labels {
+
+	}
+	p.PrintRuleArgs()
 }
 
 // activateTarget marks a target as active (ie. to be built) and adds its dependencies as pending parses.

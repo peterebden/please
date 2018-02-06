@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/alecthomas/participle"
 	"github.com/alecthomas/participle/lexer"
@@ -205,4 +206,57 @@ func (p *Parser) optimise(statements []*statement) []*statement {
 		ret = append(ret, stmt)
 	}
 	return ret
+}
+
+// Environment returns the current global environment of the parser.
+func (p *Parser) Environment() *Environment {
+	env := &Environment{Functions: map[string]Function{}}
+	for k, v := range p.interpreter.scope.locals {
+		if f, ok := v.(*pyFunc); ok {
+			env.Functions[k] = fromFunction(f)
+		}
+	}
+	return env
+}
+
+//
+
+// An Environment describes the global environment of the parser.
+type Environment struct {
+	Functions map[string]Function `json:"functions"`
+}
+
+type Function struct {
+	Args      []FunctionArg `json:"args"`
+	Comment   string        `json:"comment"`
+	Docstring string        `json:"docstring"`
+	Language  string        `json:"language"`
+}
+
+type FunctionArg struct {
+	Comment    string   `json:"comment"`
+	Deprecated bool     `json:"deprecated"`
+	Name       string   `json:"name"`
+	Required   bool     `json:"required"`
+	Types      []string `json:"types"`
+}
+
+// fromFunction creates a Function from an existing parsed function
+func fromFunction(f *pyFunc) Function {
+	r := Function{
+		Docstring: f.docstring,
+		Comment:   f.docstring,
+	}
+	if idx := strings.IndexRune(f.docstring, '\n'); idx != -1 {
+		r.Comment = f.docstring[:idx]
+	}
+	r.Args = make([]FunctionArg, len(f.args))
+	for i, a := range f.args {
+		r.Args[i] = FunctionArg{
+			Name:     a,
+			Types:    f.types[i],
+			Required: f.constants[i] == nil && (len(f.defaults) <= i || f.defaults[i] == nil),
+		}
+	}
+	return r
 }

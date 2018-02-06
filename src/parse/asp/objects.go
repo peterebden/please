@@ -352,6 +352,7 @@ func (d pyDict) Copy() pyDict {
 
 type pyFunc struct {
 	name       string
+	docstring  string
 	scope      *scope
 	args       []string
 	argIndices map[string]int
@@ -372,6 +373,7 @@ type pyFunc struct {
 func newPyFunc(parentScope *scope, def *funcDef) pyObject {
 	f := &pyFunc{
 		name:       def.Name,
+		docstring:  stringLiteral(def.Docstring),
 		scope:      parentScope,
 		args:       make([]string, len(def.Arguments)),
 		argIndices: make(map[string]int, len(def.Arguments)),

@@ -563,8 +563,9 @@ var buildFunctions = map[string]func() bool{
 			if !success {
 				return false
 			}
-
+			targets = state.ExpandOriginalTargets()
 		}
+		parse.PrintRuleArgs(state, targets)
 		return true
 	},
 }
