@@ -11,7 +11,7 @@ go_library(
     ],
     deps = [
         '//src/core',
-        '//src/parse',
+        '//src/parse/asp',
         '//third_party/go:logging',
         '//third_party/go:prompter',
     ],

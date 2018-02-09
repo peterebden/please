@@ -17,7 +17,7 @@ import (
 	"gopkg.in/op/go-logging.v1"
 
 	"core"
-	"parse"
+	"parse/asp"
 )
 
 var log = logging.MustGetLogger("gc")
@@ -205,6 +205,12 @@ func publicDependencies(graph *core.BuildGraph, target *core.BuildTarget) []*cor
 
 // RewriteFile rewrites a BUILD file to exclude a set of targets.
 func RewriteFile(state *core.BuildState, filename string, targets []string) error {
+	p := asp.NewParser()
+	stmts, err := p.ParseFileOnly(filename)
+	if err != nil {
+		return err
+	}
+
 	for i, t := range targets {
 		targets[i] = fmt.Sprintf(`"%s"`, t)
 	}
