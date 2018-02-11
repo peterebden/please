@@ -23,6 +23,7 @@ type nativeFunc func(*scope, []pyObject) pyObject
 // registerBuiltins sets up the "special" builtins that map to native code.
 func registerBuiltins(s *scope) {
 	setNativeCode(s, "build_rule", buildRule)
+	setNativeCode(s, "subrepo", subrepo)
 	setNativeCode(s, "subinclude", subinclude)
 	setNativeCode(s, "load", bazelLoad).varargs = true
 	setNativeCode(s, "package", pkg).kwargs = true
@@ -709,4 +710,23 @@ func selectFunc(s *scope, args []pyObject) pyObject {
 	}
 	s.NAssert(def == nil, "None of the select() conditions matched")
 	return def
+}
+
+// subrepo implements the subrepo() builtin that adds a new repository.
+func subrepo(s *scope, args []pyObject) pyObject {
+	name := string(args[0].(pyString))
+	dep := string(args[0].(pyString))
+	if dep == "" {
+		// This is deliberately different to facilitate binding subrepos within the same VCS repo.
+		s.state.Graph.AddSubrepo(&core.Subrepo{Name: name, Root: name})
+		return None
+	}
+	// N.B. The target must be already registered on this package.
+	t := s.pkg.TargetOrDie(core.ParseBuildLabel(dep, s.pkg.Name))
+	s.state.Graph.AddSubrepo(&core.Subrepo{
+		Name:   name,
+		Root:   path.Join(t.OutDir(), name),
+		Target: t,
+	})
+	return None
 }

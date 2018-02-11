@@ -56,6 +56,8 @@ def subinclude(target:str, hash:str=None):
     pass
 def load(target:str, names:str=None):
     pass
+def subrepo(name:str, dep:string=''):
+    pass
 
 
 def isinstance(obj, types:function|list):
