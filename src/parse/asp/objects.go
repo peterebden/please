@@ -597,6 +597,10 @@ func (f *pyFunc) validateType(s *scope, i int, expr *Expression) pyObject {
 			return val
 		}
 	}
+	// Using integers in place of booleans seems common in Bazel BUILD files :(
+	if s.state.Config.Bazel.Compatibility && f.types[i][0] == "bool" && actual == "int" {
+		return val
+	}
 	defer func() {
 		panic(AddStackFrame(expr.Pos, recover()))
 	}()
@@ -721,6 +725,11 @@ func newConfig(config *core.Configuration) *pyConfig {
 	c["DEFAULT_VISIBILITY"] = None
 	c["DEFAULT_TESTONLY"] = False
 	c["DEFAULT_LICENCES"] = None
+	// Bazel supports a 'features' flag to toggle things on and off.
+	// We don't but at least let them call package() without blowing up.
+	if config.Bazel.Compatibility {
+		c["FEATURES"] = pyList{}
+	}
 	// These can't be changed (although really you shouldn't be able to find out the OS at parse time)
 	c["OS"] = pyString(runtime.GOOS)
 	c["ARCH"] = pyString(runtime.GOARCH)

@@ -210,7 +210,7 @@ def c_binary(name:str, srcs:list=None, hdrs:list=None, private_hdrs:list=None, c
 
 def c_test(name:str, srcs:list=None, hdrs:list=None, compiler_flags:list&cflags&copts=None, linker_flags:list&ldflags&linkopts=None,
            pkg_config_libs:list=None, deps:list=None, data:list=None, visibility:list=None, flags:str='',
-           labels:list=None, flaky:bool|int=0, test_outputs:list=None, size:str=None, timeout:int=0,
+           labels:list&features&tags=None, flaky:bool|int=0, test_outputs:list=None, size:str=None, timeout:int=0,
            container:bool|dict=False, sandbox:bool=None):
     """Defines a C test target.
 

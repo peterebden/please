@@ -355,7 +355,7 @@ def go_binary(name:str, srcs:list=None, asm_srcs:list=None, out:str=None, deps:l
 def go_test(name:str, srcs:list, data:list=None, deps:list=None, visibility:list=None,
             flags:str='', container:bool|dict=False, sandbox:bool=None, cgo:bool=False,
             external:bool=False, timeout:int=0, flaky:bool|int=0, test_outputs:list=None,
-            labels:list=None, size:str=None, static:bool=False):
+            labels:list&features&tags=None, size:str=None, static:bool=False):
     """Defines a Go test rule.
 
     Args:
@@ -458,7 +458,7 @@ def go_test(name:str, srcs:list, data:list=None, deps:list=None, visibility:list
 
 def cgo_test(name:str, srcs:list, data:list=None, deps:list=None, visibility:list=None,
              flags:str='', container:bool|dict=False, sandbox:bool=None, timeout:int=0, flaky:bool|int=0,
-             test_outputs:list=None, labels:list=None, size:str=None, static:bool=False):
+             test_outputs:list=None, labels:list&features&tags=None, size:str=None, static:bool=False):
     """Defines a Go test rule over a cgo_library.
 
     If the library you are testing is a cgo_library, you must use this instead of go_test.
