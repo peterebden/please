@@ -131,7 +131,7 @@ func parseBuildLabelParts(target, currentPath string) (string, string) {
 		// @subrepo//pkg:target syntax
 		if idx := strings.Index(target, "//"); idx == -1 {
 			return "", ""
-		} else if pkg, name := parseBuildLabelParts(target[idx:], currentPath); pkg == "" {
+		} else if pkg, name := parseBuildLabelParts(target[idx:], currentPath); pkg == "" && name == "" {
 			return "", ""
 		} else {
 			return path.Join(target[1:idx], pkg), name // Combine it to //subrepo/pkg:target

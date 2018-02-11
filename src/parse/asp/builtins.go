@@ -722,7 +722,7 @@ func subrepo(s *scope, args []pyObject) pyObject {
 		return None
 	}
 	// N.B. The target must be already registered on this package.
-	t := s.pkg.TargetOrDie(core.ParseBuildLabel(dep, s.pkg.Name))
+	t := s.pkg.TargetOrDie(core.ParseBuildLabel(dep, s.pkg.Name).PackageName)
 	s.state.Graph.AddSubrepo(&core.Subrepo{
 		Name:   name,
 		Root:   path.Join(t.OutDir(), name),

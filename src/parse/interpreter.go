@@ -891,7 +891,7 @@ func getSubincludeFile(pkg *core.Package, labelStr string) string {
 	if target == nil {
 		// Might not have been parsed yet. Check for that first.
 		if subincludePackage := core.State.Graph.Package(label.PackageName); subincludePackage == nil {
-			if deferParse(label, pkg) {
+			if deferParse(label, pkg.Name) {
 				return pyDeferParse // Not an error, they'll just have to wait.
 			}
 			target = core.State.Graph.TargetOrDie(label) // Should be there now.
@@ -903,7 +903,7 @@ func getSubincludeFile(pkg *core.Package, labelStr string) string {
 	} else if len(target.Outputs()) != 1 {
 		return fmt.Sprintf("__Can't subinclude %s, subinclude targets must have exactly one output", label)
 	} else if target.State() < core.Built {
-		if deferParse(label, pkg) {
+		if deferParse(label, pkg.Name) {
 			return pyDeferParse // Again, they'll have to wait for this guy to build.
 		}
 	}
