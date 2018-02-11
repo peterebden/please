@@ -15,7 +15,7 @@ _WHOLE_ARCHIVE = '-all_load' if CONFIG.OS == 'darwin' else '--whole-archive'
 _NO_WHOLE_ARCHIVE = '-noall_load' if CONFIG.OS == 'darwin' else '--no-whole-archive'
 
 
-def cc_library(name:str, srcs:list=None, hdrs:list=None, private_hdrs:list=None, deps:list=None,
+def cc_library(name:str, srcs:list=None, hdrs:list=None, private_hdrs:list&textual_hdrs=None, deps:list=None,
                visibility:list=None, test_only:bool&testonly=False, compiler_flags:list&cflags&copts=None, linker_flags:list&ldflags&linkopts=None,
                pkg_config_libs:list=None, includes:list=None, defines:list|dict=None, alwayslink:bool=False, _c=False):
     """Generate a C++ library target.
