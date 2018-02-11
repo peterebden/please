@@ -436,6 +436,9 @@ func newPyFunc(parentScope *scope, def *FuncDef) pyObject {
 				f.defaults[i] = arg.Value
 			}
 		}
+		for _, alias := range arg.Aliases {
+			f.argIndices[alias] = i
+		}
 	}
 	return f
 }
@@ -468,23 +471,6 @@ func (f *pyFunc) String() string {
 	return fmt.Sprintf("<function %s>", f.name)
 }
 
-// Rescope returns a duplicate of this function with a new parent scope.
-func (f *pyFunc) Rescope(s *scope) pyObject {
-	return &pyFunc{
-		name:       f.name,
-		scope:      s,
-		args:       f.args,
-		argIndices: f.argIndices,
-		defaults:   f.defaults,
-		constants:  f.constants,
-		types:      f.types,
-		code:       f.code,
-		nativeCode: f.nativeCode,
-		varargs:    f.varargs,
-		kwargs:     f.kwargs,
-	}
-}
-
 func (f *pyFunc) Call(s *scope, c *Call) pyObject {
 	if f.nativeCode != nil {
 		if f.kwargs {
@@ -504,9 +490,13 @@ func (f *pyFunc) Call(s *scope, c *Call) pyObject {
 		if a.Value != nil { // Named argument
 			// Unfortunately we can't pick this up readily at parse time.
 			s.NAssert(a.Expr.Ident == nil || len(a.Expr.Ident.Action) > 0, "Illegal argument syntax %s", a.Expr)
-			idx, present := f.argIndices[a.Expr.Ident.Name]
-			s.Assert(present || f.kwargs, "Unknown argument to %s: %s", f.name, a.Expr.Ident.Name)
-			s2.Set(a.Expr.Ident.Name, f.validateType(s, idx, a.Value))
+			name := a.Expr.Ident.Name
+			idx, present := f.argIndices[name]
+			s.Assert(present || f.kwargs, "Unknown argument to %s: %s", f.name, name)
+			if present {
+				name = f.args[idx]
+			}
+			s2.Set(name, f.validateType(s, idx, a.Value))
 		} else if i >= len(f.args) {
 			s.Error("Too many arguments to %s", f.name)
 		} else if a.self != nil {
