@@ -30,7 +30,7 @@ def config_setting(name:str, values:dict, visibility:list=None):
     Args:
       name (str): Name of the rule
       values (dict): Values to select. If these are all matched then the rule is
-                     satisfied. Currently we only support 'cpu' and 'compilation_mode',
+                     satisfied. Currently we only support 'cpu', 'compiler' and 'compilation_mode',
                      although users are encouraged to avoid the latter where possible
                      (the dbg/opt cflags settings should be preferred instead).
                      For example: {'cpu': 'amd64'} is successful if the CPU architecture is amd64.
@@ -51,6 +51,9 @@ def _config_condition(name, value):
         return '[[ "$ARCH" == "%s" ]]' % _CPU_ALIASES.get(value, value)
     elif name == 'compilation_mode':
         return '[[ "$CONFIG" == "%s" ]]' % value
+    elif name == 'compiler':
+        # Unsure what exactly the semantics of this are supposed to be. Taking a guess.
+        return '[[ "$TOOLS" == *"%s"* ]]' % _COMPILER_ALIASES.get(value, value)
     else:
         raise ParseError('Unknown config_setting key %s' % name)
 
@@ -60,4 +63,9 @@ _CPU_ALIASES = {
     'x86_64': 'amd64',
     'k8': 'amd64',
     'piii': 'x86',
+}
+
+# Similarly 'llvm' is an acceptable alias for Clang.
+_COMPILER_ALIASES = {
+    'llvm': 'clang',
 }

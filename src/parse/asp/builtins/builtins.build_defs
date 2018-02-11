@@ -54,6 +54,8 @@ def count(self, needle:str):
 
 def subinclude(target:str, hash:str=None):
     pass
+def include_defs(target:str):
+    pass
 
 
 def isinstance(obj, types:function|list):

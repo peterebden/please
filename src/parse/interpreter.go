@@ -870,7 +870,7 @@ func GetIncludeFile(cPackage uintptr, cLabel *C.char) *C.char {
 		return C.CString("__include_defs argument must be an absolute path (ie. start with //)")
 	}
 	relPath := strings.TrimLeft(label, "/")
-	return C.CString(path.Join(core.RepoRoot, relPath))
+	return C.CString(path.Join(core.RepoRoot, strings.Replace(relPath, ":", "/", -1)))
 }
 
 // GetSubincludeFile is a callback to the interpreter that returns the path it

@@ -24,6 +24,7 @@ type nativeFunc func(*scope, []pyObject) pyObject
 func registerBuiltins(s *scope) {
 	setNativeCode(s, "build_rule", buildRule)
 	setNativeCode(s, "subinclude", subinclude)
+	setNativeCode(s, "include_defs", includeDefs)
 	setNativeCode(s, "package", pkg).kwargs = true
 	setNativeCode(s, "sorted", sorted)
 	setNativeCode(s, "isinstance", isinstance)
@@ -203,6 +204,16 @@ func tagName(name, tag string) string {
 		name = name + "#"
 	}
 	return name + tag
+}
+
+// includeDefs implements the include_defs builtin, which is only available in Bazel compat mode.
+func includeDefs(s *scope, args []pyObject) pyObject {
+	s.Assert(s.state.Config.Bazel.Compatibility, "include_defs is only available in Bazel compatibility mode. See `plz help bazel` for more information.")
+	// The argument always looks like a build label, but it is not really one (i.e. there is no BUILD file that defines it).
+	// We do not support their legacy syntax here (i.e. "/tools/build_rules/build_test" etc).
+	l := core.ParseBuildLabel(string(args[0].(pyString)), s.pkg.Name)
+	s.SetAll(s.interpreter.Subinclude(path.Join(l.PackageName, l.Name)), false)
+	return None
 }
 
 func subinclude(s *scope, args []pyObject) pyObject {
@@ -676,13 +687,14 @@ func selectFunc(s *scope, args []pyObject) pyObject {
 	d, _ := asDict(args[0])
 	var def pyObject
 	// TODO(peterebden): this is an arbitrary match that drops Bazel's order-of-matching rules. Fix.
+	const sentinelPkg = "_internal"
 	for k, v := range d {
 		if k == "//conditions:default" || k == "default" {
 			def = v
 		} else {
-			l := core.ParseBuildLabel(k, s.pkg.Name)
+			l := core.ParseBuildLabel(k, sentinelPkg)
 			// For now this is not possible since it uses the same mechanism as subinclude().
-			s.NAssert(l.PackageName == s.pkg.Name, "select() conditions cannot refer to the local package")
+			s.NAssert(l.PackageName == sentinelPkg, "select() conditions cannot refer to the local package")
 			t := subincludeTarget(s, l)
 			outs := t.Outputs()
 			// This is a necessary but not sufficient condition (you could get away with doing this to lots of

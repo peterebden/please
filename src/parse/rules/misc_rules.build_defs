@@ -461,18 +461,17 @@ if CONFIG.BAZEL_COMPATIBILITY:
     def load(name, s1=None, s2=None, s3=None, s4=None, s5=None, s6=None):
         """Vaguely mimics the Bazel load() function which loads things from a .bzl file.
 
-        Conveniently they have a deprecated mode which is a lot like include_defs(), and
-        a more modern one which resembles subinclude(). Unfortunately the latter doesn't
-        require having an actual target to subinclude() from...
+        This is similar but not identical to subinclude() in semantics. The loaded file does not
+        seem to require an actual target and hence can only be a static file. We therefore take
+        something of an end-run around our normal subinclude() logic.
 
-        In neither case do we support loading specific symbols.
+        Regardless, we do not support loading specific symbols.
         """
-        if name.startswith('//'):
-            subinclude(name)
-        elif name.startswith('/'):
-            include_defs('//%s.bzl' % name)  # lint:disable=deprecated-function
-        else:
-            include_defs('//%s/%s.bzl' % (get_base_path(), name))  # lint:disable=deprecated-function
+        if not name.startswith('//'):
+            # Deprecated syntax...
+            package, _, target = name.rpartition('/')
+            name = '/%s:%s.bzl' % (package, target)
+        include_defs(name)  # lint:disable=deprecated-function
 
     def exports_files(srcs, name='exported_files', visibility=['PUBLIC'], licenses=None):
         """Makes a bunch of files available as a filegroup.
@@ -486,3 +485,7 @@ if CONFIG.BAZEL_COMPATIBILITY:
             srcs = srcs,
             visibility = visibility,
         )
+
+    def licenses(licences):
+        """Sets the default licences for the package."""
+        package(default_licences = licences)
