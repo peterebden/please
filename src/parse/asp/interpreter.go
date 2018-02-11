@@ -51,6 +51,8 @@ func (i *interpreter) LoadBuiltins(filename string, contents []byte, statements 
 		defer registerBuiltins(i.builtinScope)
 	} else if filename == "misc_rules.build_defs" || filename == "src/parse/misc_rules.build_defs" {
 		defer registerSubincludePackage(i.builtinScope)
+	} else if filename == "config_rules.build_defs" || filename == "src/parse/config_rules.build_defs" {
+		defer setNativeCode(i.builtinScope, "select", selectFunc)
 	}
 	defer i.scope.SetAll(i.builtinScope.Freeze(), true)
 	if statements != nil {

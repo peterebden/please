@@ -1,7 +1,9 @@
 package asp
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"path"
 	"reflect"
 	"sort"
@@ -20,8 +22,6 @@ type nativeFunc func(*scope, []pyObject) pyObject
 
 // registerBuiltins sets up the "special" builtins that map to native code.
 func registerBuiltins(s *scope) {
-	// varargs is set here as an optimisation; we don't have to populate all 30-odd arguments
-	// into the argument map. We do have to be careful about reading them though.
 	setNativeCode(s, "build_rule", buildRule)
 	setNativeCode(s, "subinclude", subinclude)
 	setNativeCode(s, "package", pkg).kwargs = true
@@ -206,7 +206,16 @@ func tagName(name, tag string) string {
 }
 
 func subinclude(s *scope, args []pyObject) pyObject {
-	l := subincludeLabel(s, args)
+	t := subincludeTarget(s, subincludeLabel(s, args))
+	for _, out := range t.Outputs() {
+		s.SetAll(s.interpreter.Subinclude(path.Join(t.OutDir(), out)), false)
+	}
+	return None
+}
+
+// subincludeTarget returns the target for a subinclude() call to a label.
+// It panics appropriately if the target is not yet built.
+func subincludeTarget(s *scope, l core.BuildLabel) *core.BuildTarget {
 	t := s.state.Graph.Target(l)
 	if t == nil || t.State() < core.Built {
 		// The target is not yet built. Defer parsing it until it is.
@@ -214,10 +223,7 @@ func subinclude(s *scope, args []pyObject) pyObject {
 	} else if l.PackageName != subincludePackageName && s.pkg != nil {
 		s.pkg.RegisterSubinclude(l)
 	}
-	for _, out := range t.Outputs() {
-		s.SetAll(s.interpreter.Subinclude(path.Join(t.OutDir(), out)), false)
-	}
-	return None
+	return t
 }
 
 // subincludeLabel returns the label for a subinclude() call (which might be indirect
@@ -663,4 +669,32 @@ func setCommand(s *scope, args []pyObject) pyObject {
 		target.AddCommand(config, command)
 	}
 	return None
+}
+
+// selectFunc implements the select() builtin.
+func selectFunc(s *scope, args []pyObject) pyObject {
+	d, _ := asDict(args[0])
+	var def pyObject
+	// TODO(peterebden): this is an arbitrary match that drops Bazel's order-of-matching rules. Fix.
+	for k, v := range d {
+		if k == "//conditions:default" || k == "default" {
+			def = v
+		} else {
+			l := core.ParseBuildLabel(k, s.pkg.Name)
+			// For now this is not possible since it uses the same mechanism as subinclude().
+			s.NAssert(l.PackageName == s.pkg.Name, "select() conditions cannot refer to the local package")
+			t := subincludeTarget(s, l)
+			outs := t.Outputs()
+			// This is a necessary but not sufficient condition (you could get away with doing this to lots of
+			// targets that have exactly one output, but what kind of monster would do such a thing...).
+			s.Assert(len(outs) == 1, "select() condition refers to a rule that isn't a config_setting")
+			b, err := ioutil.ReadFile(path.Join(t.OutDir(), outs[0]))
+			s.Assert(err == nil, "cannot read output of %s: %s", k, err)
+			if string(bytes.TrimSpace(b)) == "true" {
+				return v
+			}
+		}
+	}
+	s.NAssert(def == nil, "None of the select() conditions matched")
+	return def
 }

@@ -6,6 +6,7 @@ genrule(
         #                   (so that we can take advantage of globs etc).
         'c_rules.build_defs',
         'cc_rules.build_defs',
+        'config_rules.build_defs',
         'go_rules.build_defs',
         'java_rules.build_defs',
         'misc_rules.build_defs',
@@ -26,6 +27,7 @@ genrule(
         'builtins.build_defs.gob',
         'c_rules.build_defs.gob',
         'cc_rules.build_defs.gob',
+        'config_rules.build_defs.gob',
         'go_rules.build_defs.gob',
         'java_rules.build_defs.gob',
         'misc_rules.build_defs.gob',
