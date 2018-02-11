@@ -22,7 +22,7 @@ genrule(
     name = 'builtin_rules',
     srcs = [
         'builtins.build_defs',
-        '//src/parse:builtin_rules',
+        ':builtin_rule_srcs',
     ],
     outs = [
         'builtins.build_defs.gob',
