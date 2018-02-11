@@ -283,7 +283,8 @@ func parsePackage(state *core.BuildState, label, dependor core.BuildLabel) *core
 func buildFileName(state *core.BuildState, pkgName string) string {
 	// Bazel defines targets in its "external" package from its WORKSPACE file.
 	// We will fake this by treating that as an actual package file...
-	if state.Config.Bazel.Compatibility && pkgName == "external" {
+	// TODO(peterebden): They may be moving away from their "external" nomenclature?
+	if state.Config.Bazel.Compatibility && pkgName == "external" || pkgName == "WORKSPACE" {
 		return "WORKSPACE"
 	}
 	for _, buildFileName := range state.Config.Parse.BuildFileName {

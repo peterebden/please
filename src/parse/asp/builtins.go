@@ -714,18 +714,25 @@ func selectFunc(s *scope, args []pyObject) pyObject {
 
 // subrepo implements the subrepo() builtin that adds a new repository.
 func subrepo(s *scope, args []pyObject) pyObject {
+	root := func(def string) string {
+		if args[2] != None {
+			return string(args[2].(pyString))
+		}
+		return def
+	}
+
 	name := string(args[0].(pyString))
-	dep := string(args[0].(pyString))
+	dep := string(args[1].(pyString))
 	if dep == "" {
 		// This is deliberately different to facilitate binding subrepos within the same VCS repo.
-		s.state.Graph.AddSubrepo(&core.Subrepo{Name: name, Root: name})
+		s.state.Graph.AddSubrepo(&core.Subrepo{Name: name, Root: root(name)})
 		return None
 	}
 	// N.B. The target must be already registered on this package.
 	t := s.pkg.TargetOrDie(core.ParseBuildLabel(dep, s.pkg.Name).PackageName)
 	s.state.Graph.AddSubrepo(&core.Subrepo{
 		Name:   name,
-		Root:   path.Join(t.OutDir(), name),
+		Root:   root(path.Join(t.OutDir(), name)),
 		Target: t,
 	})
 	return None

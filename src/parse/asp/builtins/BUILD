@@ -13,6 +13,7 @@ genrule(
         'proto_rules.build_defs',
         'python_rules.build_defs',
         'sh_rules.build_defs',
+        'subrepo_rules.build_defs',
     ],
     cmd = 'mv $SRCS $TMP_DIR',
 )
@@ -34,6 +35,7 @@ genrule(
         'proto_rules.build_defs.gob',
         'python_rules.build_defs.gob',
         'sh_rules.build_defs.gob',
+        'subrepo_rules.build_defs.gob',
     ],
     cmd = '$TOOL -o $TMP_DIR $SRCS',
     tools = ['//src/parse/asp/main:compiler'],

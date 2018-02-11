@@ -12,6 +12,18 @@ Rules in subrepos can be accessed in one of two ways:
 These are still fairly experimental.
 """
 
+def workspace(name:str):
+    """Defines the name of the current workspace.
+
+    Args:
+      name (str): Name to bind this workspace as.
+    """
+    subrepo(
+        name = name,
+        path = '',
+    )
+
+
 def http_archive(name:str, urls:list, strip_prefix:str=None, hashes:str|list=None,
                  sha256:str=None, visibility:list=None):
     """Fetches a remote file over HTTP and expands its contents.
@@ -31,7 +43,7 @@ def http_archive(name:str, urls:list, strip_prefix:str=None, hashes:str|list=Non
     remote_rule = remote_file(
         name = name,
         _tag = 'download',
-        urls = urls,
+        url = urls,
         hashes = hashes,
     )
     if any([u.endswith('.jar') or u.endswith('.zip') for u in urls]):
