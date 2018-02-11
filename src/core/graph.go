@@ -127,7 +127,7 @@ func (graph *BuildGraph) SubrepoFor(name string) *Subrepo {
 	if idx := strings.IndexRune(name, '/'); idx != -1 {
 		return graph.Subrepo(name[:idx])
 	}
-	return nil
+	return graph.Subrepo(name)
 }
 
 // Len returns the number of targets currently in the graph.

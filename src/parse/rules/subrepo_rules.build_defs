@@ -44,6 +44,7 @@ def http_archive(name:str, urls:list, strip_prefix:str=None, hashes:str|list=Non
         name = name,
         _tag = 'download',
         url = urls,
+        out = name + '_' + basename(urls[0]),
         hashes = hashes,
     )
     if any([u.endswith('.jar') or u.endswith('.zip') for u in urls]):

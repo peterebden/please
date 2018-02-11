@@ -284,13 +284,17 @@ func buildFileName(state *core.BuildState, pkgName string) string {
 	// Bazel defines targets in its "external" package from its WORKSPACE file.
 	// We will fake this by treating that as an actual package file...
 	// TODO(peterebden): They may be moving away from their "external" nomenclature?
-	if state.Config.Bazel.Compatibility && pkgName == "external" || pkgName == "WORKSPACE" {
+	if state.Config.Bazel.Compatibility && pkgName == "external" || pkgName == "workspace" {
 		return "WORKSPACE"
 	}
 	for _, buildFileName := range state.Config.Parse.BuildFileName {
 		if filename := path.Join(pkgName, buildFileName); core.FileExists(filename) {
 			return filename
 		}
+	}
+	// Could be a subrepo...
+	if subrepo := state.Graph.SubrepoFor(pkgName); subrepo != nil {
+		return buildFileName(state, subrepo.Dir(pkgName))
 	}
 	return ""
 }

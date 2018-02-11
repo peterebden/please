@@ -322,6 +322,7 @@ def remote_file(name:str, url:str|list, hashes:list=None, out:str=None, binary:b
       exported_deps (list): Dependencies that will become visible to any rules that depend on this rule.
     """
     urls = [url] if isinstance(url, str) else url
+    url = urls[0]
     cmd = ') || ('.join(['echo "Fetching %s..." && curl -fsSL %s -o $OUT' % (url, url) for url in urls])
     return build_rule(
         name = name,
