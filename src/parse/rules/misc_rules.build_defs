@@ -458,21 +458,6 @@ if CONFIG.BAZEL_COMPATIBILITY:
             visibility = ['PUBLIC'],
         )
 
-    def load(name, s1=None, s2=None, s3=None, s4=None, s5=None, s6=None):
-        """Vaguely mimics the Bazel load() function which loads things from a .bzl file.
-
-        This is similar but not identical to subinclude() in semantics. The loaded file does not
-        seem to require an actual target and hence can only be a static file. We therefore take
-        something of an end-run around our normal subinclude() logic.
-
-        Regardless, we do not support loading specific symbols.
-        """
-        if not name.startswith('//'):
-            # Deprecated syntax...
-            package, _, target = name.rpartition('/')
-            name = '/%s:%s.bzl' % (package, target)
-        include_defs(name)  # lint:disable=deprecated-function
-
     def exports_files(srcs, name='exported_files', visibility=['PUBLIC'], licenses=None):
         """Makes a bunch of files available as a filegroup.
 

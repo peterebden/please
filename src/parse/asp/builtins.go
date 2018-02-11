@@ -24,7 +24,7 @@ type nativeFunc func(*scope, []pyObject) pyObject
 func registerBuiltins(s *scope) {
 	setNativeCode(s, "build_rule", buildRule)
 	setNativeCode(s, "subinclude", subinclude)
-	setNativeCode(s, "include_defs", includeDefs)
+	setNativeCode(s, "load", bazelLoad).varargs = true
 	setNativeCode(s, "package", pkg).kwargs = true
 	setNativeCode(s, "sorted", sorted)
 	setNativeCode(s, "isinstance", isinstance)
@@ -206,9 +206,9 @@ func tagName(name, tag string) string {
 	return name + tag
 }
 
-// includeDefs implements the include_defs builtin, which is only available in Bazel compat mode.
-func includeDefs(s *scope, args []pyObject) pyObject {
-	s.Assert(s.state.Config.Bazel.Compatibility, "include_defs is only available in Bazel compatibility mode. See `plz help bazel` for more information.")
+// bazelLoad implements the load() builtin, which is only available for Bazel compatibility.
+func bazelLoad(s *scope, args []pyObject) pyObject {
+	s.Assert(s.state.Config.Bazel.Compatibility, "load() is only available in Bazel compatibility mode. See `plz help bazel` for more information.")
 	// The argument always looks like a build label, but it is not really one (i.e. there is no BUILD file that defines it).
 	// We do not support their legacy syntax here (i.e. "/tools/build_rules/build_test" etc).
 	l := core.ParseBuildLabel(string(args[0].(pyString)), s.pkg.Name)
