@@ -54,6 +54,9 @@ def _config_condition(name, value):
     elif name == 'compiler':
         # Unsure what exactly the semantics of this are supposed to be. Taking a guess.
         return '[[ "$TOOLS" == *"%s"* ]]' % _COMPILER_ALIASES.get(value, value)
+    elif name == 'define':
+        # This is the closest thing we have to Bazel's defines right now.
+        return 'true' if (value.upper() in CONFIG) else 'false'
     else:
         raise ParseError('Unknown config_setting key %s' % name)
 

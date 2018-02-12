@@ -61,6 +61,8 @@ func registerBuiltins(s *scope) {
 		"rfind":      setNativeCode(s, "find", strRFind),
 		"format":     setNativeCode(s, "format", strFormat),
 		"count":      setNativeCode(s, "count", strCount),
+		"upper":      setNativeCode(s, "upper", strUpper),
+		"lower":      setNativeCode(s, "lower", strLower),
 	}
 	stringMethods["format"].kwargs = true
 	dictMethods = map[string]*pyFunc{
@@ -407,6 +409,16 @@ func strCount(s *scope, args []pyObject) pyObject {
 	self := string(args[0].(pyString))
 	needle := string(args[1].(pyString))
 	return pyInt(strings.Count(self, needle))
+}
+
+func strUpper(s *scope, args []pyObject) pyObject {
+	self := string(args[0].(pyString))
+	return pyString(strings.ToUpper(self))
+}
+
+func strLower(s *scope, args []pyObject) pyObject {
+	self := string(args[0].(pyString))
+	return pyString(strings.ToLower(self))
 }
 
 func boolType(s *scope, args []pyObject) pyObject {
