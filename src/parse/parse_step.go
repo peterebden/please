@@ -237,6 +237,7 @@ func parsePackage(state *core.BuildState, label, dependor core.BuildLabel) *core
 		panic(fmt.Sprintf("Can't build %s; the directory %s doesn't exist", label, packageName))
 	}
 
+	log.Debug("Parsing %s from %s...", packageName, pkg.Filename)
 	if err := state.Parser.ParseFile(state, pkg, pkg.Filename); err == errDeferParse {
 		return nil // Indicates deferral
 	} else if required, l := asp.RequiresSubinclude(err); required {
