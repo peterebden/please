@@ -38,6 +38,10 @@ type BuildTarget struct {
 
 	// Identifier of this build target
 	Label BuildLabel `name:"name"`
+	// Indicates if this target is in a subrepo or not. If it is then this is the prefix
+	// added to outputs etc (note that it is *not* the same as for sources with WrapPrefix,
+	// due to the absence/presence of plz-out/gen)
+	OutPrefix string `print:"false"`
 	// Dependencies of this target.
 	// Maps the original declaration to whatever dependencies actually got attached,
 	// which may be more than one in some cases. Also contains info about exporting etc.

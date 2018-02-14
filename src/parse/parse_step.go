@@ -220,6 +220,9 @@ func getDependingTarget(packageName string) string {
 func parsePackage(state *core.BuildState, label, dependor core.BuildLabel) *core.Package {
 	packageName := label.PackageName
 	pkg := core.NewPackage(packageName)
+	if subrepo := state.Graph.SubrepoFor(label.PackageName); subrepo != nil {
+		pkg.Prefix = subrepo.Root
+	}
 	if pkg.Filename = buildFileName(state, packageName); pkg.Filename == "" {
 		exists := core.PathExists(packageName)
 		// Handle quite a few cases to provide more obvious error messages.

@@ -196,3 +196,57 @@ func MustParseNamedOutputLabel(target, currentPath string) BuildInput {
 	}
 	return label
 }
+
+// A prefixedInput wraps up a BuildInput for targets that are in subrepos.
+type prefixedInput struct {
+	Input  BuildInput
+	Prefix string
+}
+
+// PrefixInput wraps an input in the given prefix.
+func PrefixInput(input BuildInput, prefix string) BuildInput {
+	if prefix == "" {
+		return input
+	}
+	return prefixedInput{Input: input, Prefix: prefix}
+}
+
+// Paths returns a slice of paths to the files of this input.
+func (input prefixedInput) Paths(graph *BuildGraph) []string {
+	return input.wrap(input.Input.Paths(graph))
+}
+
+// FullPaths is like Paths but includes the leading plz-out/gen directory.
+func (input prefixedInput) FullPaths(graph *BuildGraph) []string {
+	return input.wrap(input.Input.FullPaths(graph))
+}
+
+// LocalPaths returns paths within the local package
+func (input prefixedInput) LocalPaths(graph *BuildGraph) []string {
+	return input.wrap(input.Input.LocalPaths(graph))
+}
+
+// Label returns the build label associated with this input, or nil if it doesn't have one (eg. it's just a file).
+func (input prefixedInput) Label() *BuildLabel {
+	return input.Input.Label()
+}
+
+// nonOutputLabel returns the build label associated with this input, or nil if it doesn't have
+// one or is a specific output of a rule.
+// This is fiddly enough that we don't want to expose it outside the package right now.
+func (input prefixedInput) nonOutputLabel() *BuildLabel {
+	return input.Input.nonOutputLabel()
+}
+
+// String returns a string representation of this input
+// This always looks like the wrapped one, because it's not visible on the target itself.
+func (input prefixedInput) String() string {
+	return input.Input.String()
+}
+
+func (input prefixedInput) wrap(s []string) []string {
+	for i, x := range s {
+		s[i] = path.Join(input.Prefix, x)
+	}
+	return s
+}

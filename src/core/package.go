@@ -17,6 +17,8 @@ type Package struct {
 	Filename string
 	// Subincluded build defs files that this package imported
 	Subincludes []BuildLabel
+	// If the package exists within a subrepo, this is the prefix that it outputs into.
+	Prefix string
 	// Targets contained within the package
 	targets map[string]*BuildTarget
 	// Set of output files from rules.

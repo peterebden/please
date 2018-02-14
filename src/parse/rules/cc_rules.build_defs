@@ -55,9 +55,9 @@ def cc_library(name:str, srcs:list=None, hdrs:list=None, private_hdrs:list&textu
     # Bazel suggests passing nonexported header files in 'srcs'. We however treat
     # srcs as things to actually compile and must mark a distinction.
     if CONFIG.BAZEL_COMPATIBILITY:
-        src_hdrs = [src for src in srcs if src.endswith('.h')]
+        src_hdrs = [src for src in srcs if src.endswith('.h') or src.endswith('.inc')]
         private_hdrs = (private_hdrs or []) + src_hdrs
-        srcs = [src for src in srcs if not src.endswith('.h')]
+        srcs = [src for src in srcs if not src.endswith('.h') or src.endswith('.inc')]
         # This is rather nasty; people seem to be relying on being able to reuse
         # headers that they've put in srcs. We hence need to re-export them here.
         hdrs += src_hdrs

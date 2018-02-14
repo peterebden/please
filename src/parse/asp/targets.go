@@ -271,7 +271,11 @@ func parseVisibility(s *scope, vis string) core.BuildLabel {
 	if vis == "PUBLIC" || (s.state.Config.Bazel.Compatibility && vis == "//visibility:public") {
 		return core.WholeGraph[0]
 	}
-	return core.ParseBuildLabel(vis, s.pkg.Name)
+	l := core.ParseBuildLabel(vis, s.pkg.Name)
+	if s.state.Config.Bazel.Compatibility && l.Name == "__subpackages__" {
+		l.Name = "..."
+	}
+	return l
 }
 
 func parseBuildInput(s *scope, in pyObject, name string, systemAllowed, tool bool) core.BuildInput {
@@ -280,7 +284,11 @@ func parseBuildInput(s *scope, in pyObject, name string, systemAllowed, tool boo
 		s.Assert(in == None, "Items in %s must be strings", name)
 		return nil
 	}
-	return parseSource(s, string(src), systemAllowed, tool)
+	input := parseSource(s, string(src), systemAllowed, tool)
+	if !systemAllowed && !tool {
+		return core.PrefixInput(input, s.pkg.Prefix)
+	}
+	return input
 }
 
 // parseSource parses an incoming source label as either a file or a build label.
