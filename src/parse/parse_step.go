@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
 	"sync"
 
 	"core"
@@ -221,7 +222,7 @@ func parsePackage(state *core.BuildState, label, dependor core.BuildLabel) *core
 	packageName := label.PackageName
 	pkg := core.NewPackage(packageName)
 	if subrepo := state.Graph.SubrepoFor(label.PackageName); subrepo != nil {
-		pkg.Prefix = subrepo.Root
+		pkg.Prefix = strings.TrimRight(strings.TrimSuffix(subrepo.Root, label.PackageName), "/")
 	}
 	if pkg.Filename = buildFileName(state, packageName); pkg.Filename == "" {
 		exists := core.PathExists(packageName)

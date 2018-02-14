@@ -663,7 +663,7 @@ func updateHashFilegroupPaths(state *core.BuildState, target *core.BuildTarget) 
 // filegroupOutputPath returns the output path for a single filegroup source.
 func filegroupOutputPath(target *core.BuildTarget, outDir, source, full string) (string, string) {
 	if !target.IsHashFilegroup {
-		return path.Join(outDir, source), source
+		return path.Join(outDir, strings.TrimPrefix(source, core.GenDir)), source
 	}
 	// Hash filegroups have a hash embedded into the output name.
 	ext := path.Ext(source)

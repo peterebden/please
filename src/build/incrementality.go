@@ -93,8 +93,7 @@ func needsBuilding(state *core.BuildState, target *core.BuildTarget, postBuild b
 	// removed them but it's incredibly aggravating if you remove an output and the
 	// rule won't rebuild itself.
 	for _, output := range target.Outputs() {
-		realOutput := path.Join(target.OutDir(), output)
-		if !core.PathExists(realOutput) {
+		if realOutput := path.Join(target.OutDir(), output); !core.PathExists(realOutput) {
 			log.Debug("Output %s doesn't exist for rule %s; will rebuild.", realOutput, target.Label)
 			return true
 		}

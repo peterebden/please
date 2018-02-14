@@ -38,10 +38,6 @@ type BuildTarget struct {
 
 	// Identifier of this build target
 	Label BuildLabel `name:"name"`
-	// Indicates if this target is in a subrepo or not. If it is then this is the prefix
-	// added to outputs etc (note that it is *not* the same as for sources with WrapPrefix,
-	// due to the absence/presence of plz-out/gen)
-	OutPrefix string `print:"false"`
 	// Dependencies of this target.
 	// Maps the original declaration to whatever dependencies actually got attached,
 	// which may be more than one in some cases. Also contains info about exporting etc.
@@ -279,7 +275,11 @@ func (target *BuildTarget) TmpDir() string {
 // OutDir returns the output directory for this target, eg.
 // //mickey/donald:goofy -> plz-out/gen/mickey/donald (or plz-out/bin if it's a binary)
 func (target *BuildTarget) OutDir() string {
-	if target.IsBinary {
+	if target.Label.PackageName == "workspace" {
+		// Special case for Bazel WORKSPACE stuff, which works better if it's not in a subpackage,
+		// but it isn't actually the root package (there can be a BUILD file alongside it)
+		return GenDir
+	} else if target.IsBinary {
 		return path.Join(BinDir, target.Label.PackageName)
 	}
 	return path.Join(GenDir, target.Label.PackageName)
@@ -417,6 +417,9 @@ func (target *BuildTarget) Outputs() []string {
 		ret = make([]string, 0, len(target.Sources))
 		// Filegroups just re-output their inputs.
 		for _, src := range target.Sources {
+			if prefixed, ok := src.(prefixedInput); ok {
+				src = prefixed.Input
+			}
 			if namedLabel, ok := src.(NamedOutputLabel); ok {
 				// Bit of a hack, but this needs different treatment from either of the others.
 				for _, dep := range target.DependenciesFor(namedLabel.BuildLabel) {

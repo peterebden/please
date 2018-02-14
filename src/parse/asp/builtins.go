@@ -438,7 +438,7 @@ func glob(s *scope, args []pyObject) pyObject {
 	}
 	hidden := args[3].IsTruthy()
 	excludes = append(excludes, s.state.Config.Parse.BuildFileName...)
-	return fromStringList(core.Glob(s.pkg.Name, includes, excludes, excludes, hidden))
+	return fromStringList(core.Glob(path.Join(s.pkg.Prefix, s.pkg.Name), includes, excludes, excludes, hidden))
 }
 
 func asStringList(s *scope, arg pyObject, name string) []string {

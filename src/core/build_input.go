@@ -218,7 +218,7 @@ func (input prefixedInput) Paths(graph *BuildGraph) []string {
 
 // FullPaths is like Paths but includes the leading plz-out/gen directory.
 func (input prefixedInput) FullPaths(graph *BuildGraph) []string {
-	return input.wrap(input.Input.FullPaths(graph))
+	return input.wrap(input.Input.Paths(graph)) // deliberately not FullPaths again
 }
 
 // LocalPaths returns paths within the local package
