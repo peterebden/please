@@ -27,6 +27,7 @@ func createTarget(s *scope, args []pyObject) *core.BuildTarget {
 	test := isTruthy(14)
 
 	// A bunch of error checking first
+	s.NAssert(s.pkg == nil, "Cannot define new build targets in this context")
 	s.NAssert(name == "all", "'all' is a reserved build target name.")
 	s.NAssert(name == "", "Target name is empty")
 	s.NAssert(strings.ContainsRune(name, '/'), "/ is a reserved character in build target names")
@@ -212,7 +213,12 @@ func addMaybeNamedOutput(s *scope, name string, obj pyObject, anon func(string),
 // addDependencies adds dependencies to a target, which may or may not be exported.
 func addDependencies(s *scope, name string, obj pyObject, target *core.BuildTarget, exported bool) {
 	addStrings(s, name, obj, func(str string) {
-		label := core.ParseBuildLabel(str, s.pkg.Name)
+		label, err := core.TryParseBuildLabel(str, s.pkg.Name)
+		if err != nil && s.state.Config.Bazel.Compatibility && !strings.HasPrefix(str, ":") && !strings.HasPrefix(str, "//") {
+			// Annoying compatibility hack: Bazel seems to allow deps missing an initial :
+			// It is not ambiguous (because deps can't be local files) but it is not exactly elegant either.
+			label = core.ParseBuildLabel(":"+str, s.pkg.Name)
+		}
 		target.AddMaybeExportedDependency(label, exported, false)
 	})
 }

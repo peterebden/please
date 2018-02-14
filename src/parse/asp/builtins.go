@@ -1,9 +1,7 @@
 package asp
 
 import (
-	"bytes"
 	"fmt"
-	"io/ioutil"
 	"path"
 	"reflect"
 	"sort"
@@ -700,28 +698,27 @@ func selectFunc(s *scope, args []pyObject) pyObject {
 	d, _ := asDict(args[0])
 	var def pyObject
 	// TODO(peterebden): this is an arbitrary match that drops Bazel's order-of-matching rules. Fix.
-	const sentinelPkg = "_internal"
 	for k, v := range d {
 		if k == "//conditions:default" || k == "default" {
 			def = v
-		} else {
-			l := core.ParseBuildLabel(k, sentinelPkg)
-			// For now this is not possible since it uses the same mechanism as subinclude().
-			s.NAssert(l.PackageName == sentinelPkg, "select() conditions cannot refer to the local package")
-			t := subincludeTarget(s, l)
-			outs := t.Outputs()
-			// This is a necessary but not sufficient condition (you could get away with doing this to lots of
-			// targets that have exactly one output, but what kind of monster would do such a thing...).
-			s.Assert(len(outs) == 1, "select() condition refers to a rule that isn't a config_setting")
-			b, err := ioutil.ReadFile(path.Join(t.OutDir(), outs[0]))
-			s.Assert(err == nil, "cannot read output of %s: %s", k, err)
-			if string(bytes.TrimSpace(b)) == "true" {
-				return v
-			}
+		} else if selectTarget(s, core.ParseBuildLabel(k, "__local__")).HasLabel("config:on") {
+			return v
 		}
 	}
 	s.NAssert(def == nil, "None of the select() conditions matched")
 	return def
+}
+
+// selectTarget returns the target to be used for a select() call.
+// It panics appropriately if the target isn't built yet.
+func selectTarget(s *scope, l core.BuildLabel) *core.BuildTarget {
+	// Due to scoping rules we can't access s.pkg here, so we use __local__ as a sentinel.
+	if l.PackageName == "__local__" {
+		t := s.pkg.Target(l.Name)
+		s.NAssert(t == nil, "Target %s in select() call has not been defined yet", l.Name)
+		return t
+	}
+	return subincludeTarget(s, l)
 }
 
 // subrepo implements the subrepo() builtin that adds a new repository.

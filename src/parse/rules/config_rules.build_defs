@@ -30,33 +30,34 @@ def config_setting(name:str, values:dict, visibility:list=None):
     Args:
       name (str): Name of the rule
       values (dict): Values to select. If these are all matched then the rule is
-                     satisfied. Currently we only support 'cpu', 'compiler' and 'compilation_mode',
-                     although users are encouraged to avoid the latter where possible
-                     (the dbg/opt cflags settings should be preferred instead).
+                     satisfied. Currently we only support 'cpu' and 'compiler'.
                      For example: {'cpu': 'amd64'} is successful if the CPU architecture is amd64.
       visibility (list): Visibility of the rule.
     """
-    conditions = ' || '.join([_config_condition(k, v) for k, v in sorted(values.items())])
+    on = all([_config_on(k, v) for k, v in sorted(values.items())])
     return build_rule(
         name = name,
         outs = [name],
-        cmd = 'if %s ; then echo true > $OUT; else echo false > $OUT; fi' % conditions,
+        cmd = 'echo true > $OUT' if on else 'echo false > $OUT',
         visibility = visibility,
+        labels = ['config:on' if on else 'config:off'],
     )
 
 
-def _config_condition(name, value):
-    """Returns a single config condition, which is evaluated in Bash."""
+def _config_on(name, value):
+    """Returns true if this single condition is satisfied.
+
+    This is done at parse time in order to make it accessible within a single package
+    (i.e. plenty of Bazel repos define a config_setting and select() on it within the same
+    BUILD file).
+    """
     if name == 'cpu':
-        return '[[ "$ARCH" == "%s" ]]' % _CPU_ALIASES.get(value, value)
-    elif name == 'compilation_mode':
-        return '[[ "$CONFIG" == "%s" ]]' % value
+        return _CPU_ALIASES.get(value, value) == CONFIG.ARCH
     elif name == 'compiler':
-        # Unsure what exactly the semantics of this are supposed to be. Taking a guess.
-        return '[[ "$TOOLS" == *"%s"* ]]' % _COMPILER_ALIASES.get(value, value)
+        return _COMPILER_ALIASES.get(value, value) in CONFIG.CC_TOOL
     elif name == 'define':
         # This is the closest thing we have to Bazel's defines right now.
-        return 'true' if (value.upper() in CONFIG) else 'false'
+        return value.upper() in CONFIG
     else:
         raise ParseError('Unknown config_setting key %s' % name)
 
