@@ -361,27 +361,35 @@ func (s *scope) interpretExpression(expr *Expression) pyObject {
 		}
 	}
 	if expr.Op != nil {
-		switch expr.Op.Op {
-		case And, Or:
-			// Careful here to mimic lazy-evaluation semantics (import for `x = x or []` etc)
-			if obj.IsTruthy() == (expr.Op.Op == And) {
-				obj = s.interpretExpression(expr.Op.Expr)
-			}
-		case Equal:
-			obj = newPyBool(reflect.DeepEqual(obj, s.interpretExpression(expr.Op.Expr)))
-		case NotEqual:
-			obj = newPyBool(!reflect.DeepEqual(obj, s.interpretExpression(expr.Op.Expr)))
-		case Is:
-			// Is only works on boolean types.
-			b1, isBool1 := obj.(pyBool)
-			b2, isBool2 := s.interpretExpression(expr.Op.Expr).(pyBool)
-			obj = newPyBool(isBool1 && isBool2 && b1 == b2)
-		case In, NotIn:
-			// the implementation of in is defined by the right-hand side, not the left.
-			obj = s.interpretExpression(expr.Op.Expr).Operator(expr.Op.Op, obj)
-		default:
-			obj = obj.Operator(expr.Op.Op, s.interpretExpression(expr.Op.Expr))
+		obj = s.interpretOpExpression(expr.Op, obj)
+	}
+	return obj
+}
+
+func (s *scope) interpretOpExpression(expr *OpExpression, obj pyObject) pyObject {
+	switch expr.Op {
+	case And, Or:
+		// Careful here to mimic lazy-evaluation semantics (import for `x = x or []` etc)
+		if obj.IsTruthy() == (expr.Op == And) {
+			obj = s.interpretValueExpression(expr.Expr)
 		}
+	case Equal:
+		obj = newPyBool(reflect.DeepEqual(obj, s.interpretValueExpression(expr.Expr)))
+	case NotEqual:
+		obj = newPyBool(!reflect.DeepEqual(obj, s.interpretValueExpression(expr.Expr)))
+	case Is:
+		// Is only works on boolean types.
+		b1, isBool1 := obj.(pyBool)
+		b2, isBool2 := s.interpretValueExpression(expr.Expr).(pyBool)
+		obj = newPyBool(isBool1 && isBool2 && b1 == b2)
+	case In, NotIn:
+		// the implementation of in is defined by the right-hand side, not the left.
+		obj = s.interpretValueExpression(expr.Expr).Operator(expr.Op, obj)
+	default:
+		obj = obj.Operator(expr.Op, s.interpretValueExpression(expr.Expr))
+	}
+	if expr.Next != nil {
+		return s.interpretOpExpression(expr.Next, obj)
 	}
 	return obj
 }

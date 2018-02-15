@@ -123,8 +123,8 @@ func TestOperators(t *testing.T) {
 	assert.Equal(t, "\"//something:test_go\"", arg.Value.Val.List.Values[0].Val.String)
 	assert.NotNil(t, arg.Value.Op)
 	assert.Equal(t, Add, arg.Value.Op.Op)
-	call := arg.Value.Op.Expr.Val.Ident.Action[0].Call
-	assert.Equal(t, "glob", arg.Value.Op.Expr.Val.Ident.Name)
+	call := arg.Value.Op.Expr.Ident.Action[0].Call
+	assert.Equal(t, "glob", arg.Value.Op.Expr.Ident.Name)
 	assert.NotNil(t, call)
 	assert.Equal(t, 1, len(call.Arguments))
 	assert.NotNil(t, call.Arguments[0].Expr.Val.List)
@@ -191,7 +191,7 @@ func TestIfStatement(t *testing.T) {
 	assert.NotNil(t, ifs)
 	assert.Equal(t, "condition_a", ifs.Condition.Val.Ident.Name)
 	assert.Equal(t, And, ifs.Condition.Op.Op)
-	assert.Equal(t, "condition_b", ifs.Condition.Op.Expr.Val.Ident.Name)
+	assert.Equal(t, "condition_b", ifs.Condition.Op.Expr.Ident.Name)
 	assert.Equal(t, 1, len(ifs.Statements))
 	assert.Equal(t, "genrule", ifs.Statements[0].Ident.Name)
 }
@@ -227,7 +227,7 @@ func TestInlineIf(t *testing.T) {
 	assert.NotNil(t, ass.If)
 	assert.Equal(t, "y", ass.If.Condition.Val.Ident.Name)
 	assert.Equal(t, Is, ass.If.Condition.Op.Op)
-	assert.Equal(t, "None", ass.If.Condition.Op.Expr.Val.Bool)
+	assert.Equal(t, "None", ass.If.Condition.Op.Expr.Bool)
 	assert.NotNil(t, ass.If.Else.Val.List)
 	assert.Equal(t, 1, len(ass.If.Else.Val.List.Values))
 }
