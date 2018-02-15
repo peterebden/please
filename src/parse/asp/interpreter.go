@@ -424,9 +424,9 @@ func (s *scope) interpretExpressionHead(expr *Expression) pyObject {
 		result := s.interpretExpression(&expr.UnaryOp.Expr)
 		if expr.UnaryOp.Op == "not" {
 			if result.IsTruthy() {
-				return s.Lookup("False")
+				return False
 			}
-			return s.Lookup("True")
+			return True
 		}
 		i, ok := result.(pyInt)
 		s.Assert(ok, "Unary - can only be applied to an integer")

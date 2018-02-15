@@ -523,7 +523,7 @@ func (f *pyFunc) Call(s *scope, c *Call) pyObject {
 	}
 	ret := s2.interpretStatements(f.code)
 	if ret == nil {
-		return s.Lookup("None") // Implicit 'return None' in any function that didn't do that itself.
+		return None // Implicit 'return None' in any function that didn't do that itself.
 	}
 	return ret
 }
