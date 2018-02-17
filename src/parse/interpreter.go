@@ -107,7 +107,7 @@ func (p *pythonParser) RunPostBuildFunction(tid int, state *core.BuildState, tar
 
 // UndeferAnyParses undefers any pending parses that are waiting for this target to build.
 func (p *pythonParser) UndeferAnyParses(state *core.BuildState, target *core.BuildTarget) {
-	undeferAnyParses(state, target)
+	panic("no longer implemented")
 }
 
 // Code to initialise the Python interpreter.
@@ -891,9 +891,7 @@ func getSubincludeFile(pkg *core.Package, labelStr string) string {
 	if target == nil {
 		// Might not have been parsed yet. Check for that first.
 		if subincludePackage := core.State.Graph.Package(label.PackageName); subincludePackage == nil {
-			if deferParse(label, pkg.Name) {
-				return pyDeferParse // Not an error, they'll just have to wait.
-			}
+			panic("no longer implemented")
 			target = core.State.Graph.TargetOrDie(label) // Should be there now.
 		} else {
 			return fmt.Sprintf("__Failed to subinclude %s; package %s has no target by that name", label, label.PackageName)
@@ -903,9 +901,7 @@ func getSubincludeFile(pkg *core.Package, labelStr string) string {
 	} else if len(target.Outputs()) != 1 {
 		return fmt.Sprintf("__Can't subinclude %s, subinclude targets must have exactly one output", label)
 	} else if target.State() < core.Built {
-		if deferParse(label, pkg.Name) {
-			return pyDeferParse // Again, they'll have to wait for this guy to build.
-		}
+		panic("no longer implemented")
 	}
 	pkg.RegisterSubinclude(target.Label)
 	// Well if we made it to here it's actually ready to go, so tell them where to get it.

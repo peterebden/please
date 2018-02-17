@@ -91,6 +91,7 @@ func TestAddTarget(t *testing.T) {
 }
 
 func TestGetSubincludeFile(t *testing.T) {
+	t.Skip("no longer implemented")
 	assertError := func(t *testing.T, ret, msg string) { assert.True(t, strings.HasPrefix(ret, "__"), msg) }
 
 	state := core.NewBuildState(10, nil, 2, core.DefaultConfiguration())

@@ -11,10 +11,8 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"sync"
 
 	"core"
-	"parse/asp"
 )
 
 // Parse parses the package corresponding to a single build label. The label can be :all to add all targets in a package.
@@ -29,68 +27,25 @@ import (
 // 'forSubinclude' is set when the parse is required for a subinclude target so should proceed
 // even when we're not otherwise building targets.
 func Parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, noDeps bool, include, exclude []string, forSubinclude bool) {
-	defer func() {
-		if r := recover(); r != nil {
-			err, ok := r.(error)
-			if !ok {
-				err = fmt.Errorf("%s", r)
-			}
-			state.LogBuildError(tid, label, core.ParseFailed, err, "Failed to parse package")
-		}
-	}()
-	// First see if this package already exists; once it's in the graph it will have been parsed.
-	pkg := state.Graph.Package(label.PackageName)
-	if pkg != nil {
+	// See if something else has parsed this package first.
+	if pkg := state.WaitForPackage(label.PackageName); pkg != nil {
 		// Does exist, all we need to do is toggle on this target
 		activateTarget(state, pkg, label, dependor, noDeps, forSubinclude, include, exclude)
 		return
 	}
+	// If we get here then it falls to us to parse this package.
+
 	// Check whether this guy exists within a subrepo. If so we will need to make sure that's available first.
 	if subrepo := state.Graph.SubrepoFor(label.PackageName); subrepo != nil && subrepo.Target != nil {
-		if deferParse(subrepo.Target.Label, label.PackageName) {
-			log.Debug("Deferring parse of %s pending subrepo dependency %s", label, subrepo.Target.Label)
-			return
-		}
+		state.WaitForBuiltTarget(subrepo.Target.Label, label.PackageName)
 	}
-
-	// We use the name here to signal undeferring of a package. If we get that we need to retry the package regardless.
-	if dependor.Name != "_UNDEFER_" && !firstToParse(label, dependor) {
-		// Check this again to avoid a potential race
-		if pkg = state.Graph.Package(label.PackageName); pkg != nil {
-			activateTarget(state, pkg, label, dependor, noDeps, forSubinclude, include, exclude)
-		} else if forSubinclude {
-			// Need to make sure this guy happens, so re-add him to the queue.
-			// It should be essentially idempotent but we need to make sure that the task with
-			// forSubinclude = true is processed at some point, not just ones where it's false.
-			log.Debug("Re-adding pending parse for %s", label)
-			core.State.AddPendingParse(label, dependor, true)
-		} else {
-			log.Debug("Skipping pending parse for %s", label)
-		}
+	pkg, err := parsePackage(state, label, dependor)
+	if err != nil {
+		state.LogBuildError(-1, label, core.ParseFailed, err, "Failed to parse package")
 		return
 	}
-	// If we get here then it falls to us to parse this package
-	state.LogBuildResult(tid, label, core.PackageParsing, "Parsing...")
-	pkg = parsePackage(state, label, dependor)
-	if pkg == nil {
-		state.LogBuildResult(tid, label, core.PackageParsed, "Deferred")
-		return
-	}
-
-	// Now add any lurking pending targets for this package.
-	pendingTargetMutex.Lock()
-	pending := pendingTargets[label.PackageName]                       // Must be present.
-	pendingTargets[label.PackageName] = map[string][]core.BuildLabel{} // Empty this to free memory, but leave a sentinel
-	log.Debug("Retrieved %d pending targets for %s", len(pending), label)
-	pendingTargetMutex.Unlock() // Nothing will look up this package in the map again.
-	for targetName, dependors := range pending {
-		for _, dependor := range dependors {
-			log.Debug("Undeferring pending target %s now we've got %s", dependor, targetName)
-			lbl := core.BuildLabel{PackageName: label.PackageName, Name: targetName}
-			activateTarget(state, pkg, lbl, dependor, noDeps, forSubinclude, include, exclude)
-		}
-	}
-	state.LogBuildResult(tid, label, core.PackageParsed, "Parsed")
+	state.LogBuildResult(-1, label, core.PackageParsed, "Parsed package")
+	activateTarget(state, pkg, label, dependor, noDeps, forSubinclude, include, exclude)
 }
 
 // PrintRuleArgs prints the arguments of all builtin rules (plus any associated ones from the given targets)
@@ -118,7 +73,7 @@ func activateTarget(state *core.BuildState, pkg *core.Package, label, dependor c
 		}
 		panic(msg + suggestTargets(pkg, label, dependor))
 	}
-	if noDeps && !dependor.IsAllTargets() { // IsAllTargets indicates requirement for parse
+	if noDeps && !forSubinclude {
 		return // Some kinds of query don't need a full recursive parse.
 	} else if label.IsAllTargets() {
 		for _, target := range pkg.AllTargets() {
@@ -140,109 +95,26 @@ func activateTarget(state *core.BuildState, pkg *core.Package, label, dependor c
 	}
 }
 
-// Used to arbitrate single access to these maps
-var pendingTargetMutex sync.Mutex
-
-// Map of package name -> target name -> label that requested parse
-var pendingTargets = map[string]map[string][]core.BuildLabel{}
-
-// Map of package name -> target name -> package names that're waiting for it
-var deferredParses = map[string]map[string][]string{}
-
-// firstToParse returns true if the caller is the first to parse a given package and hence should
-// continue parsing that file. It only returns true once for each package but stores subsequent
-// targets in the pendingTargets map.
-func firstToParse(label, dependor core.BuildLabel) bool {
-	pendingTargetMutex.Lock()
-	defer pendingTargetMutex.Unlock()
-	if pkg, present := pendingTargets[label.PackageName]; present {
-		pkg[label.Name] = append(pkg[label.Name], dependor)
-		return false
-	}
-	pendingTargets[label.PackageName] = map[string][]core.BuildLabel{label.Name: {dependor}}
-	return true
-}
-
-// deferParse defers the parsing of a package until the given label has been built.
-// Returns true if it was deferred, or false if it's already built.
-func deferParse(label core.BuildLabel, pkgName string) bool {
-	pendingTargetMutex.Lock()
-	defer pendingTargetMutex.Unlock()
-	if target := core.State.Graph.Target(label); target != nil && target.State() >= core.Built {
-		return false
-	}
-	log.Debug("Deferring parse of %s pending %s", pkgName, label)
-	if m, present := deferredParses[label.PackageName]; present {
-		m[label.Name] = append(m[label.Name], pkgName)
-	} else {
-		deferredParses[label.PackageName] = map[string][]string{label.Name: {pkgName}}
-	}
-	log.Debug("Adding pending parse for %s", label)
-	core.State.AddPendingParse(label, core.BuildLabel{PackageName: pkgName, Name: "all"}, true)
-	return true
-}
-
-// undeferAnyParses un-defers the parsing of a package if it depended on some subinclude target being built.
-func undeferAnyParses(state *core.BuildState, target *core.BuildTarget) {
-	pendingTargetMutex.Lock()
-	defer pendingTargetMutex.Unlock()
-	if m, present := deferredParses[target.Label.PackageName]; present {
-		if s, present := m[target.Label.Name]; present {
-			for _, deferredPackageName := range s {
-				log.Debug("Undeferring parse of %s", deferredPackageName)
-				state.AddPendingParse(
-					core.BuildLabel{PackageName: deferredPackageName, Name: getDependingTarget(deferredPackageName)},
-					core.BuildLabel{PackageName: deferredPackageName, Name: "_UNDEFER_"},
-					false,
-				)
-			}
-			delete(m, target.Label.Name) // Don't need this any more
-		}
-	}
-}
-
-// getDependingTarget returns the name of any one target in packageName that required parsing.
-func getDependingTarget(packageName string) string {
-	// We need to supply a label in this package that actually needs to be built.
-	// Fortunately there must be at least one of these in the pending target map...
-	if m, present := pendingTargets[packageName]; present {
-		for target := range m {
-			return target
-		}
-	}
-	// We shouldn't really get here, of course.
-	log.Errorf("No pending target entry for %s at deferral. Must assume :all.", packageName)
-	return "all"
-}
-
 // parsePackage performs the initial parse of a package.
 // It's assumed that the caller used firstToParse to ascertain that they only call this once per package.
-func parsePackage(state *core.BuildState, label, dependor core.BuildLabel) *core.Package {
+func parsePackage(state *core.BuildState, label, dependor core.BuildLabel) (*core.Package, error) {
 	packageName := label.PackageName
 	pkg := core.NewPackage(packageName)
 	if pkg.Filename = buildFileName(state, packageName); pkg.Filename == "" {
 		exists := core.PathExists(packageName)
 		// Handle quite a few cases to provide more obvious error messages.
 		if dependor != core.OriginalTarget && exists {
-			panic(fmt.Sprintf("%s depends on %s, but there's no BUILD file in %s/", dependor, label, packageName))
+			return nil, fmt.Errorf("%s depends on %s, but there's no BUILD file in %s/", dependor, label, packageName)
 		} else if dependor != core.OriginalTarget {
-			panic(fmt.Sprintf("%s depends on %s, but the directory %s doesn't exist", dependor, label, packageName))
+			return nil, fmt.Errorf("%s depends on %s, but the directory %s doesn't exist", dependor, label, packageName)
 		} else if exists {
-			panic(fmt.Sprintf("Can't build %s; there's no BUILD file in %s/", label, packageName))
+			return nil, fmt.Errorf("Can't build %s; there's no BUILD file in %s/", label, packageName)
 		}
-		panic(fmt.Sprintf("Can't build %s; the directory %s doesn't exist", label, packageName))
+		return nil, fmt.Errorf("Can't build %s; the directory %s doesn't exist", label, packageName)
 	}
 
-	if err := state.Parser.ParseFile(state, pkg, pkg.Filename); err == errDeferParse {
-		return nil // Indicates deferral
-	} else if required, l := asp.RequiresSubinclude(err); required {
-		if deferParse(l, pkg.Name) {
-			return nil // similarly, deferral
-		}
-		// If we get here, the target wasn't available to subinclude before, but is now. Try it again.
-		return parsePackage(state, label, dependor)
-	} else if err != nil {
-		panic(err) // TODO(peterebden): Should just return this...
+	if err := state.Parser.ParseFile(state, pkg, pkg.Filename); err != nil {
+		return nil, err
 	}
 
 	allTargets := pkg.AllTargets()
@@ -277,7 +149,7 @@ func parsePackage(state *core.BuildState, label, dependor core.BuildLabel) *core
 	// since it only issues warnings sometimes.
 	go pkg.VerifyOutputs()
 	state.Graph.AddPackage(pkg) // Calling this means nobody else will add entries to pendingTargets for this package.
-	return pkg
+	return pkg, nil
 }
 
 func buildFileName(state *core.BuildState, pkgName string) string {
@@ -313,11 +185,11 @@ func addDep(state *core.BuildState, label, dependor core.BuildLabel, rescan, for
 	if target == nil {
 		log.Fatalf("Target %s (referenced by %s) doesn't exist\n", label, dependor)
 	}
-	if forceBuild {
+	if target.State() >= core.Active && !rescan {
+		if !forceBuild {
+			return // Target is already tagged to be built and likely on the queue.
+		}
 		log.Debug("Forcing build of %s", label)
-	}
-	if target.State() >= core.Active && !rescan && !forceBuild {
-		return // Target is already tagged to be built and likely on the queue.
 	}
 	// Only do this bit if we actually need to build the target
 	if !target.SyncUpdateState(core.Inactive, core.Semiactive) && !rescan && !forceBuild {

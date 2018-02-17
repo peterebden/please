@@ -601,16 +601,22 @@ func please(tid int, state *core.BuildState, parsePackageOnly bool, include, exc
 		case core.Stop, core.Kill:
 			return
 		case core.Parse, core.SubincludeParse:
-			parse.Parse(tid, state, label, dependor, parsePackageOnly, include, exclude, t == core.SubincludeParse)
-			if opts.VisibilityParse && state.IsOriginalTarget(label) {
-				parseForVisibleTargets(state, label)
-			}
+			// Parsing can block on a number of things, so it's done concurrently here.
+			state.LogBuildResult(tid, label, core.PackageParsing, "Parsing...")
+			go func() {
+				parse.Parse(tid, state, label, dependor, parsePackageOnly, include, exclude, t == core.SubincludeParse)
+				if opts.VisibilityParse && state.IsOriginalTarget(label) {
+					parseForVisibleTargets(state, label)
+				}
+				state.TaskDone()
+			}()
 		case core.Build, core.SubincludeBuild:
 			build.Build(tid, state, label)
+			state.TaskDone()
 		case core.Test:
 			test.Test(tid, state, label)
+			state.TaskDone()
 		}
-		state.TaskDone()
 	}
 }
 

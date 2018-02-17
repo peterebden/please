@@ -51,7 +51,6 @@ func (p *aspParser) ParseFile(state *core.BuildState, pkg *core.Package, filenam
 }
 
 func (p *aspParser) UndeferAnyParses(state *core.BuildState, target *core.BuildTarget) {
-	undeferAnyParses(state, target)
 }
 
 func (p *aspParser) RunPreBuildFunction(threadID int, state *core.BuildState, target *core.BuildTarget) error {

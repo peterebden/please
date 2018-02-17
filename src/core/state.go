@@ -135,6 +135,12 @@ type BuildState struct {
 	numPending int64
 	numDone    int64
 	mutex      sync.Mutex
+	// Used to track subinclude() calls that block until targets are built.
+	pendingTargets     map[BuildLabel]chan struct{}
+	pendingTargetMutex sync.Mutex
+	// Used to track general package parsing requests.
+	pendingPackages     map[string]chan struct{}
+	pendingPackageMutex sync.Mutex
 }
 
 // SystemStats stores information about the system.
@@ -190,6 +196,14 @@ func (state *BuildState) AddPendingTest(label BuildLabel) {
 	}
 }
 
+// ExtraTask registers an extra task that is not on the normal queues.
+// When the task is finished, the caller should call TaskDone() which will mark it as
+// finished and allow the process to exit.
+func (state *BuildState) ExtraTask() {
+	atomic.AddInt64(&state.numActive, 1)
+	atomic.AddInt64(&state.numPending, 1)
+}
+
 // NextTask receives the next task that should be processed according to the priority queues.
 func (state *BuildState) NextTask() (BuildLabel, BuildLabel, TaskType) {
 	t, err := state.pendingTasks.Get(1)
@@ -206,7 +220,7 @@ func (state *BuildState) addPending(label BuildLabel, t TaskType) {
 }
 
 // TaskDone indicates that a single task is finished. Should be called after one is finished with
-// a task returned from NextTask().
+// a task returned from NextTask(), or from a call to ExtraTask().
 func (state *BuildState) TaskDone() {
 	atomic.AddInt64(&state.numDone, 1)
 	if atomic.AddInt64(&state.numPending, -1) <= 0 {
@@ -281,6 +295,16 @@ func (state *BuildState) AddOriginalTarget(label BuildLabel, addToList bool) {
 
 // LogBuildResult logs the result of a target either building or parsing.
 func (state *BuildState) LogBuildResult(tid int, label BuildLabel, status BuildResultStatus, description string) {
+	if status == PackageParsed {
+		// We may have parse tasks waiting for this package to exist, check for them.
+		state.pendingPackageMutex.Lock()
+		if ch, present := state.pendingPackages[label.PackageName]; present {
+			close(ch) // This signals to anyone waiting that it's done.
+			delete(state.pendingPackages, label.PackageName)
+		}
+		state.pendingPackageMutex.Unlock()
+		return // We don't notify anything else on these.
+	}
 	state.logResult(&BuildResult{
 		ThreadID:    tid,
 		Time:        time.Now(),
@@ -289,6 +313,15 @@ func (state *BuildState) LogBuildResult(tid int, label BuildLabel, status BuildR
 		Err:         nil,
 		Description: description,
 	})
+	if status == TargetBuilt || status == TargetCached {
+		// We may have parse tasks waiting for this guy to build, check for them.
+		state.pendingTargetMutex.Lock()
+		if ch, present := state.pendingTargets[label]; present {
+			close(ch) // This signals to anyone waiting that it's done.
+			delete(state.pendingTargets, label)
+		}
+		state.pendingTargetMutex.Unlock()
+	}
 }
 
 // LogTestResult logs the result of a target once its tests have completed.
@@ -394,26 +427,74 @@ func (state *BuildState) ExpandVisibleOriginalTargets() BuildLabels {
 	return ret
 }
 
+// WaitForPackage either returns the given package which is already parsed and available,
+// or returns nil if nothing's parsed it already, in which case everything else calling this
+// will wait for the caller to parse it themselves.
+func (state *BuildState) WaitForPackage(packageName string) *Package {
+	if p := state.Graph.Package(packageName); p != nil {
+		return p
+	}
+	state.pendingPackageMutex.Lock()
+	if ch, present := state.pendingPackages[packageName]; present {
+		state.pendingPackageMutex.Unlock()
+		<-ch
+		return state.Graph.Package(packageName)
+	}
+	// Nothing's registered this so we do it ourselves.
+	state.pendingPackages[packageName] = make(chan struct{})
+	state.pendingPackageMutex.Unlock()
+	return state.Graph.Package(packageName) // Important to check again; it's possible to race against this whole lot.
+}
+
+// WaitForBuiltTarget blocks until the given label is available as a build target and has been successfully built.
+func (state *BuildState) WaitForBuiltTarget(l BuildLabel, dependingPackage string) *BuildTarget {
+	if t := state.Graph.Target(l); t != nil {
+		if state := t.State(); state >= Built && state != Failed {
+			return t
+		}
+	}
+	// okay, we need to register and wait for this guy.
+	state.pendingTargetMutex.Lock()
+	if ch, present := state.pendingTargets[l]; present {
+		// Something's already registered for this, get on the train
+		state.pendingTargetMutex.Unlock()
+		log.Debug("Pausing parse of //%s to wait for %s", dependingPackage, l)
+		<-ch
+		log.Debug("Resuming parse of //%s now %s is ready", dependingPackage, l)
+		return state.Graph.Target(l)
+	}
+	// Nothing's registered this, set it up.
+	state.pendingTargets[l] = make(chan struct{})
+	state.pendingTargetMutex.Unlock()
+	state.AddPendingParse(l, BuildLabel{PackageName: dependingPackage, Name: "all"}, true)
+	// Do this all over; the re-checking that happens here is actually fairly important to resolve
+	// a potential race condition if the target was built between us checking earlier and registering
+	// the channel just now.
+	return state.WaitForBuiltTarget(l, dependingPackage)
+}
+
 // NewBuildState constructs and returns a new BuildState.
 // Everyone should use this rather than attempting to construct it themselves;
 // callers can't initialise all the required private fields.
 func NewBuildState(numThreads int, cache Cache, verbosity int, config *Configuration) *BuildState {
 	State = &BuildState{
-		Graph:        NewGraph(),
-		pendingTasks: queue.NewPriorityQueue(10000, true), // big hint, why not
-		Results:      make(chan *BuildResult, numThreads*100),
-		LastResults:  make([]*BuildResult, numThreads),
-		StartTime:    startTime,
-		Config:       config,
-		Verbosity:    verbosity,
-		Cache:        cache,
-		VerifyHashes: true,
-		NeedBuild:    true,
-		numActive:    1, // One for the initial target adding on the main thread.
-		numPending:   1,
-		Coverage:     TestCoverage{Files: map[string][]LineCoverage{}},
-		numWorkers:   numThreads,
-		Stats:        &SystemStats{},
+		Graph:           NewGraph(),
+		pendingTasks:    queue.NewPriorityQueue(10000, true), // big hint, why not
+		Results:         make(chan *BuildResult, numThreads*100),
+		LastResults:     make([]*BuildResult, numThreads),
+		StartTime:       startTime,
+		Config:          config,
+		Verbosity:       verbosity,
+		Cache:           cache,
+		VerifyHashes:    true,
+		NeedBuild:       true,
+		numActive:       1, // One for the initial target adding on the main thread.
+		numPending:      1,
+		Coverage:        TestCoverage{Files: map[string][]LineCoverage{}},
+		numWorkers:      numThreads,
+		Stats:           &SystemStats{},
+		pendingTargets:  map[BuildLabel]chan struct{}{},
+		pendingPackages: map[string]chan struct{}{},
 	}
 	State.Hashes.Config = config.Hash()
 	State.Hashes.Containerisation = config.ContainerisationHash()
