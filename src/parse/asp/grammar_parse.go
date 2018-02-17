@@ -324,7 +324,7 @@ func (p *parser) parseUnconditionalExpression() *Expression {
 		p.l.Next()
 		p.initField(&e.Op)
 		e.Op.Op = op
-		e.Op.Expr = p.parseExpression()
+		e.Op.Expr = p.parseUnconditionalExpression()
 		tok = p.l.Peek()
 	}
 	return e
