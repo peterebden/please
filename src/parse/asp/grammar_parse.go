@@ -452,6 +452,7 @@ func (p *parser) parseList(opening, closing rune) *List {
 		}
 	}
 	if tok := p.l.Peek(); tok.Value == "for" {
+		p.assert(len(l.Values) == 1, tok, "Must have exactly 1 item in a list comprehension")
 		l.Comprehension = p.parseComprehension()
 	}
 	p.next(closing)
@@ -472,6 +473,7 @@ func (p *parser) parseDict() *Dict {
 		}
 	}
 	if tok := p.l.Peek(); tok.Value == "for" {
+		p.assert(len(d.Items) == 1, tok, "Must have exactly 1 key:value pair in a dict comprehension")
 		d.Comprehension = p.parseComprehension()
 	}
 	p.next('}')
