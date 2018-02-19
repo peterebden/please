@@ -526,6 +526,72 @@ def go_get(name:str, get:str, outs:list=None, deps:list=None, exported_deps:list
                       not for other version control systems.
       strip (list): List of paths to strip from the installed target.
     """
+    if CONFIG.GO_VERSION < '1.10':
+        return _old_go_get(
+            name = name,
+            get = get,
+            outs = outs,
+            deps = deps,
+            exported_deps = exported_deps,
+            visibility = visibility,
+            patch = patch,
+            binary = binary,
+            test_only = test_only,
+            install = install,
+            revision = revision,
+            strip = strip,
+        )
+
+    post_build = None
+    if binary and outs and len(outs) != 1:
+        raise ValueError(name + ': Binary rules can only have a single output')
+    if not outs:
+        if binary:
+            outs = 'bin/' + name
+        else:
+            outs = 'src/' + get
+            post_build = _extra_outs(get)
+    cmd = [_GOPATH, '$TOOL get -d ' + get]
+    subdir = 'src/' + (get[:-4] if get.endswith('/...') else get)
+    if revision:
+        # Annoyingly -C does not work on git checkout :(
+        cmd.append('(cd %s && git checkout -q %s)' % (subdir, revision))
+    if patch:
+        cmd.append('patch -s -d %s -p1 < ${TMP_DIR}/$SRCS' % subdir)
+    cmd.append('$TOOL install -gcflags "-trimpath $TMP_DIR" ' + ' '.join([get] + (install or [])))
+    if not binary:
+        cmd.extend([
+            'find . -name .git | xargs rm -rf',
+            'find pkg/${OS}_${ARCH}/%s -name "*.a" | sort' % subdir,
+        ])
+    if strip:
+        cmd.extend(['rm -rf %s/%s' % (subdir, s) for s in strip])
+    build_rule(
+        name=name,
+        srcs=[patch] if patch else [],
+        outs=outs,
+        deps=deps,
+        exported_deps=exported_deps,
+        tools=[CONFIG.GO_TOOL],
+        visibility=visibility,
+        building_description='Fetching...',
+        cmd=' && '.join(cmd),
+        binary=binary,
+        requires=['go'],
+        test_only=test_only,
+        post_build=post_build,
+        labels=['go_get:%s@%s' % (get, revision) if revision else 'go_get:%s' % get],
+        sandbox = False,
+    )
+
+
+def _old_go_get(name:str, get:str, outs:list=None, deps:list=None, exported_deps:list=None,
+                visibility:list=None, patch:str=None, binary:bool=False, test_only:bool=False,
+                install:list=None, revision:str=None, strip:list=None):
+    """Legacy version of go_get that does more magic about finding deps and so forth.
+
+    Deprecated, will be removed in v12.
+    """
     post_build = None
     if binary and outs and len(outs) != 1:
         raise ValueError(name + ': Binary rules can only have a single output')
