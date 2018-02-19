@@ -23,6 +23,13 @@ go_get(
     get = 'gopkg.in/gcfg.v1',
     patch = 'gcfg_dynamic_fields.patch',
     revision = '27e4946190b4a327b539185f2b5b1f7c84730728',
+    deps = [':warnings'],
+)
+
+go_get(
+    name = 'warnings',
+    get = 'gopkg.in/warnings.v0',
+    revision = 'v0.1.2',
 )
 
 go_get(
@@ -61,24 +68,20 @@ go_get(
 )
 
 go_get(
-    name = 'context',
-    get = 'golang.org/x/net/context',
-    revision = '57efc9c3d9f91fb3277f8da1cff370539c4d3dc5',
-)
-
-go_get(
     name = 'grpc',
-    exported_deps = [':context'],
+    exported_deps = [':x_net'],
     get = 'google.golang.org/grpc',
-    install = ['google.golang.org/grpc/health'],
+    install = ['health'],
     revision = 'v1.7.0',
-    deps = [':protobuf'],
+    deps = [
+        ':protobuf',
+        ':x_net',
+    ],
 )
 
 go_get(
     name = 'protobuf',
-    get = 'github.com/golang/protobuf/ptypes',
-    install = ['github.com/golang/protobuf/protoc-gen-go/descriptor'],
+    get = 'github.com/golang/protobuf/...',
     revision = '130e6b02ab059e7b717a096f397c5b60111cae74',
 )
 
@@ -87,9 +90,6 @@ go_get(
     binary = True,
     get = 'github.com/golang/protobuf/protoc-gen-go',
     revision = '130e6b02ab059e7b717a096f397c5b60111cae74',
-    deps = [
-        ':protobuf',
-    ],
 )
 
 go_get(
@@ -102,7 +102,7 @@ go_get(
 go_get(
     name = 'testify',
     get = 'github.com/stretchr/testify',
-    install = ['github.com/stretchr/testify/require'],
+    install = ['require'],
     revision = 'f390dcf405f7b83c997eac1b06768bb9f44dec18',
     deps = [':spew'],
 )
@@ -150,8 +150,11 @@ go_get(
 
 go_get(
     name = 'prometheus',
-    get = 'github.com/prometheus/client_golang/prometheus',
-    install = ['github.com/prometheus/client_golang/prometheus/push'],
+    get = 'github.com/prometheus/client_golang',
+    install = [
+        'prometheus',
+        'prometheus/push',
+    ],
     revision = 'c5b7fccd204277076155f10851dad72b76a49317',
     deps = [
         ':grpc',
@@ -182,12 +185,12 @@ go_get(
 go_get(
     name = 'grpc-middleware',
     get = 'github.com/grpc-ecosystem/go-grpc-middleware',
-    install = ['github.com/grpc-ecosystem/go-grpc-middleware/retry'],
+    install = ['retry'],
     revision = 'fa8fef87dcecac0bda02d36abb3c790ab9e0030b',
     deps = [
-        ':context',
         ':grpc',
         ':protobuf',
+        ':x_net',
     ],
 )
 
@@ -226,21 +229,15 @@ go_get(
     name = 'errgroup',
     get = 'golang.org/x/sync/errgroup',
     revision = '457c5828408160d6a47e17645169cf8fa20218c4',
-    deps = [':context'],
-)
-
-go_get(
-    name = 'html',
-    get = 'golang.org/x/net/html',
-    revision = '66aacef3dd8a676686c7ae3716979581e8b03c47',
+    deps = [':x_net'],
 )
 
 go_get(
     name = 'psutil',
     get = 'github.com/shirou/gopsutil',
     install = [
-        'github.com/shirou/gopsutil/cpu',
-        'github.com/shirou/gopsutil/mem',
+        'cpu',
+        'mem',
     ],
     revision = 'v2.17.09',
     deps = [':unix'],
@@ -262,4 +259,24 @@ go_get(
     name = 'participle',
     get = 'github.com/alecthomas/participle',
     revision = '48f3ab340563c5a91f83efdc0dc3f14f5d9364a2',
+    deps = [':x_exp'],
+)
+
+go_get(
+    name = 'x_exp',
+    get = 'golang.org/x/exp',
+    revision = '83bc9a11ae1a00a79c4e59fc5d965d21fe14e6bb',
+)
+
+go_get(
+    name = 'x_net',
+    get = 'golang.org/x/net',
+    install = ['http2'],
+    revision = 'cbe0f9307d0156177f9dd5dc85da1a31abc5f2fb',
+)
+
+go_get(
+    name = 'x_text',
+    get = 'golang.org/x/text',
+    revision = '4e4a3210bb54bb31f6ab2cdca2edcc0b50c420c1',
 )

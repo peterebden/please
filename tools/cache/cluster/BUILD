@@ -19,7 +19,6 @@ go_test(
         ':cluster',
         '//src/cache/proto:rpc_cache',
         '//src/cache/tools',
-        '//third_party/go:context',
         '//third_party/go:grpc',
         '//third_party/go:testify',
     ],

@@ -1,12 +1,12 @@
 package cluster
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
 	pb "cache/proto/rpc_cache"

@@ -526,7 +526,7 @@ def go_get(name:str, get:str, outs:list=None, deps:list=None, exported_deps:list
                       not for other version control systems.
       strip (list): List of paths to strip from the installed target.
     """
-    if CONFIG.GO_VERSION < '1.10':
+    if not CONFIG.GO_GET_EXPLICIT_DEPS:
         return _old_go_get(
             name = name,
             get = get,
@@ -545,24 +545,33 @@ def go_get(name:str, get:str, outs:list=None, deps:list=None, exported_deps:list
     post_build = None
     if binary and outs and len(outs) != 1:
         raise ValueError(name + ': Binary rules can only have a single output')
+    getroot = get[:-4] if get.endswith('/...') else get
+    subdir = 'src/' + getroot
     if not outs:
         if binary:
-            outs = 'bin/' + name
+            outs = ['bin/' + name]
         else:
-            outs = 'src/' + get
-            post_build = _extra_outs(get)
-    cmd = [_GOPATH, '$TOOL get -d ' + get]
+            outs = ['src/' + getroot]
+            post_build = _extra_outs(getroot)
+    install = [(getroot + '/' + i) for i in install] if install else [get]
+    cmd = [
+        'rm -rf src',
+        'export GOPATH="%s"' % CONFIG.GOPATH,
+        # we need the -i flag to go install in 1.10, but it does not exist in older versions
+        '[[ "`go version`" == *"1.1"* ]] && IFLAG=" -i" || IFLAG=""',
+        '$TOOL get -d ' + get,
+    ]
     subdir = 'src/' + (get[:-4] if get.endswith('/...') else get)
     if revision:
         # Annoyingly -C does not work on git checkout :(
         cmd.append('(cd %s && git checkout -q %s)' % (subdir, revision))
     if patch:
         cmd.append('patch -s -d %s -p1 < ${TMP_DIR}/$SRCS' % subdir)
-    cmd.append('$TOOL install -gcflags "-trimpath $TMP_DIR" ' + ' '.join([get] + (install or [])))
+    cmd.append('$TOOL install $IFLAG -gcflags "-trimpath $TMP_DIR" ' + ' '.join(install))
     if not binary:
         cmd.extend([
             'find . -name .git | xargs rm -rf',
-            'find pkg/${OS}_${ARCH}/%s -name "*.a" | sort' % subdir,
+            'find pkg/${OS}_${ARCH}/%s* -name "*.a" | sort' % getroot,
         ])
     if strip:
         cmd.extend(['rm -rf %s/%s' % (subdir, s) for s in strip])

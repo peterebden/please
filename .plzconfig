@@ -28,6 +28,7 @@ keep = //tools
 
 [go]
 testtool = //tools/please_go_test
+gogetexplicitdeps = true
 
 [cpp]
 defaultnamespace = thought_machine
