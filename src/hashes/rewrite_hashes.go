@@ -3,10 +3,11 @@
 package hashes
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"runtime"
-	"strings"
 
 	"gopkg.in/op/go-logging.v1"
 
@@ -62,21 +63,35 @@ func rewriteHashes(state *core.BuildState, filename, platform string, hashes map
 	}
 	lines := bytes.Split(b, []byte{'\n'})
 	for k, v := range hashes {
-		stmt := asp.FindTarget(stmts, k)
-		if stmt == nil {
-			return fmt.Errorf("Can't find target %s to rewrite", k)
+		if err := rewriteHash(lines, stmts, platform, k, v); err != nil {
+			return err
 		}
-
 	}
+	return nil
+}
 
-	data := string(MustAsset("hash_rewriter.py"))
-	// Template in the variables we want.
-	h := make([]string, 0, len(hashes))
-	for k, v := range hashes {
-		h = append(h, fmt.Sprintf(`"%s": "%s"`, k, v))
+// rewriteHash rewrites a single hash on a statement.
+func rewriteHash(lines [][]byte, stmts []*asp.Statement, platform, name, hash string) error {
+	stmt := asp.FindTarget(stmts, name)
+	if stmt == nil {
+		return fmt.Errorf("Can't find target %s to rewrite", name)
+	} else if arg := asp.FindArgument(stmt, "hashes"); arg != nil && arg.Value.Val != nil && arg.Value.Val.List != nil {
+		for _, h := range arg.Value.Val.List.Values {
+			if h.Val != nil && h.Val.String != "" {
+				lines[h.Pos.Line-1] = rewriteLine(lines[h.Pos.Line-1], h.Pos.Column, h.Val.String, hash)
+				return nil
+			}
+		}
+	} else if arg := asp.FindArgument(stmt, "hash"); arg != nil && arg.Value.Val != nil && arg.Value.Val.String != "" {
+		h := arg.Value
+		lines[h.Pos.Line-1] = rewriteLine(lines[h.Pos.Line-1], h.Pos.Column, h.Val.String, hash)
+		return nil
 	}
-	data = strings.Replace(data, "__FILENAME__", filename, 1)
-	data = strings.Replace(data, "__TARGETS__", strings.Join(h, ",\n"), 1)
-	data = strings.Replace(data, "__PLATFORM__", platform, 1)
-	return parse.RunCode(state, data)
+	return fmt.Errorf("Can't find hash or hashes argument on %s", name)
+}
+
+// rewriteLine implements the rewriting logic within a single line.
+func rewriteLine(line []byte, start int, current, new string) []byte {
+	start -= 1 // columns are 1-indexed
+	return append(append(line[:start], []byte(new)...), line[start+len(current):]...)
 }
