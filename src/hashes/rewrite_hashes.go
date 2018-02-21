@@ -12,7 +12,7 @@ import (
 
 	"build"
 	"core"
-	"parse"
+	"parse/asp"
 )
 
 var log = logging.MustGetLogger("hashes")
@@ -51,6 +51,24 @@ func RewriteHashes(state *core.BuildState, labels []core.BuildLabel) {
 // rewriteHashes rewrites hashes in a single file.
 func rewriteHashes(state *core.BuildState, filename, platform string, hashes map[string]string) error {
 	log.Notice("Rewriting hashes in %s...", filename)
+	p := asp.NewParser(nil)
+	stmts, err := p.ParseFileOnly(filename)
+	if err != nil {
+		return err
+	}
+	b, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	lines := bytes.Split(b, []byte{'\n'})
+	for k, v := range hashes {
+		stmt := asp.FindTarget(stmts, k)
+		if stmt == nil {
+			return fmt.Errorf("Can't find target %s to rewrite", k)
+		}
+
+	}
+
 	data := string(MustAsset("hash_rewriter.py"))
 	// Template in the variables we want.
 	h := make([]string, 0, len(hashes))

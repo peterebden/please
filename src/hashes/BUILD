@@ -12,7 +12,7 @@ go_library(
     deps = [
         '//src/build',
         '//src/core',
-        '//src/parse',
+        '//src/parse/asp',
         '//third_party/go:logging',
     ],
     visibility = ['PUBLIC'],
@@ -23,7 +23,6 @@ go_test(
     srcs = ['hash_rewriter_test.go'],
     data = [
         'test_data',
-        '//src:cffi',
     ],
     deps = [
         ':hashes',
