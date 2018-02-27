@@ -21,6 +21,48 @@
 
     <p>See <a href="lexicon.html">here</a> for a full description of available builtin rules.</p>
 
+    <h2>Types</h2>
+
+    <p>The set of builtin types are again a subset of Python's:
+      <ul>
+	<li>Integers (all integers are 64-bit signed integers)</li>
+	<li>Strings</li>
+	<li>Lists</li>
+	<li>Dictionaries</li>
+	<li>Functions</li>
+	<li><code>True</code>, <code>False</code> and <code>None</code> are singletons which are
+	  instantiated by name.</li>
+      </ul>
+    </p>
+
+    <p>Specifically there are no classes, sets, floats or bytes. In some cases the runtime may
+      prohibit modification of a list or dict when they can be shared between multiple BUILD files
+      in order to prevent one from seeing another's modifications.</p>
+
+    <h2>Functions</h2>
+
+    <p>The following functions are available as builtins; unless otherwise noted they mimic Python's
+      builtins in most cases (although this is not guaranteed to every possible nuance).
+      <ul>
+	<li><code>len</code></li>
+	<li><code>enumerate</code></li>
+	<li><code>zip</code></li>
+	<li><code>isinstance</code></li>
+	<li><code></code></li>
+	<li><code></code></li>
+	<li><code></code></li>
+	<li><code></code></li>
+	<li><code></code></li>
+	<li><code></code></li>
+	<li><code></code></li>
+	<li><code></code></li>
+	<li><code></code></li>
+	<li><code></code></li>
+	<li><code></code></li>
+      </ul>
+    </p>
+
+
     <h2>Style</h2>
 
     <p>We normally write BUILD files in an idiom which doesn't quite match standard Python styles.
