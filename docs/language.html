@@ -39,6 +39,10 @@
       prohibit modification of a list or dict when they can be shared between multiple BUILD files
       in order to prevent one from seeing another's modifications.</p>
 
+    <p>Dictionaries are somewhat restricted in function; they may only be keyed by strings and cannot
+      be iterated directly - i.e. one must use <code>keys()</code>, <code>values()</code> or
+      <code>items()</code>. The results of all these functions are always consistently ordered.</p>
+
     <h2>Functions</h2>
 
     <p>The following functions are available as builtins; unless otherwise noted they mimic Python's
@@ -48,20 +52,66 @@
 	<li><code>enumerate</code></li>
 	<li><code>zip</code></li>
 	<li><code>isinstance</code></li>
-	<li><code></code></li>
-	<li><code></code></li>
-	<li><code></code></li>
-	<li><code></code></li>
-	<li><code></code></li>
-	<li><code></code></li>
-	<li><code></code></li>
-	<li><code></code></li>
-	<li><code></code></li>
-	<li><code></code></li>
-	<li><code></code></li>
+	<li><code>range</code></li>
+	<li><code>any</code></li>
+	<li><code>all</code></li>
+	<li><code>sorted</code></li>
       </ul>
     </p>
 
+    <p>Several additional builtin functions are also available:
+      <ul>
+	<li><code>package_name</code> - returns the package being currently parsed.</li>
+	<li><code>join_path</code> - like <code>os.path.join</code></li>
+	<li><code>split_path</code> - like <code>os.path.split</code></li>
+	<li><code>splitext</code> - like <code>os.path.splitext</code></li>
+	<li><code>basename</code> - like <code>os.path.basename</code></li>
+	<li><code>dirname</code> - like <code>os.path.dirname</code></li>
+      </ul>
+    </p>
+
+    <p>The following are available as member functions of strings:
+      <ul>
+	<li><code>join</code></li>
+	<li><code>split</code></li>
+	<li><code>replace</code></li>
+	<li><code>partition</code></li>
+	<li><code>rpartition</code></li>
+	<li><code>startswith</code></li>
+	<li><code>endswith</code></li>
+	<li><code>format</code> - although this lacks some functionality, <code>%</code> is generally preferred</li>
+	<li><code>lstrip</code></li>
+	<li><code>rstrip</code></li>
+	<li><code>strip</code></li>
+	<li><code>find</code></li>
+	<li><code>rfind</code></li>
+	<li><code>count</code></li>
+	<li><code>upper</code></li>
+	<li><code>lower</code></li>
+      </ul>
+    </p>
+
+    <p>The following are available as member functions of dictionaries:
+      <ul>
+	<li><code>keys</code></li>
+	<li><code>values</code></li>
+	<li><code>items</code></li>
+	<li><code>copy</code></li>
+      </ul>
+    </p>
+
+    <p>Finally, messages can be logged to Please's usual logging mechanism. These
+      may or may not be displayed depending on the <code>-v</code> flag; by default only
+      <code>warning</code> and above are visible.
+      <ul>
+	<li><code>log.debug</code></li>
+	<li><code>log.info</code></li>
+	<li><code>log.notice</code></li>
+	<li><code>log.warning</code></li>
+	<li><code>log.error</code></li>
+	<li><code>log.fatal</code> - this will cause the process to exit immediately and unsuccessfully.</li>
+      </ul>
+    </p>
 
     <h2>Style</h2>
 
@@ -123,7 +173,8 @@
         file_input = { statement } ;
 
         # Any single statement. Must occur on its own line.
-        statement = ( "pass" | "continue" | func_def | for | if | return | raise | assert | ident_statement | literal ) EOL;
+        statement = ( "pass" | "continue" | func_def | for | if | return |
+	              raise | assert | ident_statement | literal ) EOL;
         return = "return" [ expression { "," expression } ] ;
         raise = "raise" expression ;
         assert = "assert" expression [ "," String ] ;
@@ -141,9 +192,10 @@
                           | ( "." ident | call | "=" expression | "+=" expression ) ) ;
 
         # Any generalised expression, with all the trimmings.
-        expression = [ "-" | "not" ] value [ operator expression ] [ "if" expression "else" expression ] ;
-        value = ( String | Int | "True" | "False" | "None" | list | dict | tuple | lambda | ident ) [ slice ]
-                [ ( "." ident | call ) ] ;
+        expression = [ "-" | "not" ] value [ operator expression ]
+	             [ "if" expression "else" expression ] ;
+        value = ( String | Int | "True" | "False" | "None" | list | dict | tuple | lambda | ident )
+	        [ slice ] [ ( "." ident | call ) ] ;
         ident = Ident { "." ident | call } ;
         call = "(" [ arg { "," arg } ] ")" ;
         arg = expression | ident "=" expression;
@@ -156,7 +208,8 @@
         slice = "[" [ expression ] [ ":" expression ] "]" ;
         lambda = "lambda" [ lambda_arg { "," lambda_arg } ] ":" expression ;
         lambda_arg = Ident [ "=" expression ] ;
-        operator = ("+" | "-" | "%" | "<" | ">" | "and" | "or" | "is" | "in" | "not" "in" | "==" | "!=" | ">=" | "<=") ;
+        operator = ("+" | "-" | "%" | "<" | ">" | "and" | "or" | "is" |
+	            "in" | "not" "in" | "==" | "!=" | ">=" | "<=") ;
 
     </code></pre>
 
@@ -164,7 +217,7 @@
       <code>except</code>, <code>finally</code>, <code>class</code>, <code>global</code>,
       <code>nonlocal</code>, <code>while</code> and <code>async</code> keywords. The implementation
       may happen to permit using these as identifiers although it's discouraged (some tools might
-      attempt to operate on the file using Python's ast module for convenience, which would not
+      attempt to operate on the file using Python's <code>ast</code> module for convenience, which would not
       be possible if those keywords are used).<br/>
       As a result, while <code>raise</code> and <code>assert</code> <b>are</b> supported, it's
       not possible to catch and handle the resulting exceptions. These hence function only to
@@ -179,3 +232,5 @@
       type or types (separated by <code>|</code>) and when called the type of the argument will
       be verified to match. This makes it easier to give useful feedback to users if they
       make mistakes in their BUILD files (e.g. passing a string where a list is required).</p>
+
+    <p>Varargs and kwargs functions are not supported.</p>
