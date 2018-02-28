@@ -34,14 +34,8 @@ build it once manually and then rebuild it again using itself.
 You'll need to have Go 1.9+ installed to build Please although once
 built it can target any version from 1.5+ onwards.
 
-To build some of the parser engine backends, you will need to have
-Python libraries available; at least python 2 needs to be installed
-for now and, if available, alternatives will be built for python3
-and PyPy. python3 also needs to be installed to build one or two of
-the builtin tools.
-
-You will also need to have Java 7 or above installed to build some
-of the Java helper programs. Optional dependencies for various tests
+You will also need to have Python 3 and Java 7 or above installed to build
+some of the helper programs. Optional dependencies for various tests
 include unittest++ (`sudo apt-get install libunittest++-dev`), clang,
 gold and docker - none of those are required to build components so
 their tests will be excluded if they aren't available.
