@@ -43,7 +43,7 @@ their tests will be excluded if they aren't available.
 If you'd rather not worry about installing the dependencies, we provide
 a prebuilt Docker image based on Ubuntu which is capable of building
 the whole thing for you:
-[`docker run -it thoughtmachine/please`](https://hub.docker.com/r/thoughtmachine/please)
+[`docker run -it thoughtmachine/please_ubuntu`](https://hub.docker.com/r/thoughtmachine/please_ubuntu)
 
 
 Contributors
