@@ -212,6 +212,10 @@ func addMaybeNamedOutput(s *scope, name string, obj pyObject, anon func(string),
 // addDependencies adds dependencies to a target, which may or may not be exported.
 func addDependencies(s *scope, name string, obj pyObject, target *core.BuildTarget, exported bool) {
 	addStrings(s, name, obj, func(str string) {
+		if s.state.Config.Bazel.Compatibility && !core.LooksLikeABuildLabel(str) && !strings.HasPrefix(str, "@") {
+			// *sigh*... Bazel seems to allow an implicit : on the start of dependencies
+			str = ":" + str
+		}
 		label := core.ParseBuildLabel(str, s.pkg.Name)
 		target.AddMaybeExportedDependency(label, exported, false)
 	})
