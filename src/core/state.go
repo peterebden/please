@@ -219,7 +219,7 @@ func (state *BuildState) TaskDone() {
 
 // Stop adds n stop tasks to the list of pending tasks, which stops n workers after all their other tasks are done.
 func (state *BuildState) Stop(n int) {
-	for i := 0; i < n; i++ {
+	for i := 0; i < n*10; i++ { // Nasty hack to avoid counting errors. TODO(peterebden): Do better.
 		state.pendingTasks.Put(pendingTask{Type: Stop})
 	}
 }
