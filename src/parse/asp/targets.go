@@ -315,7 +315,11 @@ func parseSource(s *scope, src string, systemAllowed, tool bool) core.BuildInput
 		s.Assert(filename != src, "You can't specify the BUILD file as an input to a rule")
 	}
 	if s.pkg.Subrepo != nil {
-		return core.FileLabel{File: src, Package: s.pkg.Subrepo.Dir(s.pkg.Name)}
+		return core.SubrepoFileLabel{
+			File:        src,
+			Package:     s.pkg.Subrepo.MakeRelativeName(s.pkg.Name),
+			FullPackage: s.pkg.Subrepo.Dir(s.pkg.Name),
+		}
 	}
 	return core.FileLabel{File: src, Package: s.pkg.Name}
 }
