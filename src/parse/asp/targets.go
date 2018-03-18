@@ -314,6 +314,9 @@ func parseSource(s *scope, src string, systemAllowed, tool bool) core.BuildInput
 	for _, filename := range s.state.Config.Parse.BuildFileName {
 		s.Assert(filename != src, "You can't specify the BUILD file as an input to a rule")
 	}
+	if s.pkg.Subrepo != nil {
+		return core.FileLabel{File: src, Package: s.pkg.Subrepo.Dir(s.pkg.Name)}
+	}
 	return core.FileLabel{File: src, Package: s.pkg.Name}
 }
 
