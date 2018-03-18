@@ -269,7 +269,16 @@ func parseVisibility(s *scope, vis string) core.BuildLabel {
 	if vis == "PUBLIC" || (s.state.Config.Bazel.Compatibility && vis == "//visibility:public") {
 		return core.WholeGraph[0]
 	}
-	return core.ParseBuildLabel(vis, s.pkg.Name)
+	l := core.ParseBuildLabel(vis, s.pkg.Name)
+	if s.state.Config.Bazel.Compatibility {
+		// Bazel has a couple of special aliases for this stuff.
+		if l.Name == "__pkg__" {
+			l.Name = "all"
+		} else if l.Name == "__subpackages__" {
+			l.Name = "..."
+		}
+	}
+	return l
 }
 
 func parseBuildInput(s *scope, in pyObject, name string, systemAllowed, tool bool) core.BuildInput {
