@@ -61,9 +61,10 @@ def cc_library(name:str, srcs:list=[], hdrs:list=[], private_hdrs:list&textual_h
     if isinstance(defines, dict):
         defines = [k if v is None else r'%s=\"%s\"' % (k, v) for k, v in sorted(defines.items())]
 
+    pkg_name = package_name()
     labels = (['cc:ld:' + flag for flag in linker_flags] +
               ['cc:pc:' + lib for lib in pkg_config_libs] +
-              ['cc:inc:%s/%s' % (get_base_path(), include) for include in includes] +
+              ['cc:inc:' + join_path(pkg_name, include) for include in includes] +
               ['cc:def:' + define for define in defines])
 
 
