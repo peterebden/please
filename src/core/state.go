@@ -226,7 +226,7 @@ func (state *BuildState) Stop(n int) {
 
 // Kill adds n kill tasks to the list of pending tasks, which stops n workers before they do anything else.
 func (state *BuildState) Kill(n int) {
-	for i := 0; i < n; i++ {
+	for i := 0; i < n*10; i++ {
 		state.pendingTasks.Put(pendingTask{Type: Kill})
 	}
 }

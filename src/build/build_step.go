@@ -168,7 +168,6 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		}
 		return false
 	}
-
 	cacheKey := mustShortTargetHash(state, target)
 	if state.Cache != nil {
 		// Note that ordering here is quite sensitive since the post-build function can modify

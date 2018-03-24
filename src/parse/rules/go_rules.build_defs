@@ -298,7 +298,7 @@ def _merge_cgo_obj(name, a_rule, o_rule=None, visibility=None, test_only=False, 
     )
 
 
-def go_binary(name:str, srcs:list=None, asm_srcs:list=None, out:str=None, deps:list=None,
+def go_binary(name:str, srcs:list=[], asm_srcs:list=[], out:str=None, deps:list=[],
               visibility:list=None, test_only:bool&testonly=False, static:bool=CONFIG.GO_DEFAULT_STATIC,
               filter_srcs:bool=True):
     """Compiles a Go binary.
