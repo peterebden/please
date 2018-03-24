@@ -47,9 +47,9 @@ func parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, noD
 	// Check whether this guy exists within a subrepo. If so we will need to make sure that's available first.
 	subrepo := state.Graph.SubrepoFor(label.PackageName)
 	if subrepo != nil && subrepo.Target != nil {
-		state.WaitForBuiltTarget(tid, subrepo.Target.Label, label.PackageName)
+		state.WaitForBuiltTarget(subrepo.Target.Label, label.PackageName)
 	}
-	pkg, err := parsePackage(tid, state, label, dependor, subrepo)
+	pkg, err := parsePackage(state, label, dependor, subrepo)
 	if err != nil {
 		return err
 	}
