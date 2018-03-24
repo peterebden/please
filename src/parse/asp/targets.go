@@ -42,6 +42,7 @@ func createTarget(s *scope, args []pyObject) *core.BuildTarget {
 	s.Assert(err == nil, "Invalid build target name %s", name)
 
 	target := core.NewBuildTarget(label)
+	target.Subrepo = s.pkg.Subrepo
 	target.IsBinary = isTruthy(13)
 	target.IsTest = test
 	target.NeedsTransitiveDependencies = isTruthy(17)
