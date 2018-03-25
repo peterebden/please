@@ -216,6 +216,14 @@ func (label BuildLabel) Includes(that BuildLabel) bool {
 	return false
 }
 
+// SubrepoParts returns a build label for the subrepo for this target, if it has one.
+func (label BuildLabel) SubrepoLabel() BuildLabel {
+	if idx := strings.LastIndexByte(label.Subrepo, '/'); idx != -1 {
+		return BuildLabel{PackageName: label.Subrepo[:idx], Name: label.Subrepo[idx+1:]}
+	}
+	return BuildLabel{}
+}
+
 // Less returns true if this build label would sort less than another one.
 func (label BuildLabel) Less(other BuildLabel) bool {
 	if label.PackageName == other.PackageName {

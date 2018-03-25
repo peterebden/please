@@ -750,7 +750,7 @@ func subrepo(s *scope, args []pyObject) pyObject {
 		return def
 	}
 
-	name := string(args[0].(pyString))
+	name := path.Join(s.pkg.Name, string(args[0].(pyString)))
 	dep := string(args[1].(pyString))
 	if dep == "" {
 		// This is deliberately different to facilitate binding subrepos within the same VCS repo.

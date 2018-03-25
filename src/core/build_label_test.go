@@ -52,6 +52,16 @@ func TestUnmarshalText(t *testing.T) {
 	assert.Error(t, label.UnmarshalText([]byte(":blahblah:")))
 }
 
+func TestSubrepo(t *testing.T) {
+	label := BuildLabel{Subrepo: "third_party/cc/com_google_googletest"}
+	assert.Equal(t, BuildLabel{PackageName: "third_party/cc", Name: "com_google_googletest"}, label.SubrepoLabel())
+}
+
+func TestSubrepoEmpty(t *testing.T) {
+	label := BuildLabel{}
+	assert.Equal(t, BuildLabel{}, label.SubrepoLabel())
+}
+
 func TestPackageDir(t *testing.T) {
 	label := NewBuildLabel("src/core", "core")
 	assert.Equal(t, "src/core", label.PackageDir())
