@@ -228,3 +228,9 @@ func TestArgumentCompatbility(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, pyList{pyInt(1)}, s.Lookup("x"))
 }
+
+func TestDecorators(t *testing.T) {
+	s, err := parseFile("src/parse/asp/test_data/interpreter/decorators.build")
+	require.NoError(t, err)
+	assert.EqualValues(t, 6, s.Lookup("x"))
+}

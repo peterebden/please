@@ -452,6 +452,14 @@ func newPyFunc(parentScope *scope, def *FuncDef) pyObject {
 			f.argIndices[alias] = i
 		}
 	}
+	for i := len(def.Decorators) - 1; i >= 0; i-- {
+		d := def.Decorators[i]
+		newf, ok := parentScope.callObject(d, parentScope.Lookup(d), &Call{Arguments: []CallArgument{{
+			Expr: &Expression{Constant: f},
+		}}}).(*pyFunc)
+		parentScope.Assert(ok, "The result of the decorator %s must be a function itself", d)
+		f = newf
+	}
 	return f
 }
 
@@ -525,7 +533,7 @@ func (f *pyFunc) Call(s *scope, c *Call) pyObject {
 	}
 	ret := s2.interpretStatements(f.code)
 	if ret == nil {
-		return None // Implicit 'return None' in any function that didn't do that itself.
+		ret = None // Implicit 'return None' in any function that didn't do that itself.
 	}
 	return ret
 }
@@ -535,8 +543,6 @@ func (f *pyFunc) Call(s *scope, c *Call) pyObject {
 // they receive their arguments as a slice, in which unpassed arguments are nil.
 func (f *pyFunc) callNative(s *scope, c *Call) pyObject {
 	args := make([]pyObject, len(f.args))
-	// TODO(peterebden): Falling out of love with this self scheme a bit. Reconsider a
-	//                   unified CallMember instruction on pyObject?
 	offset := 0
 	if f.self != nil {
 		args[0] = f.self
