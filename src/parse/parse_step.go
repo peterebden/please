@@ -9,6 +9,7 @@ package parse
 import (
 	"fmt"
 	"path"
+	"time"
 
 	"gopkg.in/op/go-logging.v1"
 
@@ -49,10 +50,12 @@ func parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, noD
 	if subrepo != nil && subrepo.Target != nil {
 		state.WaitForBuiltTarget(subrepo.Target.Label, label.PackageName)
 	}
+	start := time.Now()
 	pkg, err := parsePackage(state, label, dependor, subrepo)
 	if err != nil {
 		return err
 	}
+	log.Debug("Parsed package //%s in %s", label.PackageName, time.Since(start).Round(10*time.Microsecond))
 	state.LogBuildResult(tid, label, core.PackageParsed, "Parsed package")
 	return activateTarget(state, pkg, label, dependor, noDeps, forSubinclude, include, exclude)
 }
