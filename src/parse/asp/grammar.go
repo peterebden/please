@@ -38,6 +38,7 @@ type ReturnStatement struct {
 
 // A FuncDef implements definition of a new function.
 type FuncDef struct {
+	Decorators []string     `{ @ @Ident EOL }`
 	Name       string       `"def" @Ident`
 	Arguments  []*Argument  `"(" [ @@ { "," @@ } ] ")" Colon EOL`
 	Docstring  string       `[ @String EOL ]`

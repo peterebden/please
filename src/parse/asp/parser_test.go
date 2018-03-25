@@ -395,3 +395,11 @@ func TestMissingNewlines(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(stmts))
 }
+
+func TestDecorators(t *testing.T) {
+	stmts, err := newParser().parse("src/parse/asp/test_data/decorators.build")
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(stmts))
+	assert.NotNil(t, stmts[1].FuncDef)
+	assert.Equal(t, []string{"add_one"}, stmts[1].FuncDef.Decorators)
+}

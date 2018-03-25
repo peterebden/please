@@ -1,0 +1,7 @@
+def add_one(f):
+    return f() + 1
+
+
+@add_one
+def add_two(x):
+    return x + 2

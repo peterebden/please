@@ -116,6 +116,8 @@ func (p *parser) parseStatement() *Statement {
 		p.next(EOL)
 	case "def":
 		s.FuncDef = p.parseFuncDef()
+	case "@":
+		s.FuncDef = p.parseDecoratedFuncDef()
 	case "for":
 		s.For = p.parseFor()
 	case "if":
@@ -189,6 +191,18 @@ func (p *parser) parseFuncDef() *FuncDef {
 	}
 	fd.Statements = p.parseStatements()
 	return fd
+}
+
+func (p *parser) parseDecoratedFuncDef() *FuncDef {
+	decorators := []string{}
+	for p.l.Peek().Type == '@' {
+		p.next('@')
+		decorators = append(decorators, p.next(Ident).Value)
+		p.next(EOL)
+	}
+	f := p.parseFuncDef()
+	f.Decorators = decorators
+	return f
 }
 
 func (p *parser) parseArgument() *Argument {
