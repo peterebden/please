@@ -32,13 +32,13 @@ def http_archive(name:str, urls:list, strip_prefix:str=None, hashes:str|list=Non
     based on the file extension in the URL given.
 
     Args:
-      name (str): Name of the rule.
-      urls (list): List of URLs to fetch from. These are assumed to be mirrors and will be
-                   tried in sequence.
-      strip_prefix (str): Prefix to strip from the expanded archive.
-      hashes (list): List of hashes to verify the rule with.
-      visibility (list): Visibility declaration of the rule.
-      sha256 (str): Used for Bazel compat but currently has no effect.
+      name: Name of the rule.
+      urls: List of URLs to fetch from. These are assumed to be mirrors and will be
+            tried in sequence.
+      strip_prefix: Prefix to strip from the expanded archive.
+      hashes: List of hashes to verify the rule with.
+      sha256: Used for Bazel compat but currently has no effect.
+      visibility: Visibility declaration of the rule.
     """
     new_http_archive(
         name = name,
@@ -57,14 +57,17 @@ def new_http_archive(name:str, build_file:str=None, build_file_content:str=None,
     The archive should be either a zipfile or a tarball. Which one to use will be autodetected
     based on the file extension in the URL given.
 
+    The given build file (via build_file or build_file_contents) will replace any existing file
+    and will therefore be used to build the contents of the subrepo.
+
     Args:
-      name (str): Name of the rule.
-      urls (list): List of URLs to fetch from. These are assumed to be mirrors and will be
+      name: Name of the rule.
+      urls: List of URLs to fetch from. These are assumed to be mirrors and will be
                    tried in sequence.
-      strip_prefix (str): Prefix to strip from the expanded archive.
-      hashes (list): List of hashes to verify the rule with.
-      visibility (list): Visibility declaration of the rule.
-      sha256 (str): Deprecated. Used for Bazel compat but currently has no effect.
+      strip_prefix: Prefix to strip from the expanded archive.
+      hashes: List of hashes to verify the rule with.
+      sha256: Used for Bazel compat but currently has no effect.
+      visibility: Visibility declaration of the rule.
     """
     remote_rule = remote_file(
         name = name,

@@ -11,6 +11,7 @@
       <li><a href="#proto">Protocol buffer rules</a></li>
       <li><a href="#python">Python rules</a></li>
       <li><a href="#sh">Shell rules</a></li>
+      <li><a href="#subrepo">Sub-repository rules</a></li>
     </ul>
 
     <h2><a name="builtins">Builtin functions</a></h2>
@@ -328,11 +329,26 @@
 
     <h2><a name="sh">Shell rules</a></h2>
 
-    <p>Rules to 'build' shell scripts.</p>
-    <p>Note that these do pretty much nothing beyond collecting the files. In future we might
-      implement something more advanced (ala .sar files or whatever).</p>
+    <p>Rules to build shell scripts.</p>
 
     {{ template "lexicon_entry.html" .Named "sh_library" }}
     {{ template "lexicon_entry.html" .Named "sh_binary" }}
     {{ template "lexicon_entry.html" .Named "sh_cmd" }}
     {{ template "lexicon_entry.html" .Named "sh_test" }}
+
+
+    <h2><a name="subrepo">Sub-repository rules</a></h2>
+
+    <p>Rules to fetch subrepositories and build them as part of this one.<br/>
+      Each repository has a name, which must be unique (including packages in the current repository).<br/>
+      Rules in subrepos can be accessed in one of two ways:
+      <ul>
+	<li>By prefixing them with the name of the repo, for example <code>//my_repo/pkg:target</code>
+	  to access what would be <code>//pkg:target</code> within it.</li>
+	<li>By using Bazel-style <code>@my_repo//pkg:target</code> syntax.</li>
+      </ul>
+    </p>
+    <p>These are still somewhat experimental.</p>
+
+    {{ template "lexicon_entry.html" .Named "http_archive" }}
+    {{ template "lexicon_entry.html" .Named "new_http_archive" }}
