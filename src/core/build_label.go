@@ -21,6 +21,7 @@ var log = logging.MustGetLogger("core")
 type BuildLabel struct {
 	PackageName string
 	Name        string
+	Subrepo     string
 }
 
 // WholeGraph represents parsing the entire graph (i.e. //...).
@@ -104,51 +105,51 @@ func ParseBuildLabel(target, currentPath string) BuildLabel {
 
 // TryParseBuildLabel attempts to parse a single build label from a string. Returns an error if unsuccessful.
 func TryParseBuildLabel(target string, currentPath string) (BuildLabel, error) {
-	if pkg, name := parseBuildLabelParts(target, currentPath); name != "" {
-		return BuildLabel{PackageName: pkg, Name: name}, nil
+	if pkg, name, subrepo := parseBuildLabelParts(target, currentPath); name != "" {
+		return BuildLabel{PackageName: pkg, Name: name, Subrepo: subrepo}, nil
 	}
 	return BuildLabel{}, fmt.Errorf("Invalid build label: %s", target)
 }
 
-// parseBuildLabelParts parses a build label into the package & name parts.
+// parseBuildLabelParts parses a build label into the package & name parts, and the subrepo if present.
 // If valid, the name string will always be populated; the package string might not be if it's a local form.
-func parseBuildLabelParts(target, currentPath string) (string, string) {
+func parseBuildLabelParts(target, currentPath string) (string, string, string) {
 	if len(target) < 2 { // Always must start with // or : and must have at least one char following.
-		return "", ""
+		return "", "", ""
 	} else if target[0] == ':' {
 		if !validateTargetName(target[1:]) {
-			return "", ""
+			return "", "", ""
 		}
-		return currentPath, target[1:]
+		return currentPath, target[1:], ""
 	} else if target[0] == '@' {
 		// @subrepo//pkg:target syntax
 		if idx := strings.Index(target, "//"); idx == -1 {
-			return "", ""
-		} else if pkg, name := parseBuildLabelParts(target[idx:], currentPath); pkg == "" && name == "" {
-			return "", ""
+			return "", "", ""
+		} else if pkg, name, _ := parseBuildLabelParts(target[idx:], currentPath); pkg == "" && name == "" {
+			return "", "", ""
 		} else {
-			return path.Join(target[1:idx], pkg), name // Combine it to //subrepo/pkg:target
+			return pkg, name, target[1:idx]
 		}
 	} else if target[0] != '/' || target[1] != '/' {
-		return "", ""
+		return "", "", ""
 	} else if idx := strings.IndexRune(target, ':'); idx != -1 {
 		pkg := target[2:idx]
 		name := target[idx+1:]
 		// Check ... explicitly to prevent :... which isn't allowed.
 		if !validatePackageName(pkg) || !validateTargetName(name) || name == "..." {
-			return "", ""
+			return "", "", ""
 		}
-		return pkg, name
+		return pkg, name, ""
 	} else if !validatePackageName(target[2:]) {
-		return "", ""
+		return "", "", ""
 	}
 	// Must be the abbreviated form (//pkg) or subtargets (//pkg/...), there's no : in it.
 	if strings.HasSuffix(target, "/...") {
-		return strings.TrimRight(target[2:len(target)-3], "/"), "..."
+		return strings.TrimRight(target[2:len(target)-3], "/"), "...", ""
 	} else if idx := strings.LastIndexByte(target, '/'); idx != -1 {
-		return target[2:], target[idx+1:]
+		return target[2:], target[idx+1:], ""
 	}
-	return target[2:], target[2:]
+	return target[2:], target[2:], ""
 }
 
 // As above, but allows parsing of relative labels (eg. src/parse/rules:python_rules)
