@@ -102,6 +102,14 @@ def glob(include:list, exclude:list&excludes=[], hidden:bool=False):
 
 def package():
     pass
+def package_constant(f:function):
+    """Indicates that the result of the decorated function is constant at the package level.
+
+    This allows optimising it to be called only once per package. This isn't necessary for anything
+    that is truly constant globally - in that case it can be assigned to a  global constant, but
+    many functions depend on package-level config.
+    """
+    pass
 
 
 def sorted(seq:list):

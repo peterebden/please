@@ -40,6 +40,7 @@ func registerBuiltins(s *scope) {
 	setNativeCode(s, "join_path", joinPath).varargs = true
 	setNativeCode(s, "get_base_path", getBasePath)
 	setNativeCode(s, "package_name", packageName)
+	setNativeCode(s, "package_constant", packageConstant)
 	setNativeCode(s, "get_labels", getLabels)
 	setNativeCode(s, "add_dep", addDep)
 	setNativeCode(s, "add_out", addOut)
@@ -548,6 +549,27 @@ func packageName(s *scope, args []pyObject) pyObject {
 		return pyString(s.pkg.Subrepo.MakeRelativeName(s.pkg.Name))
 	}
 	return pyString(s.pkg.Name)
+}
+
+func packageConstant(s *scope, args []pyObject) pyObject {
+	f := args[0].(*pyFunc)
+	// This is a bit restrictive but it doesn't make sense - we only memoise one return value
+	// so it'd not be consistent if the function accepted arguments. It also neatly works around
+	// an intractable issue below (basically if we use native code to do clever things, we've lost
+	// information about argument names which might be important).
+	s.Assert(len(f.args) == 0, "Can't apply package_constant to a function with arguments")
+	name := "_" + f.name + "_constant"
+	f2 := pyFunc{}
+	f2 = *f // Shallow copy of function so we appear as a clone of it.
+	f2.nativeCode = func(s *scope, args []pyObject) pyObject {
+		if result := s.LocalLookup(name); result != nil {
+			return result
+		}
+		result := s.callObject(f.name, f, &Call{})
+		s.Set(name, result)
+		return result
+	}
+	return &f2
 }
 
 func pyRange(s *scope, args []pyObject) pyObject {
