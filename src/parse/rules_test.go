@@ -31,3 +31,10 @@ func TestRuleArgs(t *testing.T) {
 	assert.Equal(t, []string{"list"}, arg.Types)
 	assert.Equal(t, "Header files. These will be made available to dependent rules, so the distinction between srcs and hdrs is important.", arg.Comment)
 }
+
+func TestHashesSHA256(t *testing.T) {
+	env := getRuleArgs(core.NewDefaultBuildState(), nil)
+	rule := env.Functions["http_archive"]
+	assert.Equal(t, "hashes", rule.Args[3].Name)
+	assert.NotContains(t, rule.Args[3].Comment, "sha256")
+}

@@ -105,7 +105,7 @@ func (env *environment) AddAll(stmts []*asp.Statement) {
 // It's pretty much impossible to handle this as just a regex so we do it here instead.
 func filterMatch(match string) string {
 	lines := strings.Split(match, "\n")
-	regex := regexp.MustCompile(`^ *[a-z_]+(?: \([^)]+\))?:`)
+	regex := regexp.MustCompile(`^ *[a-z0-9_]+(?: \([^)]+\))?:`)
 	for i, line := range lines {
 		if regex.MatchString(line) {
 			return strings.Join(lines[:i], " ")

@@ -50,7 +50,7 @@ def http_archive(name:str, urls:list, strip_prefix:str=None, hashes:str|list=Non
     )
 
 
-def new_http_archive(name:str, build_file:str=None, build_file_content:str=None, urls:list,
+def new_http_archive(name:str, urls:list, build_file:str=None, build_file_content:str=None,
                      strip_prefix:str=None, hashes:str|list=None, sha256:str=None, visibility:list=None):
     """Fetches a remote file over HTTP and expands its contents, combined with a BUILD file.
 
@@ -64,6 +64,9 @@ def new_http_archive(name:str, build_file:str=None, build_file_content:str=None,
       name: Name of the rule.
       urls: List of URLs to fetch from. These are assumed to be mirrors and will be
                    tried in sequence.
+      build_file: The file to use as a BUILD file for this subrepository.
+      build_file_content: Text content to use for the BUILD file for the subrepository.
+                          We suggest using build_file instead, but this is provided for Bazel compatibility.
       strip_prefix: Prefix to strip from the expanded archive.
       hashes: List of hashes to verify the rule with.
       sha256: Used for Bazel compat but currently has no effect.
