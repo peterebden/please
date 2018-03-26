@@ -92,6 +92,9 @@ func activateTarget(state *core.BuildState, pkg *core.Package, label, dependor c
 // parsePackage performs the initial parse of a package.
 func parsePackage(state *core.BuildState, label, dependor core.BuildLabel, subrepo *core.Subrepo) (*core.Package, error) {
 	packageName := label.PackageName
+	if subrepo != nil {
+		packageName = path.Join(subrepo.Root, packageName)
+	}
 	pkg := core.NewPackage(packageName)
 	pkg.Subrepo = subrepo
 	if pkg.Filename = buildFileName(state, packageName); pkg.Filename == "" {

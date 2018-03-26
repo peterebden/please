@@ -750,7 +750,8 @@ func subrepo(s *scope, args []pyObject) pyObject {
 		return def
 	}
 
-	name := path.Join(s.pkg.Name, string(args[0].(pyString)))
+	subrepoName := string(args[0].(pyString))
+	name := path.Join(s.pkg.Name, subrepoName)
 	dep := string(args[1].(pyString))
 	if dep == "" {
 		// This is deliberately different to facilitate binding subrepos within the same VCS repo.
@@ -761,7 +762,7 @@ func subrepo(s *scope, args []pyObject) pyObject {
 	t := s.pkg.TargetOrDie(core.ParseBuildLabel(dep, s.pkg.Name).Name)
 	s.state.Graph.AddSubrepo(&core.Subrepo{
 		Name:   name,
-		Root:   root(path.Join(t.OutDir(), name)),
+		Root:   root(path.Join(t.OutDir(), subrepoName)),
 		Target: t,
 	})
 	log.Debug("Registered subrepo %s", name)
