@@ -219,17 +219,17 @@ func (label NamedOutputLabel) String() string {
 // TryParseNamedOutputLabel attempts to parse a build output label. It's allowed to just be
 // a normal build label as well.
 // The syntax is an extension of normal build labels: //package:target|output
-func TryParseNamedOutputLabel(target, currentPath string) (BuildInput, error) {
+func TryParseNamedOutputLabel(target, currentPath string, subrepo *Subrepo) (BuildInput, error) {
 	if index := strings.IndexRune(target, '|'); index != -1 && index != len(target)-1 {
-		label, err := TryParseBuildLabel(target[:index], currentPath)
+		label, err := TryParseSubrepoBuildLabel(target[:index], currentPath, subrepo)
 		return NamedOutputLabel{BuildLabel: label, Output: target[index+1:]}, err
 	}
 	return TryParseBuildLabel(target, currentPath)
 }
 
 // MustParseNamedOutputLabel is like TryParseNamedOutputLabel but panics on errors.
-func MustParseNamedOutputLabel(target, currentPath string) BuildInput {
-	label, err := TryParseNamedOutputLabel(target, currentPath)
+func MustParseNamedOutputLabel(target, currentPath string, subrepo *Subrepo) BuildInput {
+	label, err := TryParseNamedOutputLabel(target, currentPath, subrepo)
 	if err != nil {
 		panic(err)
 	}

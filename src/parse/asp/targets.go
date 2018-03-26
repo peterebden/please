@@ -224,7 +224,7 @@ func addDependencies(s *scope, name string, obj pyObject, target *core.BuildTarg
 			// *sigh*... Bazel seems to allow an implicit : on the start of dependencies
 			str = ":" + str
 		}
-		label := core.ParseBuildLabel(str, s.pkg.Name)
+		label := core.ParseSubrepoBuildLabel(str, s.pkg.Name, s.pkg.Subrepo)
 		target.AddMaybeExportedDependency(label, exported, false)
 	})
 }
@@ -302,7 +302,7 @@ func parseBuildInput(s *scope, in pyObject, name string, systemAllowed, tool boo
 // Identifies if the file is owned by this package and returns an error if not.
 func parseSource(s *scope, src string, systemAllowed, tool bool) core.BuildInput {
 	if core.LooksLikeABuildLabel(src) {
-		return core.MustParseNamedOutputLabel(src, s.pkg.Name)
+		return core.MustParseNamedOutputLabel(src, s.pkg.Name, s.pkg.Subrepo)
 	}
 	s.Assert(src != "", "Empty source path")
 	s.Assert(!strings.Contains(src, "../"), "%s is an invalid path; build target paths can't contain ../", src)

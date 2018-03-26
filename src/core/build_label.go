@@ -36,7 +36,9 @@ var OriginalTarget = BuildLabel{PackageName: "", Name: "_ORIGINAL"}
 
 // String returns a string representation of this build label.
 func (label BuildLabel) String() string {
-	if label.Name != "" {
+	if label.Subrepo != "" {
+		return "@" + label.Subrepo + "//" + label.PackageName + ":" + label.Name
+	} else if label.Name != "" {
 		return "//" + label.PackageName + ":" + label.Name
 	}
 	return "//" + label.PackageName
@@ -103,12 +105,32 @@ func ParseBuildLabel(target, currentPath string) BuildLabel {
 	return label
 }
 
+// ParseSubrepoBuildLabel parses a single build label from a string and panics on failure.
+// It's done in the context of the given subrepo if non-nil, which will populate that field appropriately.
+func ParseSubrepoBuildLabel(target, currentPath string, subrepo *Subrepo) BuildLabel {
+	label := ParseBuildLabel(target, currentPath)
+	if subrepo != nil {
+		label.Subrepo = subrepo.Name
+	}
+	return label
+}
+
 // TryParseBuildLabel attempts to parse a single build label from a string. Returns an error if unsuccessful.
-func TryParseBuildLabel(target string, currentPath string) (BuildLabel, error) {
+func TryParseBuildLabel(target, currentPath string) (BuildLabel, error) {
 	if pkg, name, subrepo := parseBuildLabelParts(target, currentPath); name != "" {
 		return BuildLabel{PackageName: pkg, Name: name, Subrepo: subrepo}, nil
 	}
 	return BuildLabel{}, fmt.Errorf("Invalid build label: %s", target)
+}
+
+// TryParseSubrepoBuildLabel attempts to parse a build label from a string.
+// It's done in the context of the given subrepo if non-nil, which will populate that field appropriately.
+func TryParseSubrepoBuildLabel(target, currentPath string, subrepo *Subrepo) (BuildLabel, error) {
+	label, err := TryParseBuildLabel(target, currentPath)
+	if subrepo != nil {
+		label.Subrepo = subrepo.Name
+	}
+	return label, err
 }
 
 // parseBuildLabelParts parses a build label into the package & name parts, and the subrepo if present.

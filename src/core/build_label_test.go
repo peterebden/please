@@ -62,6 +62,24 @@ func TestSubrepoEmpty(t *testing.T) {
 	assert.Equal(t, BuildLabel{}, label.SubrepoLabel())
 }
 
+func TestParseSubrepoBuildLabel(t *testing.T) {
+	label := ParseSubrepoBuildLabel("//src/core:core", "", nil)
+	assert.Equal(t, "", label.Subrepo)
+	subrepo := &Subrepo{Name: "test"}
+	label = ParseSubrepoBuildLabel("//src/core:core", "", subrepo)
+	assert.Equal(t, "test", label.Subrepo)
+}
+
+func TestTryParseSubrepoBuildLabel(t *testing.T) {
+	label, err := TryParseSubrepoBuildLabel("//src/core:core", "", nil)
+	assert.NoError(t, err)
+	assert.Equal(t, "", label.Subrepo)
+	subrepo := &Subrepo{Name: "test"}
+	label, err = TryParseSubrepoBuildLabel("//src/core:core", "", subrepo)
+	assert.NoError(t, err)
+	assert.Equal(t, "test", label.Subrepo)
+}
+
 func TestPackageDir(t *testing.T) {
 	label := NewBuildLabel("src/core", "core")
 	assert.Equal(t, "src/core", label.PackageDir())
@@ -83,6 +101,11 @@ func TestCompleteError(t *testing.T) {
 	label := BuildLabel{}
 	completions := label.Complete("nope")
 	assert.Equal(t, 0, len(completions))
+}
+
+func TestString(t *testing.T) {
+	label := BuildLabel{PackageName: "src/core", Name: "core", Subrepo: "test"}
+	assert.Equal(t, "@test//src/core:core", label.String())
 }
 
 func TestMain(m *testing.M) {
