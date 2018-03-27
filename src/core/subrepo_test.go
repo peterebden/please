@@ -9,7 +9,7 @@ import (
 func TestMakeRelative(t *testing.T) {
 	s := &Subrepo{Name: "repo"}
 	l := s.MakeRelative(NewBuildLabel("repo/package", "name"))
-	assert.Equal(t, NewBuildLabel("package", "name"), l)
+	assert.Equal(t, BuildLabel{PackageName: "package", Name: "name", Subrepo: "repo"}, l)
 	assert.Panics(t, func() { s.MakeRelative(NewBuildLabel("other/package", "name")) })
 }
 

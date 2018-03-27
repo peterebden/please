@@ -161,7 +161,7 @@ func testPrintFields(target *core.BuildTarget, fields []string) string {
 func src(in string) core.BuildInput {
 	const pkg = "src/query"
 	if strings.HasPrefix(in, "//") || strings.HasPrefix(in, ":") {
-		src, err := core.TryParseNamedOutputLabel(in, pkg)
+		src, err := core.TryParseNamedOutputLabel(in, pkg, nil)
 		if err != nil {
 			panic(err)
 		}
