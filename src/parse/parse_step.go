@@ -36,7 +36,7 @@ func Parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, noD
 
 func parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, noDeps bool, include, exclude []string, forSubinclude bool) error {
 	// See if something else has parsed this package first.
-	pkg := state.WaitForPackage(label.PackageName)
+	pkg := state.WaitForPackage(label.FullPackageName())
 	if pkg != nil {
 		// Does exist, all we need to do is toggle on this target
 		return activateTarget(state, pkg, label, dependor, noDeps, forSubinclude, include, exclude)
@@ -91,13 +91,11 @@ func activateTarget(state *core.BuildState, pkg *core.Package, label, dependor c
 
 // parsePackage performs the initial parse of a package.
 func parsePackage(state *core.BuildState, label, dependor core.BuildLabel, subrepo *core.Subrepo) (*core.Package, error) {
-	packageName := label.PackageName
 	packageDir := label.PackageName
 	if subrepo != nil {
-		packageName = path.Join(subrepo.Name, label.PackageName)
 		packageDir = path.Join(subrepo.Root, label.PackageName)
 	}
-	pkg := core.NewPackage(packageName)
+	pkg := core.NewPackage(label.FullPackageName())
 	pkg.Subrepo = subrepo
 	if pkg.Filename = buildFileName(state, packageDir); pkg.Filename == "" {
 		exists := core.PathExists(packageDir)
