@@ -19,6 +19,8 @@ type Package struct {
 	Subincludes []BuildLabel
 	// If the package is in a subrepo, this is the subrepo it belongs to. It's nil if not.
 	Subrepo *Subrepo
+	// This is the package's name, minus any subrepo bits.
+	InRepoName string
 	// Targets contained within the package
 	targets map[string]*BuildTarget
 	// Set of output files from rules.

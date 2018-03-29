@@ -97,6 +97,7 @@ func parsePackage(state *core.BuildState, label, dependor core.BuildLabel, subre
 	}
 	pkg := core.NewPackage(label.FullPackageName())
 	pkg.Subrepo = subrepo
+	pkg.InRepoName = label.PackageName
 	if pkg.Filename = buildFileName(state, packageDir); pkg.Filename == "" {
 		exists := core.PathExists(packageDir)
 		// Handle quite a few cases to provide more obvious error messages.
