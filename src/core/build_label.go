@@ -249,18 +249,12 @@ func (label BuildLabel) SubrepoLabel() BuildLabel {
 // FullPackageName returns the package name with the subrepo part as well, if it has one.
 func (label BuildLabel) FullPackageName() string {
 	if label.Subrepo != "" {
-		return path.Join(label.Subrepo, label.PackageName)
+		if label.PackageName != "" {
+			return label.Subrepo + "/" + label.PackageName
+		}
+		return label.Subrepo
 	}
 	return label.PackageName
-}
-
-// NormaliseSubrepo combines the subrepo part into the package name.
-func (label BuildLabel) NormaliseSubrepo() BuildLabel {
-	if label.Subrepo != "" {
-		label.PackageName = label.FullPackageName()
-		label.Subrepo = ""
-	}
-	return label
 }
 
 // Less returns true if this build label would sort less than another one.

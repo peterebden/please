@@ -108,6 +108,15 @@ func TestString(t *testing.T) {
 	assert.Equal(t, "@test//src/core:core", label.String())
 }
 
+func TestFullPackageName(t *testing.T) {
+	label := BuildLabel{PackageName: "src/core", Name: "core"}
+	assert.Equal(t, "src/core", label.FullPackageName())
+	label.Subrepo = "test"
+	assert.Equal(t, "test/src/core", label.FullPackageName())
+	label.PackageName = ""
+	assert.Equal(t, "test", label.FullPackageName())
+}
+
 func TestMain(m *testing.M) {
 	// Used to support TestComplete, the function it's testing re-execs
 	// itself thinking that it's actually plz.

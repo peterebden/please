@@ -68,7 +68,7 @@ func (graph *BuildGraph) AddPackage(pkg *Package) {
 func (graph *BuildGraph) Target(label BuildLabel) *BuildTarget {
 	graph.mutex.RLock()
 	defer graph.mutex.RUnlock()
-	return graph.targets[label.NormaliseSubrepo()]
+	return graph.targets[label]
 }
 
 // TargetOrDie retrieves a target from the graph by label. Dies if the target doesn't exist.
