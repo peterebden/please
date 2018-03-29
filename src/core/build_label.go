@@ -254,6 +254,15 @@ func (label BuildLabel) FullPackageName() string {
 	return label.PackageName
 }
 
+// NormaliseSubrepo combines the subrepo part into the package name.
+func (label BuildLabel) NormaliseSubrepo() BuildLabel {
+	if label.Subrepo != "" {
+		label.PackageName = label.FullPackageName()
+		label.Subrepo = ""
+	}
+	return label
+}
+
 // Less returns true if this build label would sort less than another one.
 func (label BuildLabel) Less(other BuildLabel) bool {
 	if label.PackageName == other.PackageName {

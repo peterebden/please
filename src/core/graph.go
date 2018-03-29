@@ -66,13 +66,9 @@ func (graph *BuildGraph) AddPackage(pkg *Package) {
 
 // Target retrieves a target from the graph by label
 func (graph *BuildGraph) Target(label BuildLabel) *BuildTarget {
-	// Normalise the label to remove subrepo
-	if label.Subrepo != "" {
-		label = BuildLabel{PackageName: label.FullPackageName(), Name: label.Name}
-	}
 	graph.mutex.RLock()
 	defer graph.mutex.RUnlock()
-	return graph.targets[label]
+	return graph.targets[label.NormaliseSubrepo()]
 }
 
 // TargetOrDie retrieves a target from the graph by label. Dies if the target doesn't exist.
