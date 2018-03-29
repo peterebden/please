@@ -38,7 +38,7 @@ func createTarget(s *scope, args []pyObject) *core.BuildTarget {
 			name = tagName(name, tagStr)
 		}
 	}
-	label, err := core.TryNewBuildLabel(s.pkg.Name, name)
+	label, err := core.TryNewBuildLabel(s.pkg.Name, name, s.pkg.Subrepo)
 	s.Assert(err == nil, "Invalid build target name %s", name)
 
 	target := core.NewBuildTarget(label)

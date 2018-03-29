@@ -46,7 +46,7 @@ func (label BuildLabel) String() string {
 
 // NewBuildLabel constructs a new build label from the given components. Panics on failure.
 func NewBuildLabel(pkgName, name string) BuildLabel {
-	label, err := TryNewBuildLabel(pkgName, name)
+	label, err := TryNewBuildLabel(pkgName, name, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -54,11 +54,15 @@ func NewBuildLabel(pkgName, name string) BuildLabel {
 }
 
 // TryNewBuildLabel constructs a new build label from the given components.
-func TryNewBuildLabel(pkgName, name string) (BuildLabel, error) {
+func TryNewBuildLabel(pkgName, name string, subrepo *Subrepo) (BuildLabel, error) {
 	if err := validateNames(pkgName, name); err != nil {
 		return BuildLabel{}, err
 	}
-	return BuildLabel{PackageName: pkgName, Name: name}, nil
+	l := BuildLabel{PackageName: pkgName, Name: name}
+	if subrepo != nil {
+		l.Subrepo = subrepo.Name
+	}
+	return l, nil
 }
 
 // validateNames returns an error if the package name of target name isn't accepted.
