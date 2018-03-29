@@ -224,7 +224,7 @@ func TryParseNamedOutputLabel(target, currentPath string, subrepo *Subrepo) (Bui
 		label, err := TryParseSubrepoBuildLabel(target[:index], currentPath, subrepo)
 		return NamedOutputLabel{BuildLabel: label, Output: target[index+1:]}, err
 	}
-	return TryParseBuildLabel(target, currentPath)
+	return TryParseSubrepoBuildLabel(target, currentPath, subrepo)
 }
 
 // MustParseNamedOutputLabel is like TryParseNamedOutputLabel but panics on errors.

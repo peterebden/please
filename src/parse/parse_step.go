@@ -172,7 +172,7 @@ func buildFileName(state *core.BuildState, pkgName string) string {
 // Adds a single target to the build queue.
 func addDep(state *core.BuildState, label, dependor core.BuildLabel, rescan, forceBuild bool) {
 	// Stop at any package that's not loaded yet
-	if state.Graph.Package(label.PackageName) == nil {
+	if state.Graph.Package(label.FullPackageName()) == nil {
 		if forceBuild {
 			log.Debug("Adding forced pending parse of %s", label)
 		}
