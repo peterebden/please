@@ -92,22 +92,24 @@ func activateTarget(state *core.BuildState, pkg *core.Package, label, dependor c
 // parsePackage performs the initial parse of a package.
 func parsePackage(state *core.BuildState, label, dependor core.BuildLabel, subrepo *core.Subrepo) (*core.Package, error) {
 	packageName := label.PackageName
+	packageDir := label.PackageName
 	if subrepo != nil {
-		packageName = path.Join(subrepo.Root, packageName)
+		packageName = path.Join(subrepo.Name, label.PackageName)
+		packageDir = path.Join(subrepo.Root, label.PackageName)
 	}
 	pkg := core.NewPackage(packageName)
 	pkg.Subrepo = subrepo
-	if pkg.Filename = buildFileName(state, packageName); pkg.Filename == "" {
-		exists := core.PathExists(packageName)
+	if pkg.Filename = buildFileName(state, packageDir); pkg.Filename == "" {
+		exists := core.PathExists(packageDir)
 		// Handle quite a few cases to provide more obvious error messages.
 		if dependor != core.OriginalTarget && exists {
-			return nil, fmt.Errorf("%s depends on %s, but there's no BUILD file in %s/", dependor, label, packageName)
+			return nil, fmt.Errorf("%s depends on %s, but there's no BUILD file in %s/", dependor, label, packageDir)
 		} else if dependor != core.OriginalTarget {
-			return nil, fmt.Errorf("%s depends on %s, but the directory %s doesn't exist", dependor, label, packageName)
+			return nil, fmt.Errorf("%s depends on %s, but the directory %s doesn't exist", dependor, label, packageDir)
 		} else if exists {
-			return nil, fmt.Errorf("Can't build %s; there's no BUILD file in %s/", label, packageName)
+			return nil, fmt.Errorf("Can't build %s; there's no BUILD file in %s/", label, packageDir)
 		}
-		return nil, fmt.Errorf("Can't build %s; the directory %s doesn't exist", label, packageName)
+		return nil, fmt.Errorf("Can't build %s; the directory %s doesn't exist", label, packageDir)
 	}
 	if err := state.Parser.ParseFile(state, pkg, pkg.Filename); err != nil {
 		return nil, err
