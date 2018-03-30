@@ -104,7 +104,7 @@ if ! hash python2 2>/dev/null ; then
 fi
 if ! hash python3 2>/dev/null ; then
     warn "python3 not found, excluding python3 tests"
-    EXCLUDES="${EXCLUDES} --exclude=py3"
+    EXCLUDES="${EXCLUDES} --exclude=py3 --exclude python3"
 fi
 if ! hash clang++ 2>/dev/null ; then
     warn "Clang not found, excluding Clang tests"
