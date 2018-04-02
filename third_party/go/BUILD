@@ -489,3 +489,14 @@ go_get(
     get = 'github.com/pkg/errors',
     revision = '30136e27e2ac8d167177e8a583aa4c3fea5be833',
 )
+
+go_get(
+    name = 'fuse',
+    get = 'github.com/hanwen/go-fuse',
+    install = [
+        'fuse',
+        'splice',
+    ],
+    revision = 'a9ddcb8a4b609500fc59c89ccc9ee05f00a5fefd',
+    deps = [':unix'],
+)
