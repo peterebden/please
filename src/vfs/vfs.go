@@ -15,9 +15,11 @@ import (
 
 // A file represents a single file within a filesystem.
 type file struct {
-	Path     string
+	Path     string // Real path on disk
 	Info     os.FileInfo
 	Writable bool
+	// If it's a directory, this is the list of entries in it.
+	Dir []fuse.DirInfo
 }
 
 // A filesystem is the implementation of a fuse.FileSystem.
@@ -157,7 +159,7 @@ func (fs *filesystem) Mknod(name string, mode uint32, dev uint32, context *fuse.
 	return fuse.ENOSYS
 }
 
-func (fs *filesystem) Rename(oldName string, newName string, context *fuse.Context) (code fuse.Status) {
+func (fs *filesystem) Rename(oldName string, newName string, context *fuse.Context) fuse.Status {
 	// TODO(peterebden): Need to handle getFile here and back it by a real move.
 	f, s := fs.getWritableFile(oldName)
 	if s != fuse.OK {
@@ -170,7 +172,7 @@ func (fs *filesystem) Rename(oldName string, newName string, context *fuse.Conte
 	return fuse.OK
 }
 
-func (fs *filesystem) Rmdir(name string, context *fuse.Context) (code fuse.Status) {
+func (fs *filesystem) Rmdir(name string, context *fuse.Context) fuse.Status {
 	f, s := fs.getWritableFile(name)
 	if s != fuse.OK {
 		return s
@@ -185,7 +187,7 @@ func (fs *filesystem) Rmdir(name string, context *fuse.Context) (code fuse.Statu
 	return fuse.OK
 }
 
-func (fs *filesystem) Unlink(name string, context *fuse.Context) (code fuse.Status) {
+func (fs *filesystem) Unlink(name string, context *fuse.Context) fuse.Status {
 	f, s := fs.getWritableFile(name)
 	if s != fuse.OK {
 		return s
@@ -201,11 +203,11 @@ func (fs *filesystem) Unlink(name string, context *fuse.Context) (code fuse.Stat
 }
 
 // Extended attributes.
-func (fs *filesystem) GetXAttr(name string, attribute string, context *fuse.Context) (data []byte, code fuse.Status) {
+func (fs *filesystem) GetXAttr(name string, attribute string, context *fuse.Context) ([]byte, fuse.Status) {
 	return nil, fuse.ENOSYS
 }
 
-func (fs *filesystem) ListXAttr(name string, context *fuse.Context) (attributes []string, code fuse.Status) {
+func (fs *filesystem) ListXAttr(name string, context *fuse.Context) ([]string, fuse.Status) {
 	return nil, fuse.ENOSYS
 }
 
@@ -224,7 +226,7 @@ func (fs *filesystem) OnMount(nodeFs *PathNodeFs) {
 func (fs *filesystem) OnUnmount() {
 }
 
-func (fs *filesystem) Open(name string, flags uint32, context *fuse.Context) (file nodefs.File, code fuse.Status) {
+func (fs *filesystem) Open(name string, flags uint32, context *fuse.Context) (nodefs.File, fuse.Status) {
 	if flags & OS.WRONLY {
 		return fs.Create(name, flags, 0644, context)
 	} else if flags & os.RDWR {
@@ -241,7 +243,7 @@ func (fs *filesystem) Open(name string, flags uint32, context *fuse.Context) (fi
 	return nodefs.NewLoopbackFile(f2), fuse.OK
 }
 
-func (fs *filesystem) Create(name string, flags uint32, mode uint32, context *fuse.Context) (file nodefs.File, code fuse.Status) {
+func (fs *filesystem) Create(name string, flags uint32, mode uint32, context *fuse.Context) (nodefs.File, fuse.Status) {
 	_, f2, s := fs.getOrCreateFile(name, mode)
 	if s != fuse.OK {
 		return nil, s
@@ -249,12 +251,42 @@ func (fs *filesystem) Create(name string, flags uint32, mode uint32, context *fu
 	return nodefs.NewLoopbackFile(f2), fuse.OK
 }
 
-// Directory handling
-func (fs *filesystem) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, code fuse.Status) {
+func (fs *filesystem) OpenDir(name string, context *fuse.Context) ([]fuse.DirEntry, fuse.Status) {
+	f, s := fs.getFile(name)
+	if s != fuse.OK {
+		return nil, s
+	} else if !f.Info.IsDir() {
+		return fuse.ENOTDIR
+	}
+	return f.Dir
 }
 
 // Symlinks.
 func (fs *filesystem) Symlink(value string, linkName string, context *fuse.Context) (code fuse.Status) {
+	f, s := fs.getFile(value)
+	if s != fuse.OK {
+		return s
+	} else if _, s := fs.getWritableFile(linkName); s == fuse.OK {
+		return fuse.EACCES
+	} else if s != fuse.ENOENT {
+		return s
+	}
+	dest := path.Join(fs.Root, linkName)
+	if err := os.Symlink(f.Path, dest); err != nil {
+		return fuse.ToStatus(err)
+	}
+	info, err := os.Stat(dest)
+	if err != nil {
+		return fuse.ToStatus(err)
+	}
+	fs.mutex.Lock()
+	defer fs.mutex.Unlock()
+	fs.files[linkName] = file{
+		Path:     dest,
+		Info:     info,
+		Writable: true,
+	}
+	return fuse.OK
 }
 
 func (fs *filesystem) Readlink(name string, context *fuse.Context) (string, fuse.Status) {
