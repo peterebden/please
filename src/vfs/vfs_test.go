@@ -57,6 +57,35 @@ func TestChmodRW(t *testing.T) {
 	assert.EqualValues(t, 0755, info.Mode())
 }
 
+func TestChownRO(t *testing.T) {
+	fs := Must("vfs.TestChownRO").(*filesystem)
+	defer fs.Stop()
+	fs.AddFile("dir1", "src/vfs/test_data/dir1")
+	s := fs.Chown("dir1/test.txt", 1, 1, context)
+	assert.Equal(t, fuse.EROFS, s)
+}
+
+// We don't do ChownRW because the underlying OS will likely prohibit the operation.
+
+func TestTruncateRO(t *testing.T) {
+	fs := Must("vfs.TestTruncateRO").(*filesystem)
+	defer fs.Stop()
+	fs.AddFile("dir1", "src/vfs/test_data/dir1")
+	s := fs.Truncate("dir1/test.txt", 1, context)
+	assert.Equal(t, fuse.EROFS, s)
+}
+
+func TestTruncateRW(t *testing.T) {
+	fs := Must("vfs.TestTruncateRW").(*filesystem)
+	defer fs.Stop()
+	filename := addFile(t, fs, "test.txt")
+	s := fs.Truncate("test.txt", 1, context)
+	assert.Equal(t, fuse.OK, s)
+	info, err := os.Stat(filename)
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, info.Size())
+}
+
 // Test helper to add an arbitrary file to the filesystem.
 func addFile(t *testing.T, fs *filesystem, name string) string {
 	name = path.Join(fs.Root, name)
