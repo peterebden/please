@@ -121,16 +121,14 @@ func (fs *filesystem) AddFile(virtualPath, realPath string) {
 	fs.files[virtualPath] = file{Path: realPath}
 }
 
-// HasFile returns true if the filesystem contains the given file.
-func (fs *filesystem) HasFile(name string) bool {
-	_, s := fs.getFile(name)
-	return s == fuse.OK
-}
-
 // Stop unmounts and stops this filesystem.
 func (fs *filesystem) Stop() {
 	if err := fs.server.Unmount(); err != nil {
 		log.Warning("Failed to unmount VFS: %s", err)
+	} else if err := os.RemoveAll(fs.Temp); err != nil {
+		log.Warning("Failed to remove temporary work dir: %s", err)
+	} else if err := os.Remove(fs.Root); err != nil {
+		log.Warning("Failed to remove work dir: %s", err)
 	}
 }
 
