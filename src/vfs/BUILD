@@ -17,6 +17,7 @@ go_test(
     data = ['test_data'],
     deps = [
         ':vfs',
+        '//src/core',
         '//third_party/go:fuse',
         '//third_party/go:testify',
     ],

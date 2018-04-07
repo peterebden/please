@@ -7,6 +7,7 @@ package vfs
 import (
 	"os"
 	"path"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -90,6 +91,11 @@ func Must(root string) Filesystem {
 // AddFile adds a new file to this filesystem.
 func (fs *filesystem) AddFile(virtualPath, realPath string) {
 	fs.files[virtualPath] = file{Path: realPath}
+	if dir := path.Dir(virtualPath); dir != "." {
+		if _, present := fs.files[dir]; !present {
+			fs.AddFile(dir, path.Dir(realPath))
+		}
+	}
 }
 
 // Stop unmounts and stops this filesystem.
@@ -161,6 +167,9 @@ func (fs *filesystem) getOrCreateFile(name string, perm os.FileMode) (file, *os.
 	}
 	// File not found means it's fine to create a new one.
 	filename := path.Join(fs.Temp, name)
+	if s := fs.ensureDir(filename); s != fuse.OK {
+		return file{}, nil, s
+	}
 	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, perm)
 	if err != nil {
 		return file{}, nil, fuse.ToStatus(err)
@@ -173,6 +182,16 @@ func (fs *filesystem) getOrCreateFile(name string, perm os.FileMode) (file, *os.
 	defer fs.mutex.Unlock()
 	fs.files[name] = f2
 	return f2, f, fuse.OK
+}
+
+func (fs *filesystem) ensureDir(filename string) fuse.Status {
+	if strings.Contains(filename, "/") {
+		// Ensure the parent directory exists
+		if err := os.MkdirAll(path.Dir(filename), core.DirPermissions); err != nil {
+			return fuse.ToStatus(err)
+		}
+	}
+	return fuse.OK
 }
 
 func (fs *filesystem) String() string {
@@ -382,7 +401,9 @@ func (fs *filesystem) Symlink(value string, linkName string, context *fuse.Conte
 		return s
 	}
 	dest := path.Join(fs.Temp, linkName)
-	if err := os.Symlink(f.Path, dest); err != nil {
+	if s := fs.ensureDir(dest); s != fuse.OK {
+		return s
+	} else if err := os.Symlink(f.Path, dest); err != nil {
 		return fuse.ToStatus(err)
 	}
 	fs.mutex.Lock()
