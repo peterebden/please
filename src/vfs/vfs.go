@@ -8,10 +8,14 @@ import (
 	"os"
 	"path"
 	"sync"
+	"syscall"
 
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
+	"gopkg.in/op/go-logging.v1"
 )
+
+var log = logging.MustGetLogger("vfs")
 
 // A file represents a single file within a filesystem.
 type file struct {
@@ -23,11 +27,61 @@ type file struct {
 }
 
 // A filesystem is the implementation of a fuse.FileSystem.
+// It multiplexes together three systems:
+//  - A readonly system of the target's sources & dependencies
+//  - A read/write system of the outputs during the build.
+//  - Optionally, the contents of the target's output if it's a zipfile.
+//    This allows reading from it as though it were a real filesystem.
 type filesystem struct {
 	Root  string
 	files map[string]file
 	// Guards access to the above
-	mutex sync.RWMutex
+	mutex  sync.RWMutex
+	server *fuse.Server
+}
+
+// A Filesystem is the public interface to working with the VFS layer.
+type Filesystem interface {
+	// AddFile adds a file into the system at a particular location.
+	// It isn't threadsafe and must only be called before the Filesystem is used.
+	AddFile(realPath, virtualPath string)
+	// Stop closes this filesystem once we're done with it.
+	Stop()
+}
+
+// New creates a new filesystem and starts it serving at the given path.
+func New(root string) (Filesystem, error) {
+	fs := &filesystem{
+		Root:  root,
+		files: map[string]file{},
+	}
+	// Enable ClientInodes so hard links work
+	pnfs := pathfs.NewPathNodeFs(finalFs, &pathfs.PathNodeFsOptions{ClientInodes: *enableLinks})
+	conn := nodefs.NewFileSystemConnector(pnfs.Root(), nodefs.NewOptions())
+	server, err := fuse.NewServer(conn.RawFS(), root, &fuse.MountOptions{
+		AllowOther:    false,
+		Name:          "plzfs",
+		FsName:        root,
+		DisableXAttrs: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	go server.Serve()
+	fs.server = server
+	return fs, nil
+}
+
+// AddFile adds a new file to this filesystem.
+func (fs *filesystem) AddFile(realPath, virtualPath string) {
+	fs.files[virtualPath] = file{Path: realPath}
+}
+
+// Stop unmounts and stops this filesystem.
+func (fs *filesystem) Stop() {
+	if err := fs.server.Unmount(); err != nil {
+		log.Warning("Failed to unmount VFS: %s", err)
+	}
 }
 
 func (fs *filesystem) getFile(name string) (file, fuse.Status) {
@@ -46,6 +100,22 @@ func (fs *filesystem) getWritableFile(name string) (file, fuse.Status) {
 		return f, s
 	}
 	return nil, fuse.EROFS
+}
+
+// ensureInfo takes a file and guarantees its Info member is populated.
+func (fs *filesystem) ensureInfo(f file, s fuse.Status) (file, fuse.Status) {
+	if s == fuse.OK && f.Info == nil {
+		info, err := os.Stat(f.Path)
+		if err != nil {
+			return f, fuse.ToStatus(err)
+		}
+		f.Info = info
+		// TODO(peterebden): Consider using *file instead, then we'd not need this update.
+		fs.mutex.Lock()
+		defer fs.mutex.Unlock()
+		fs.files[name] = f
+	}
+	return f, s
 }
 
 func (fs *filesystem) getOrCreateFile(name string, perm os.FileMode) (file, *os.File, fuse.Status) {
@@ -74,13 +144,13 @@ func (fs *filesystem) getOrCreateFile(name string, perm os.FileMode) (file, *os.
 }
 
 func (fs *filesystem) String() string {
-	return "vfs rooted at " + fs.Root
+	return "plzfs rooted at " + fs.Root
 }
 
 func (fs *filesystem) SetDebug(debug bool) {}
 
 func (fs *filesystem) GetAttr(name string, context *fuse.Context) (*fuse.Attr, fuse.Status) {
-	f, s := fs.getFile(name)
+	f, s := fs.ensureInfo(fs.getFile(name))
 	if s != fuse.OK {
 		return s
 	}
@@ -173,7 +243,7 @@ func (fs *filesystem) Rename(oldName string, newName string, context *fuse.Conte
 }
 
 func (fs *filesystem) Rmdir(name string, context *fuse.Context) fuse.Status {
-	f, s := fs.getWritableFile(name)
+	f, s := fs.ensureInfo(fs.getWritableFile(name))
 	if s != fuse.OK {
 		return s
 	} else if !f.Info.IsDir() {
@@ -188,7 +258,7 @@ func (fs *filesystem) Rmdir(name string, context *fuse.Context) fuse.Status {
 }
 
 func (fs *filesystem) Unlink(name string, context *fuse.Context) fuse.Status {
-	f, s := fs.getWritableFile(name)
+	f, s := fs.ensureInfo(fs.getWritableFile(name))
 	if s != fuse.OK {
 		return s
 	} else if f.Info.IsDir() {
@@ -261,7 +331,6 @@ func (fs *filesystem) OpenDir(name string, context *fuse.Context) ([]fuse.DirEnt
 	return f.Dir
 }
 
-// Symlinks.
 func (fs *filesystem) Symlink(value string, linkName string, context *fuse.Context) (code fuse.Status) {
 	f, s := fs.getFile(value)
 	if s != fuse.OK {
@@ -290,7 +359,20 @@ func (fs *filesystem) Symlink(value string, linkName string, context *fuse.Conte
 }
 
 func (fs *filesystem) Readlink(name string, context *fuse.Context) (string, fuse.Status) {
+	f, s := fs.getFile(name)
+	if s != fuse.OK {
+		return s
+	}
+	link, err := os.Readlink(f.Path)
+	return link, fuse.ToStatus(err)
 }
 
 func (fs *filesystem) StatFs(name string) *fuse.StatfsOut {
+	s := syscall.Statfs_t{}
+	if err := syscall.Statfs(fs.Root, &s); err != nil {
+		return nil
+	}
+	out := &fuse.StatfsOut{}
+	out.FromStatfsT(&s)
+	return out
 }
