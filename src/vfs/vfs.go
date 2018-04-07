@@ -5,6 +5,7 @@
 package vfs
 
 import (
+	"io/ioutil"
 	"os"
 	"path"
 	"sync"
@@ -23,14 +24,28 @@ var log = logging.MustGetLogger("vfs")
 type file struct {
 	Path     string // Real path on disk
 	Writable bool
-	// If it's a directory, this is the list of entries in it.
-	Dir []fuse.DirEntry
 }
 
 // Info returns an os.FileInfo structure for this file.
 func (f file) Info() (os.FileInfo, fuse.Status) {
 	info, err := os.Stat(f.Path)
 	return info, fuse.ToStatus(err)
+}
+
+// DirEntries returns the directory entries for this file.
+func (f file) DirEntries() ([]fuse.DirEntry, fuse.Status) {
+	// TODO(peterebden): ReadDir is presumably inefficient since it needs to stat() every file.
+	//                   Use something that calls through to getdents directly.
+	entries, err := ioutil.ReadDir(f.Path)
+	fuseEntries := make([]fuse.DirEntry, len(entries))
+	for i, entry := range entries {
+		fuseEntries[i] = fuse.DirEntry{
+			Mode: uint32(entry.Mode()),
+			Name: entry.Name(),
+			Ino:  entry.Sys().(*syscall.Stat_t).Ino,
+		}
+	}
+	return fuseEntries, fuse.ToStatus(err)
 }
 
 // A filesystem is the implementation of a fuse.FileSystem.
@@ -51,7 +66,7 @@ type filesystem struct {
 type Filesystem interface {
 	// AddFile adds a file into the system at a particular location.
 	// It isn't threadsafe and must only be called before the Filesystem is used.
-	AddFile(realPath, virtualPath string)
+	AddFile(virtualPath, realPath string)
 	// Stop closes this filesystem once we're done with it.
 	Stop()
 }
@@ -93,7 +108,7 @@ func Must(root string) Filesystem {
 }
 
 // AddFile adds a new file to this filesystem.
-func (fs *filesystem) AddFile(realPath, virtualPath string) {
+func (fs *filesystem) AddFile(virtualPath, realPath string) {
 	fs.files[virtualPath] = file{Path: realPath}
 }
 
@@ -104,11 +119,45 @@ func (fs *filesystem) Stop() {
 	}
 }
 
-func (fs *filesystem) getFile(name string) (file, fuse.Status) {
+func (fs *filesystem) getFileOnly(name string) (file, fuse.Status) {
 	fs.mutex.RLock()
 	defer fs.mutex.RUnlock()
 	if f, present := fs.files[name]; present {
 		return f, fuse.OK
+	}
+	return file{}, fuse.ENOENT
+}
+
+func (fs *filesystem) getFile(name string) (file, fuse.Status) {
+	if f, s := fs.getFileOnly(name); s != fuse.ENOENT {
+		return f, s
+	}
+	// Directories are lazily discovered. We might need to find its parent.
+	if dir := path.Dir(name); dir != "." {
+		if f, s := fs.getFile(dir); s == fuse.OK {
+			// Register all the files in this dir now.
+			entries, s := f.DirEntries()
+			if s != fuse.OK {
+				return file{}, s
+			}
+			retf := file{}
+			rets := fuse.ENOENT
+			fs.mutex.Lock()
+			defer fs.mutex.Unlock()
+			for _, entry := range entries {
+				fname := path.Join(dir, entry.Name)
+				f2 := file{
+					Path:     path.Join(f.Path, entry.Name),
+					Writable: f.Writable,
+				}
+				fs.files[fname] = f2
+				if fname == name {
+					retf = f2
+					rets = fuse.OK
+				}
+			}
+			return retf, rets
+		}
 	}
 	return file{}, fuse.ENOENT
 }
@@ -318,7 +367,10 @@ func (fs *filesystem) Create(name string, flags uint32, mode uint32, context *fu
 
 func (fs *filesystem) OpenDir(name string, context *fuse.Context) ([]fuse.DirEntry, fuse.Status) {
 	f, s := fs.getFile(name)
-	return f.Dir, s
+	if s != fuse.OK {
+		return nil, s
+	}
+	return f.DirEntries()
 }
 
 func (fs *filesystem) Symlink(value string, linkName string, context *fuse.Context) (code fuse.Status) {
