@@ -16,6 +16,8 @@ import (
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
 	"gopkg.in/op/go-logging.v1"
+
+	"core"
 )
 
 var log = logging.MustGetLogger("vfs")
@@ -112,6 +114,12 @@ func (fs *filesystem) AddFile(virtualPath, realPath string) {
 	fs.files[virtualPath] = file{Path: realPath}
 }
 
+// HasFile returns true if the filesystem contains the given file.
+func (fs *filesystem) HasFile(name string) bool {
+	_, s := fs.getFile(name)
+	return s == fuse.OK
+}
+
 // Stop unmounts and stops this filesystem.
 func (fs *filesystem) Stop() {
 	if err := fs.server.Unmount(); err != nil {
@@ -177,7 +185,7 @@ func (fs *filesystem) getOrCreateFile(name string, perm os.FileMode) (file, *os.
 	}
 	// File not found means it's fine to create a new one.
 	filename := path.Join(fs.Root, name)
-	f, err := os.OpenFile(filename, os.O_RDWR, perm)
+	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, perm)
 	if err != nil {
 		return file{}, nil, fuse.ToStatus(err)
 	}
@@ -272,11 +280,26 @@ func (fs *filesystem) Mknod(name string, mode uint32, dev uint32, context *fuse.
 }
 
 func (fs *filesystem) Rename(oldName string, newName string, context *fuse.Context) fuse.Status {
-	// TODO(peterebden): Need to handle getFile here and back it by a real move.
-	f, s := fs.getWritableFile(oldName)
+	// N.B. caller is allowed to move RO files (e.g. 'mv $SRC $OUT' is a common pattern).
+	//      Some care is needed about what it means for us though.
+	f, s := fs.getFile(oldName)
 	if s != fuse.OK {
 		return s
 	}
+	newPath := path.Join(fs.Root, newName)
+	if f.Writable {
+		// Simple move underneath
+		if err := os.Rename(f.Path, newPath); err != nil {
+			return fuse.ToStatus(err)
+		}
+	} else {
+		// Not a simple move. We need to copy the file (although erasing it from the map
+		// later will make it *look* like it's no longer in the old location).
+		if err := core.RecursiveCopyFile(f.Path, newPath, 0, true, true); err != nil {
+			return fuse.ToStatus(err)
+		}
+	}
+	f.Path = newPath
 	fs.mutex.Lock()
 	defer fs.mutex.Unlock()
 	fs.files[newName] = f

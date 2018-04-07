@@ -2,6 +2,7 @@ go_library(
     name = 'vfs',
     srcs = ['vfs.go'],
     deps = [
+        '//src/core',
         '//third_party/go:fuse',
         '//third_party/go:logging',
     ],
