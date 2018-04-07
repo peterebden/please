@@ -9,9 +9,11 @@ import (
 	"path"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
+	"github.com/hanwen/go-fuse/fuse/pathfs"
 	"gopkg.in/op/go-logging.v1"
 )
 
@@ -20,10 +22,15 @@ var log = logging.MustGetLogger("vfs")
 // A file represents a single file within a filesystem.
 type file struct {
 	Path     string // Real path on disk
-	Info     os.FileInfo
 	Writable bool
 	// If it's a directory, this is the list of entries in it.
-	Dir []fuse.DirInfo
+	Dir []fuse.DirEntry
+}
+
+// Info returns an os.FileInfo structure for this file.
+func (f file) Info() (os.FileInfo, fuse.Status) {
+	info, err := os.Stat(f.Path)
+	return info, fuse.ToStatus(err)
 }
 
 // A filesystem is the implementation of a fuse.FileSystem.
@@ -51,12 +58,16 @@ type Filesystem interface {
 
 // New creates a new filesystem and starts it serving at the given path.
 func New(root string) (Filesystem, error) {
+	// Ensure the directory exists
+	if err := os.MkdirAll(root, os.ModeDir|0775); err != nil {
+		return nil, err
+	}
 	fs := &filesystem{
 		Root:  root,
 		files: map[string]file{},
 	}
 	// Enable ClientInodes so hard links work
-	pnfs := pathfs.NewPathNodeFs(finalFs, &pathfs.PathNodeFsOptions{ClientInodes: *enableLinks})
+	pnfs := pathfs.NewPathNodeFs(fs, &pathfs.PathNodeFsOptions{ClientInodes: true})
 	conn := nodefs.NewFileSystemConnector(pnfs.Root(), nodefs.NewOptions())
 	server, err := fuse.NewServer(conn.RawFS(), root, &fuse.MountOptions{
 		AllowOther:    false,
@@ -70,6 +81,15 @@ func New(root string) (Filesystem, error) {
 	go server.Serve()
 	fs.server = server
 	return fs, nil
+}
+
+// Must is the same as New, but dies if there is any error.
+func Must(root string) Filesystem {
+	fs, err := New(root)
+	if err != nil {
+		log.Fatalf("Failed to mount VFS: %s", err)
+	}
+	return fs
 }
 
 // AddFile adds a new file to this filesystem.
@@ -88,9 +108,9 @@ func (fs *filesystem) getFile(name string) (file, fuse.Status) {
 	fs.mutex.RLock()
 	defer fs.mutex.RUnlock()
 	if f, present := fs.files[name]; present {
-		return &f, fuse.OK
+		return f, fuse.OK
 	}
-	return nil, fuse.ENOENT
+	return file{}, fuse.ENOENT
 }
 
 func (fs *filesystem) getWritableFile(name string) (file, fuse.Status) {
@@ -99,23 +119,7 @@ func (fs *filesystem) getWritableFile(name string) (file, fuse.Status) {
 	} else if f.Writable {
 		return f, s
 	}
-	return nil, fuse.EROFS
-}
-
-// ensureInfo takes a file and guarantees its Info member is populated.
-func (fs *filesystem) ensureInfo(f file, s fuse.Status) (file, fuse.Status) {
-	if s == fuse.OK && f.Info == nil {
-		info, err := os.Stat(f.Path)
-		if err != nil {
-			return f, fuse.ToStatus(err)
-		}
-		f.Info = info
-		// TODO(peterebden): Consider using *file instead, then we'd not need this update.
-		fs.mutex.Lock()
-		defer fs.mutex.Unlock()
-		fs.files[name] = f
-	}
-	return f, s
+	return file{}, fuse.EROFS
 }
 
 func (fs *filesystem) getOrCreateFile(name string, perm os.FileMode) (file, *os.File, fuse.Status) {
@@ -128,13 +132,8 @@ func (fs *filesystem) getOrCreateFile(name string, perm os.FileMode) (file, *os.
 	if err != nil {
 		return file{}, nil, fuse.ToStatus(err)
 	}
-	info, err := os.Stat(filename)
-	if err != nil {
-		return file{}, nil, fuse.ToStatus(err)
-	}
 	f2 := file{
 		Path:     filename,
-		Info:     info,
 		Writable: true,
 	}
 	fs.mutex.Lock()
@@ -150,11 +149,12 @@ func (fs *filesystem) String() string {
 func (fs *filesystem) SetDebug(debug bool) {}
 
 func (fs *filesystem) GetAttr(name string, context *fuse.Context) (*fuse.Attr, fuse.Status) {
-	f, s := fs.ensureInfo(fs.getFile(name))
+	f, s := fs.getFile(name)
 	if s != fuse.OK {
-		return s
+		return nil, s
 	}
-	return fuse.ToAttr(f.Info), fuse.OK
+	i, s := f.Info()
+	return fuse.ToAttr(i), s
 }
 
 func (fs *filesystem) Chmod(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
@@ -162,7 +162,7 @@ func (fs *filesystem) Chmod(name string, mode uint32, context *fuse.Context) (co
 	if s != fuse.OK {
 		return s
 	}
-	return fuse.ToStatus(os.Chmod(f.Path, mode))
+	return fuse.ToStatus(os.Chmod(f.Path, os.FileMode(mode)))
 }
 
 func (fs *filesystem) Chown(name string, uid uint32, gid uint32, context *fuse.Context) (code fuse.Status) {
@@ -170,7 +170,7 @@ func (fs *filesystem) Chown(name string, uid uint32, gid uint32, context *fuse.C
 	if s != fuse.OK {
 		return s
 	}
-	return fuse.ToStatus(os.Chown(f.Path, uid, gid))
+	return fuse.ToStatus(os.Chown(f.Path, int(uid), int(gid)))
 }
 
 func (fs *filesystem) Utimens(name string, Atime *time.Time, Mtime *time.Time, context *fuse.Context) (code fuse.Status) {
@@ -182,7 +182,7 @@ func (fs *filesystem) Truncate(name string, size uint64, context *fuse.Context) 
 	if s != fuse.OK {
 		return s
 	}
-	return fuse.ToStatus(os.Truncate(name, size))
+	return fuse.ToStatus(os.Truncate(f.Path, int64(size)))
 }
 
 func (fs *filesystem) Access(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
@@ -206,13 +206,7 @@ func (fs *filesystem) Mkdir(name string, mode uint32, context *fuse.Context) fus
 	fullPath := path.Join(fs.Root, name)
 	if _, s := fs.getFile(name); s == fuse.OK {
 		return fuse.EACCES
-	} else if err := os.Mkdir(fullPath); err != nil {
-		return fuse.ToStatus(err)
-	}
-	// TODO(peterebden): This is a bit wasteful; we could implement os.FileInfo ourselves
-	//                   and drop it in here instead.
-	info, err := os.Stat(fullPath)
-	if err != nil {
+	} else if err := os.Mkdir(fullPath, os.FileMode(mode)); err != nil {
 		return fuse.ToStatus(err)
 	}
 	fs.mutex.Lock()
@@ -220,7 +214,6 @@ func (fs *filesystem) Mkdir(name string, mode uint32, context *fuse.Context) fus
 	fs.files[name] = file{
 		Path:     fullPath,
 		Writable: true,
-		Info:     info,
 	}
 	return fuse.OK
 }
@@ -243,12 +236,14 @@ func (fs *filesystem) Rename(oldName string, newName string, context *fuse.Conte
 }
 
 func (fs *filesystem) Rmdir(name string, context *fuse.Context) fuse.Status {
-	f, s := fs.ensureInfo(fs.getWritableFile(name))
+	f, s := fs.getWritableFile(name)
 	if s != fuse.OK {
 		return s
-	} else if !f.Info.IsDir() {
+	} else if info, s := f.Info(); s != fuse.OK {
+		return s
+	} else if !info.IsDir() {
 		return fuse.EINVAL
-	} else if err := os.Rmdir(f.Path); err != nil {
+	} else if err := os.Remove(f.Path); err != nil {
 		return fuse.ToStatus(err)
 	}
 	fs.mutex.Lock()
@@ -258,10 +253,12 @@ func (fs *filesystem) Rmdir(name string, context *fuse.Context) fuse.Status {
 }
 
 func (fs *filesystem) Unlink(name string, context *fuse.Context) fuse.Status {
-	f, s := fs.ensureInfo(fs.getWritableFile(name))
+	f, s := fs.getWritableFile(name)
 	if s != fuse.OK {
 		return s
-	} else if f.Info.IsDir() {
+	} else if info, s := f.Info(); s != fuse.OK {
+		return s
+	} else if info.IsDir() {
 		return fuse.EINVAL
 	} else if err := os.Remove(f.Path); err != nil {
 		return fuse.ToStatus(err)
@@ -290,23 +287,21 @@ func (fs *filesystem) SetXAttr(name string, attr string, data []byte, flags int,
 }
 
 // Called after mount.
-func (fs *filesystem) OnMount(nodeFs *PathNodeFs) {
+func (fs *filesystem) OnMount(nodeFs *pathfs.PathNodeFs) {
 }
 
 func (fs *filesystem) OnUnmount() {
 }
 
 func (fs *filesystem) Open(name string, flags uint32, context *fuse.Context) (nodefs.File, fuse.Status) {
-	if flags & OS.WRONLY {
+	if flags&uint32(os.O_WRONLY|os.O_RDWR) != 0 {
 		return fs.Create(name, flags, 0644, context)
-	} else if flags & os.RDWR {
-		return nil, fuse.ENOSYS // Not sure if we will need to support this or not
 	}
 	f, s := fs.getFile(name)
 	if s != fuse.OK {
 		return nil, s
 	}
-	f2, err := os.OpenFile(f.Path, os.RDONLY, 0644)
+	f2, err := os.OpenFile(f.Path, os.O_RDONLY, 0644)
 	if err != nil {
 		return nil, fuse.ToStatus(err)
 	}
@@ -314,7 +309,7 @@ func (fs *filesystem) Open(name string, flags uint32, context *fuse.Context) (no
 }
 
 func (fs *filesystem) Create(name string, flags uint32, mode uint32, context *fuse.Context) (nodefs.File, fuse.Status) {
-	_, f2, s := fs.getOrCreateFile(name, mode)
+	_, f2, s := fs.getOrCreateFile(name, os.FileMode(mode))
 	if s != fuse.OK {
 		return nil, s
 	}
@@ -323,12 +318,7 @@ func (fs *filesystem) Create(name string, flags uint32, mode uint32, context *fu
 
 func (fs *filesystem) OpenDir(name string, context *fuse.Context) ([]fuse.DirEntry, fuse.Status) {
 	f, s := fs.getFile(name)
-	if s != fuse.OK {
-		return nil, s
-	} else if !f.Info.IsDir() {
-		return fuse.ENOTDIR
-	}
-	return f.Dir
+	return f.Dir, s
 }
 
 func (fs *filesystem) Symlink(value string, linkName string, context *fuse.Context) (code fuse.Status) {
@@ -344,15 +334,10 @@ func (fs *filesystem) Symlink(value string, linkName string, context *fuse.Conte
 	if err := os.Symlink(f.Path, dest); err != nil {
 		return fuse.ToStatus(err)
 	}
-	info, err := os.Stat(dest)
-	if err != nil {
-		return fuse.ToStatus(err)
-	}
 	fs.mutex.Lock()
 	defer fs.mutex.Unlock()
 	fs.files[linkName] = file{
 		Path:     dest,
-		Info:     info,
 		Writable: true,
 	}
 	return fuse.OK
@@ -361,7 +346,7 @@ func (fs *filesystem) Symlink(value string, linkName string, context *fuse.Conte
 func (fs *filesystem) Readlink(name string, context *fuse.Context) (string, fuse.Status) {
 	f, s := fs.getFile(name)
 	if s != fuse.OK {
-		return s
+		return "", s
 	}
 	link, err := os.Readlink(f.Path)
 	return link, fuse.ToStatus(err)

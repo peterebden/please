@@ -496,6 +496,8 @@ go_get(
     install = [
         'fuse',
         'splice',
+        'fuse/nodefs',
+        'fuse/pathfs',
     ],
     revision = 'a9ddcb8a4b609500fc59c89ccc9ee05f00a5fefd',
     deps = [':unix'],
