@@ -57,7 +57,10 @@ func (f file) DirEntries() ([]fuse.DirEntry, fuse.Status) {
 //  - Optionally, the contents of the target's output if it's a zipfile.
 //    This allows reading from it as though it were a real filesystem.
 type filesystem struct {
-	Root  string
+	// The root of the mounted filesystem
+	Root string
+	// The temp working dir that we write files into
+	Temp  string
 	files map[string]file
 	// Guards access to the above
 	mutex  sync.RWMutex
@@ -76,11 +79,15 @@ type Filesystem interface {
 // New creates a new filesystem and starts it serving at the given path.
 func New(root string) (Filesystem, error) {
 	// Ensure the directory exists
+	tmp := root + ".work"
 	if err := os.MkdirAll(root, os.ModeDir|0775); err != nil {
+		return nil, err
+	} else if err := os.MkdirAll(tmp, os.ModeDir|0775); err != nil {
 		return nil, err
 	}
 	fs := &filesystem{
 		Root:  root,
+		Temp:  tmp,
 		files: map[string]file{},
 	}
 	// Enable ClientInodes so hard links work
@@ -184,7 +191,7 @@ func (fs *filesystem) getOrCreateFile(name string, perm os.FileMode) (file, *os.
 		return f, nil, s
 	}
 	// File not found means it's fine to create a new one.
-	filename := path.Join(fs.Root, name)
+	filename := path.Join(fs.Temp, name)
 	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, perm)
 	if err != nil {
 		return file{}, nil, fuse.ToStatus(err)
@@ -260,7 +267,7 @@ func (fs *filesystem) Link(oldName string, newName string, context *fuse.Context
 }
 
 func (fs *filesystem) Mkdir(name string, mode uint32, context *fuse.Context) fuse.Status {
-	fullPath := path.Join(fs.Root, name)
+	fullPath := path.Join(fs.Temp, name)
 	if _, s := fs.getFile(name); s == fuse.OK {
 		return fuse.EACCES
 	} else if err := os.Mkdir(fullPath, os.FileMode(mode)); err != nil {
@@ -286,7 +293,7 @@ func (fs *filesystem) Rename(oldName string, newName string, context *fuse.Conte
 	if s != fuse.OK {
 		return s
 	}
-	newPath := path.Join(fs.Root, newName)
+	newPath := path.Join(fs.Temp, newName)
 	if f.Writable {
 		// Simple move underneath
 		if err := os.Rename(f.Path, newPath); err != nil {
@@ -405,7 +412,7 @@ func (fs *filesystem) Symlink(value string, linkName string, context *fuse.Conte
 	} else if s != fuse.ENOENT {
 		return s
 	}
-	dest := path.Join(fs.Root, linkName)
+	dest := path.Join(fs.Temp, linkName)
 	if err := os.Symlink(f.Path, dest); err != nil {
 		return fuse.ToStatus(err)
 	}
@@ -429,7 +436,7 @@ func (fs *filesystem) Readlink(name string, context *fuse.Context) (string, fuse
 
 func (fs *filesystem) StatFs(name string) *fuse.StatfsOut {
 	s := syscall.Statfs_t{}
-	if err := syscall.Statfs(fs.Root, &s); err != nil {
+	if err := syscall.Statfs(fs.Temp, &s); err != nil {
 		return nil
 	}
 	out := &fuse.StatfsOut{}
