@@ -270,6 +270,26 @@ func TestSymlinkAndReadlink(t *testing.T) {
 	assert.Equal(t, "src/vfs/test_data/dir1/test.txt", link)
 }
 
+func TestExtract(t *testing.T) {
+	fs := Must("vfs.TestExtract").(*filesystem)
+	defer fs.Stop()
+	addFile(t, fs, "test.txt")
+	assert.False(t, exists("extract.txt"))
+	err := fs.Extract("test.txt", "extract.txt")
+	assert.NoError(t, err)
+	assert.True(t, exists("extract.txt"))
+}
+
+func TestExtractSuggestions(t *testing.T) {
+	fs := Must("vfs.TestExtractSuggestions").(*filesystem)
+	defer fs.Stop()
+	addFile(t, fs, "test.txt")
+	addFile(t, fs, "wibble")
+	err := fs.Extract("test2.txt", "suggest.txt")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Maybe you meant test.txt")
+}
+
 // Test helper to add an arbitrary file to the filesystem.
 func addFile(t *testing.T, fs *filesystem, name string) string {
 	name = path.Join(fs.Root, name)

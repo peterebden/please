@@ -5,6 +5,7 @@
 package vfs
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"gopkg.in/op/go-logging.v1"
 
 	"core"
+	"utils"
 )
 
 var log = logging.MustGetLogger("vfs")
@@ -46,6 +48,9 @@ type Filesystem interface {
 	AddFile(virtualPath, realPath string)
 	// Stop closes this filesystem once we're done with it.
 	Stop()
+	// Extract retrieves a file from the virtual filesystem to elsewhere
+	// on the real filesystem.
+	Extract(virtualPath, realPath string) error
 }
 
 // New creates a new filesystem and starts it serving at the given path.
@@ -107,6 +112,34 @@ func (fs *filesystem) Stop() {
 	} else if err := os.Remove(fs.Root); err != nil {
 		log.Warning("Failed to remove work dir: %s", err)
 	}
+}
+
+// Extract retrieves a file back out to the real filesystem.
+func (fs *filesystem) Extract(virtualPath, realPath string) error {
+	f, s := fs.getFile(virtualPath)
+	if s == fuse.ENOENT {
+		// This is by far the most likely case. Try to offer some useful suggestion about where they went wrong.
+		// We only consider writable files at this point, although they're technically allowed to consume either;
+		// again, the most common case by far is that they wanted one of the writable ones.
+		files := []string{}
+		fs.mutex.RLock()
+		defer fs.mutex.RUnlock()
+		for name, file := range fs.files {
+			if file.Writable {
+				files = append(files, name)
+			}
+		}
+		return fmt.Errorf("Output %s does not exist. %s", virtualPath, utils.PrettyPrintSuggestion(virtualPath, files, 5))
+	} else if s != fuse.OK {
+		return fmt.Errorf("%s", s)
+	}
+	if err := core.RecursiveCopyFile(f.Path, realPath, 0, true, true); err != nil {
+		return err
+	}
+	fs.mutex.Lock()
+	defer fs.mutex.Unlock()
+	delete(fs.files, virtualPath)
+	return nil
 }
 
 func (fs *filesystem) getFileOnly(name string) (file, fuse.Status) {

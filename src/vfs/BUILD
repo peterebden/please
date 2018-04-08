@@ -6,6 +6,7 @@ go_library(
     ],
     deps = [
         '//src/core',
+        '//src/utils',
         '//third_party/go:fuse',
         '//third_party/go:logging',
     ],
