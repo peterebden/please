@@ -16,14 +16,14 @@ import (
 var context = &fuse.Context{}
 
 func TestCleanup(t *testing.T) {
-	fs := Must("vfs.TestCleanup").(*filesystem)
+	fs := mustVFS("vfs.TestCleanup")
 	addFile(t, fs, "test.txt")
 	fs.Stop()
 	assert.False(t, exists(fs.Temp))
 }
 
 func TestGetAttrRO(t *testing.T) {
-	fs := Must("vfs.TestGetAttrRO").(*filesystem)
+	fs := mustVFS("vfs.TestGetAttrRO")
 	defer fs.Stop()
 	fs.AddFile("dir1", "src/vfs/test_data/dir1")
 	attr, s := fs.GetAttr("dir1/test.txt", context)
@@ -32,7 +32,7 @@ func TestGetAttrRO(t *testing.T) {
 }
 
 func TestGetAttrRW(t *testing.T) {
-	fs := Must("vfs.TestGetAttrRW").(*filesystem)
+	fs := mustVFS("vfs.TestGetAttrRW")
 	defer fs.Stop()
 	addFile(t, fs, "test.txt")
 	attr, s := fs.GetAttr("test.txt", context)
@@ -41,7 +41,7 @@ func TestGetAttrRW(t *testing.T) {
 }
 
 func TestChmodRO(t *testing.T) {
-	fs := Must("vfs.TestChmodRO").(*filesystem)
+	fs := mustVFS("vfs.TestChmodRO")
 	defer fs.Stop()
 	fs.AddFile("dir1", "src/vfs/test_data/dir1")
 	s := fs.Chmod("dir1/test.txt", 0644, context)
@@ -49,7 +49,7 @@ func TestChmodRO(t *testing.T) {
 }
 
 func TestChmodRW(t *testing.T) {
-	fs := Must("vfs.TestChmodRW").(*filesystem)
+	fs := mustVFS("vfs.TestChmodRW")
 	defer fs.Stop()
 	filename := addFile(t, fs, "test.txt")
 	s := fs.Chmod("test.txt", 0755, context)
@@ -60,7 +60,7 @@ func TestChmodRW(t *testing.T) {
 }
 
 func TestChownRO(t *testing.T) {
-	fs := Must("vfs.TestChownRO").(*filesystem)
+	fs := mustVFS("vfs.TestChownRO")
 	defer fs.Stop()
 	fs.AddFile("dir1", "src/vfs/test_data/dir1")
 	s := fs.Chown("dir1/test.txt", 1, 1, context)
@@ -70,7 +70,7 @@ func TestChownRO(t *testing.T) {
 // We don't do ChownRW because the underlying OS will likely prohibit the operation.
 
 func TestTruncateRO(t *testing.T) {
-	fs := Must("vfs.TestTruncateRO").(*filesystem)
+	fs := mustVFS("vfs.TestTruncateRO")
 	defer fs.Stop()
 	fs.AddFile("dir1", "src/vfs/test_data/dir1")
 	s := fs.Truncate("dir1/test.txt", 1, context)
@@ -78,7 +78,7 @@ func TestTruncateRO(t *testing.T) {
 }
 
 func TestTruncateRW(t *testing.T) {
-	fs := Must("vfs.TestTruncateRW").(*filesystem)
+	fs := mustVFS("vfs.TestTruncateRW")
 	defer fs.Stop()
 	filename := addFile(t, fs, "test.txt")
 	s := fs.Truncate("test.txt", 1, context)
@@ -89,7 +89,7 @@ func TestTruncateRW(t *testing.T) {
 }
 
 func TestLink(t *testing.T) {
-	fs := Must("vfs.TestLink").(*filesystem)
+	fs := mustVFS("vfs.TestLink")
 	defer fs.Stop()
 	fs.AddFile("dir1", "src/vfs/test_data/dir1")
 	s := fs.Link("dir1/test.txt", "dir1/test2.txt", context)
@@ -98,7 +98,7 @@ func TestLink(t *testing.T) {
 }
 
 func TestMkdir(t *testing.T) {
-	fs := Must("vfs.TestMkdir").(*filesystem)
+	fs := mustVFS("vfs.TestMkdir")
 	defer fs.Stop()
 	s := fs.Mkdir("dir2", uint32(core.DirPermissions), context)
 	assert.Equal(t, fuse.OK, s)
@@ -108,7 +108,7 @@ func TestMkdir(t *testing.T) {
 }
 
 func TestRename(t *testing.T) {
-	fs := Must("vfs.TestRename").(*filesystem)
+	fs := mustVFS("vfs.TestRename")
 	defer fs.Stop()
 	fs.AddFile("dir1", "src/vfs/test_data/dir1")
 	s := fs.Rename("dir1", "dir2", context)
@@ -121,7 +121,7 @@ func TestRename(t *testing.T) {
 }
 
 func TestRmdirRO(t *testing.T) {
-	fs := Must("vfs.TestRmdirRO").(*filesystem)
+	fs := mustVFS("vfs.TestRmdirRO")
 	defer fs.Stop()
 	fs.AddFile("dir1", "src/vfs/test_data/dir1")
 	s := fs.Rmdir("dir1", context)
@@ -129,7 +129,7 @@ func TestRmdirRO(t *testing.T) {
 }
 
 func TestRmdirRW(t *testing.T) {
-	fs := Must("vfs.TestRmdirRW").(*filesystem)
+	fs := mustVFS("vfs.TestRmdirRW")
 	defer fs.Stop()
 	dirname := path.Join(fs.Root, "test")
 	err := os.Mkdir(dirname, core.DirPermissions)
@@ -139,7 +139,7 @@ func TestRmdirRW(t *testing.T) {
 }
 
 func TestUnlinkRO(t *testing.T) {
-	fs := Must("vfs.TestUnlinkRO").(*filesystem)
+	fs := mustVFS("vfs.TestUnlinkRO")
 	defer fs.Stop()
 	fs.AddFile("dir1/test.txt", "src/vfs/test_data/dir1/test.txt")
 	s := fs.Unlink("dir1/test.txt", context)
@@ -147,7 +147,7 @@ func TestUnlinkRO(t *testing.T) {
 }
 
 func TestUnlinkRW(t *testing.T) {
-	fs := Must("vfs.TestUnlinkRW").(*filesystem)
+	fs := mustVFS("vfs.TestUnlinkRW")
 	defer fs.Stop()
 	filename := addFile(t, fs, "test.txt")
 	s := fs.Unlink("test.txt", context)
@@ -157,7 +157,7 @@ func TestUnlinkRW(t *testing.T) {
 }
 
 func TestOpenRORDONLY(t *testing.T) {
-	fs := Must("vfs.TestOpenRORDONLY").(*filesystem)
+	fs := mustVFS("vfs.TestOpenRORDONLY")
 	defer fs.Stop()
 	fs.AddFile("dir1/test.txt", "src/vfs/test_data/dir1/test.txt")
 	f, s := fs.Open("dir1/test.txt", uint32(os.O_RDONLY), context)
@@ -172,7 +172,7 @@ func TestOpenRORDONLY(t *testing.T) {
 }
 
 func TestOpenROWRONLY(t *testing.T) {
-	fs := Must("vfs.TestOpenROWRONLY").(*filesystem)
+	fs := mustVFS("vfs.TestOpenROWRONLY")
 	defer fs.Stop()
 	fs.AddFile("dir1/test.txt", "src/vfs/test_data/dir1/test.txt")
 	_, s := fs.Open("dir1/test.txt", uint32(os.O_WRONLY), context)
@@ -180,7 +180,7 @@ func TestOpenROWRONLY(t *testing.T) {
 }
 
 func TestOpenRWRDONLY(t *testing.T) {
-	fs := Must("vfs.TestOpenRWRDONLY").(*filesystem)
+	fs := mustVFS("vfs.TestOpenRWRDONLY")
 	defer fs.Stop()
 	addFile(t, fs, "test.txt")
 	f, s := fs.Open("test.txt", uint32(os.O_RDONLY), context)
@@ -195,7 +195,7 @@ func TestOpenRWRDONLY(t *testing.T) {
 }
 
 func TestCreate(t *testing.T) {
-	fs := Must("vfs.TestCreate").(*filesystem)
+	fs := mustVFS("vfs.TestCreate")
 	defer fs.Stop()
 	f, s := fs.Create("test.txt", uint32(os.O_WRONLY), 0644, context)
 	assert.Equal(t, fuse.OK, s)
@@ -205,7 +205,7 @@ func TestCreate(t *testing.T) {
 }
 
 func TestOpenDirRO(t *testing.T) {
-	fs := Must("vfs.TestOpenDirRO").(*filesystem)
+	fs := mustVFS("vfs.TestOpenDirRO")
 	defer fs.Stop()
 	fs.AddFile("dir1/test.txt", "src/vfs/test_data/dir1/test.txt")
 	entries, s := fs.OpenDir("dir1", context)
@@ -215,7 +215,7 @@ func TestOpenDirRO(t *testing.T) {
 }
 
 func TestOpenDirRW(t *testing.T) {
-	fs := Must("vfs.TestOpenDirRW").(*filesystem)
+	fs := mustVFS("vfs.TestOpenDirRW")
 	defer fs.Stop()
 	dirname := path.Join(fs.Root, "test")
 	err := os.Mkdir(dirname, core.DirPermissions)
@@ -229,7 +229,7 @@ func TestOpenDirRW(t *testing.T) {
 
 func TestOpenDirBoth(t *testing.T) {
 	t.Skip("Doesn't work correctly yet")
-	fs := Must("vfs.TestOpenDirBoth").(*filesystem)
+	fs := mustVFS("vfs.TestOpenDirBoth")
 	defer fs.Stop()
 	fs.AddFile("test/test.txt", "src/vfs/test_data/dir1/test.txt")
 	dirname := path.Join(fs.Root, "test")
@@ -242,7 +242,7 @@ func TestOpenDirBoth(t *testing.T) {
 }
 
 func TestSymlink(t *testing.T) {
-	fs := Must("vfs.TestSymlink").(*filesystem)
+	fs := mustVFS("vfs.TestSymlink")
 	defer fs.Stop()
 	fs.AddFile("dir1/test.txt", "src/vfs/test_data/dir1/test.txt")
 	s := fs.Symlink("dir1/test.txt", "dir1/test2.txt", context)
@@ -250,7 +250,7 @@ func TestSymlink(t *testing.T) {
 }
 
 func TestReadlink(t *testing.T) {
-	fs := Must("vfs.TestReadlink").(*filesystem)
+	fs := mustVFS("vfs.TestReadlink")
 	defer fs.Stop()
 	fs.AddFile("dir1/test.txt", "src/vfs/test_data/dir1/test.txt")
 	fs.AddFile("dirlink", "src/vfs/test_data/dirlink")
@@ -260,7 +260,7 @@ func TestReadlink(t *testing.T) {
 }
 
 func TestSymlinkAndReadlink(t *testing.T) {
-	fs := Must("vfs.TestSymlinkAndReadlink").(*filesystem)
+	fs := mustVFS("vfs.TestSymlinkAndReadlink")
 	defer fs.Stop()
 	fs.AddFile("dir1/test.txt", "src/vfs/test_data/dir1/test.txt")
 	s := fs.Symlink("dir1/test.txt", "dir1/test2.txt", context)
@@ -271,7 +271,7 @@ func TestSymlinkAndReadlink(t *testing.T) {
 }
 
 func TestExtract(t *testing.T) {
-	fs := Must("vfs.TestExtract").(*filesystem)
+	fs := mustVFS("vfs.TestExtract")
 	defer fs.Stop()
 	addFile(t, fs, "test.txt")
 	assert.False(t, exists("extract.txt"))
@@ -281,7 +281,7 @@ func TestExtract(t *testing.T) {
 }
 
 func TestExtractSuggestions(t *testing.T) {
-	fs := Must("vfs.TestExtractSuggestions").(*filesystem)
+	fs := mustVFS("vfs.TestExtractSuggestions")
 	defer fs.Stop()
 	addFile(t, fs, "test.txt")
 	addFile(t, fs, "wibble")
@@ -302,4 +302,13 @@ func addFile(t *testing.T, fs *filesystem, name string) string {
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// mustVFS is the same as newVFS, but dies if there is any error.
+func mustVFS(root string) *filesystem {
+	fs, err := newVFS(root)
+	if err != nil {
+		log.Fatalf("Failed to mount VFS: %s", err)
+	}
+	return fs
 }

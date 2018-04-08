@@ -41,25 +41,13 @@ type filesystem struct {
 	server *fuse.Server
 }
 
-// A Filesystem is the public interface to working with the VFS layer.
-type Filesystem interface {
-	// AddFile adds a file into the system at a particular location.
-	// It isn't threadsafe and must only be called before the Filesystem is used.
-	AddFile(virtualPath, realPath string)
-	// Stop closes this filesystem once we're done with it.
-	Stop()
-	// Extract retrieves a file from the virtual filesystem to elsewhere
-	// on the real filesystem.
-	Extract(virtualPath, realPath string) error
-}
-
-// New creates a new filesystem and starts it serving at the given path.
-func New(root string) (Filesystem, error) {
+// newVFS creates a new filesystem and starts it serving at the given path.
+func newVFS(root string) (*filesystem, error) {
 	// Ensure the directory exists
 	tmp := root + ".work"
-	if err := os.MkdirAll(root, os.ModeDir|0775); err != nil {
+	if err := os.MkdirAll(root, core.DirPermissions); err != nil {
 		return nil, err
-	} else if err := os.MkdirAll(tmp, os.ModeDir|0775); err != nil {
+	} else if err := os.MkdirAll(tmp, core.DirPermissions); err != nil {
 		return nil, err
 	}
 	fs := &filesystem{
@@ -84,23 +72,15 @@ func New(root string) (Filesystem, error) {
 	return fs, nil
 }
 
-// Must is the same as New, but dies if there is any error.
-func Must(root string) Filesystem {
-	fs, err := New(root)
-	if err != nil {
-		log.Fatalf("Failed to mount VFS: %s", err)
-	}
-	return fs
-}
-
 // AddFile adds a new file to this filesystem.
-func (fs *filesystem) AddFile(virtualPath, realPath string) {
+func (fs *filesystem) AddFile(virtualPath, realPath string) error {
 	fs.files[virtualPath] = file{Path: realPath}
 	if dir := path.Dir(virtualPath); dir != "." {
 		if _, present := fs.files[dir]; !present {
 			fs.AddFile(dir, path.Dir(realPath))
 		}
 	}
+	return nil
 }
 
 // Stop unmounts and stops this filesystem.

@@ -2,6 +2,7 @@ go_library(
     name = 'vfs',
     srcs = [
         'file.go',
+        'fs.go',
         'vfs.go',
     ],
     deps = [
