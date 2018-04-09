@@ -19,6 +19,8 @@ type Filesystem interface {
 	// AddFile adds a file into the system at a particular location.
 	// It isn't threadsafe and must only be called before the Filesystem is used.
 	AddFile(virtualPath, realPath string) error
+	// Mkdir makes a new directory for output.
+	Mkdir(virtualPath string) error
 	// Stop closes this filesystem once we're done with it.
 	Stop()
 	// Extract retrieves a file from the virtual filesystem to elsewhere
@@ -66,6 +68,10 @@ func (fs *localFS) AddFile(virtualPath, realPath string) error {
 		return err
 	}
 	return core.RecursiveCopyFile(realPath, virtualPath, 0, true, true)
+}
+
+func (fs *localFS) Mkdir(virtualPath string) error {
+	return os.MkdirAll(path.Join(fs.Root, virtualPath), core.DirPermissions)
 }
 
 func (fs *localFS) Stop() {

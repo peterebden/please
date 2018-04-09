@@ -83,6 +83,11 @@ func (fs *filesystem) AddFile(virtualPath, realPath string) error {
 	return nil
 }
 
+// Mkdir makes a new directory within this filesystem.
+func (fs *filesystem) Mkdir(virtualPath string) error {
+	return nil // Not necessary, output directories are created as needed.
+}
+
 // Stop unmounts and stops this filesystem.
 func (fs *filesystem) Stop() {
 	if err := fs.server.Unmount(); err != nil {

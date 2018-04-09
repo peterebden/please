@@ -6,6 +6,7 @@ go_library(
         '//src/cache',
         '//src/core',
         '//src/metrics',
+        '//src/vfs',
         '//third_party/go:go-multierror',
         '//third_party/go:logging',
         '//third_party/go:protobuf',

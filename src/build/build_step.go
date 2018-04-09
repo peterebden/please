@@ -22,6 +22,7 @@ import (
 
 	"core"
 	"metrics"
+	"vfs"
 )
 
 var log = logging.MustGetLogger("build")
@@ -142,8 +143,12 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		log.Debug("Building %s...", target.Label)
 		return buildFilegroup(tid, state, target)
 	}
+	fs, err := vfs.New(state.Config.Build.VFS, target.TmpDir())
+	if err != nil {
+		return err
+	}
 	oldOutputHash, outputHashErr := OutputHash(target)
-	if err := prepareDirectories(target); err != nil {
+	if err := prepareDirectories(fs, target); err != nil {
 		return fmt.Errorf("Error preparing directories for %s: %s", target.Label, err)
 	}
 
@@ -195,7 +200,7 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 	if err := target.CheckSecrets(); err != nil {
 		return err
 	}
-	if err := prepareSources(state.Graph, target); err != nil {
+	if err := prepareSources(fs, state.Graph, target); err != nil {
 		return fmt.Errorf("Error preparing sources for %s: %s", target.Label, err)
 	}
 
@@ -213,7 +218,7 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 	}
 	checkLicences(state, target)
 	state.LogBuildResult(tid, target.Label, core.TargetBuilding, "Collecting outputs...")
-	extraOuts, outputsChanged, err := moveOutputs(state, target)
+	extraOuts, outputsChanged, err := moveOutputs(fs, state, target)
 	if err != nil {
 		return fmt.Errorf("Error moving outputs for target %s: %s", target.Label, err)
 	}
@@ -273,7 +278,7 @@ func runBuildCommand(state *core.BuildState, target *core.BuildTarget, command s
 }
 
 // Prepares the output directories for a target
-func prepareDirectories(target *core.BuildTarget) error {
+func prepareDirectories(fs vfs.Filesystem, target *core.BuildTarget) error {
 	if err := prepareDirectory(target.TmpDir(), true); err != nil {
 		return err
 	}
@@ -284,11 +289,8 @@ func prepareDirectories(target *core.BuildTarget) error {
 	// declared it'll create files in.
 	for _, out := range target.Outputs() {
 		if dir := path.Dir(out); dir != "." {
-			outPath := path.Join(target.TmpDir(), dir)
-			if !core.PathExists(outPath) {
-				if err := os.MkdirAll(outPath, core.DirPermissions); err != nil {
-					return err
-				}
+			if err := fs.Mkdir(dir); err != nil {
+				return err
 			}
 		}
 	}
@@ -308,28 +310,28 @@ func prepareDirectory(directory string, remove bool) error {
 	return err
 }
 
-// Symlinks the source files of this rule into its temp directory.
-func prepareSources(graph *core.BuildGraph, target *core.BuildTarget) error {
+// Links the source files of this rule into its temp directory.
+func prepareSources(fs *vfs.Filesystem, graph *core.BuildGraph, target *core.BuildTarget) error {
 	for source := range core.IterSources(graph, target) {
-		if err := core.PrepareSourcePair(source); err != nil {
+		if err := fs.AddFile(source.Tmp, source.Src); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func moveOutputs(state *core.BuildState, target *core.BuildTarget) ([]string, bool, error) {
+func moveOutputs(fs vfs.Filesystem, state *core.BuildState, target *core.BuildTarget) ([]string, bool, error) {
 	// Before we write any outputs, we must remove the old hash file to avoid it being
 	// left in an inconsistent state.
 	if err := os.RemoveAll(ruleHashFileName(target)); err != nil {
 		return nil, true, err
 	}
 	changed := false
-	tmpDir := target.TmpDir()
 	outDir := target.OutDir()
 	for _, output := range target.Outputs() {
-		tmpOutput := path.Join(tmpDir, output)
 		realOutput := path.Join(outDir, output)
+		if err := fs.Extract(output, realOutput)
+
 		if !core.PathExists(tmpOutput) {
 			return nil, true, fmt.Errorf("Rule %s failed to create output %s", target.Label, tmpOutput)
 		}
