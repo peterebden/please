@@ -23,10 +23,12 @@ type interpreter struct {
 func newInterpreter(state *core.BuildState, p *Parser) *interpreter {
 	s := &scope{
 		state:  state,
+		config: state.Config,
 		locals: map[string]pyObject{},
 	}
 	bs := &scope{
 		state:  state,
+		config: state.Config,
 		locals: map[string]pyObject{},
 	}
 	i := &interpreter{
@@ -156,6 +158,7 @@ func (i *interpreter) optimiseExpressions(v reflect.Value) {
 type scope struct {
 	interpreter *interpreter
 	state       *core.BuildState
+	config      *core.Configuration
 	pkg         *core.Package
 	parent      *scope
 	locals      pyDict
@@ -170,14 +173,19 @@ func (s *scope) NewScope() *scope {
 
 // NewPackagedScope creates a new child scope of this one pointing to the given package.
 func (s *scope) NewPackagedScope(pkg *core.Package) *scope {
-	return &scope{
+	s2 := &scope{
 		interpreter: s.interpreter,
 		state:       s.state,
+		config:      s.config,
 		pkg:         pkg,
 		parent:      s,
 		locals:      pyDict{},
 		Callback:    s.Callback,
 	}
+	if pkg != nil && pkg.Subrepo != nil && pkg.Subrepo.Config != nil {
+		s2.config = pkg.Subrepo.Config
+	}
+	return s2
 }
 
 // Error emits an error that stops further interpretation.
