@@ -225,7 +225,7 @@ func addDependencies(s *scope, name string, obj pyObject, target *core.BuildTarg
 			// *sigh*... Bazel seems to allow an implicit : on the start of dependencies
 			str = ":" + str
 		}
-		label := core.ParseBuildLabel(str, s.pkg.Name)
+		label := core.ParseBuildLabel(str, s.pkg.Name).ForPackage(s.pkg)
 		target.AddMaybeExportedDependency(label, exported, false)
 	})
 }
@@ -253,7 +253,7 @@ func addProvides(s *scope, name string, obj pyObject, t *core.BuildTarget) {
 		for k, v := range d {
 			str, ok := v.(pyString)
 			s.Assert(ok, "%s keys must be strings", name)
-			t.AddProvide(k, core.ParseBuildLabel(string(str), s.pkg.Name))
+			t.AddProvide(k, core.ParseBuildLabel(string(str), s.pkg.Name).ForPackage(s.pkg))
 		}
 	}
 }
@@ -278,7 +278,7 @@ func parseVisibility(s *scope, vis string) core.BuildLabel {
 	if vis == "PUBLIC" || (s.state.Config.Bazel.Compatibility && vis == "//visibility:public") {
 		return core.WholeGraph[0]
 	}
-	l := core.ParseBuildLabel(vis, s.pkg.Name)
+	l := core.ParseBuildLabel(vis, s.pkg.Name).ForPackage(s.pkg)
 	if s.state.Config.Bazel.Compatibility {
 		// Bazel has a couple of special aliases for this stuff.
 		if l.Name == "__pkg__" {
@@ -303,7 +303,7 @@ func parseBuildInput(s *scope, in pyObject, name string, systemAllowed, tool boo
 // Identifies if the file is owned by this package and returns an error if not.
 func parseSource(s *scope, src string, systemAllowed, tool bool) core.BuildInput {
 	if core.LooksLikeABuildLabel(src) {
-		return core.MustParseNamedOutputLabel(src, s.pkg.Name)
+		return core.MustParseNamedOutputLabel(src, s.pkg)
 	}
 	s.Assert(src != "", "Empty source path")
 	s.Assert(!strings.Contains(src, "../"), "%s is an invalid path; build target paths can't contain ../", src)

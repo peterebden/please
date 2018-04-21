@@ -7,7 +7,8 @@ import (
 )
 
 func TestParseNamedOutputLabel(t *testing.T) {
-	input, err := TryParseNamedOutputLabel("//src/core:target1|test", "")
+	pkg := NewPackage("")
+	input, err := TryParseNamedOutputLabel("//src/core:target1|test", pkg)
 	assert.NoError(t, err)
 	label, ok := input.(NamedOutputLabel)
 	assert.True(t, ok)
@@ -17,7 +18,8 @@ func TestParseNamedOutputLabel(t *testing.T) {
 }
 
 func TestParseNamedOutputLabelRelative(t *testing.T) {
-	input, err := TryParseNamedOutputLabel(":target1|test", "src/core")
+	pkg := NewPackage("src/core")
+	input, err := TryParseNamedOutputLabel(":target1|test", pkg)
 	assert.NoError(t, err)
 	label, ok := input.(NamedOutputLabel)
 	assert.True(t, ok)
@@ -27,7 +29,8 @@ func TestParseNamedOutputLabelRelative(t *testing.T) {
 }
 
 func TestParseNamedOutputLabelNoOutput(t *testing.T) {
-	input, err := TryParseNamedOutputLabel("//src/core:target1", "")
+	pkg := NewPackage("")
+	input, err := TryParseNamedOutputLabel("//src/core:target1", pkg)
 	assert.NoError(t, err)
 	_, ok := input.(NamedOutputLabel)
 	assert.False(t, ok)
@@ -38,6 +41,7 @@ func TestParseNamedOutputLabelNoOutput(t *testing.T) {
 }
 
 func TestParseNamedOutputLabelEmptyOutput(t *testing.T) {
-	_, err := TryParseNamedOutputLabel("//src/core:target1|", "")
+	pkg := NewPackage("")
+	_, err := TryParseNamedOutputLabel("//src/core:target1|", pkg)
 	assert.Error(t, err)
 }

@@ -219,17 +219,18 @@ func (label NamedOutputLabel) String() string {
 // TryParseNamedOutputLabel attempts to parse a build output label. It's allowed to just be
 // a normal build label as well.
 // The syntax is an extension of normal build labels: //package:target|output
-func TryParseNamedOutputLabel(target, currentPath string) (BuildInput, error) {
+func TryParseNamedOutputLabel(target string, pkg *Package) (BuildInput, error) {
 	if index := strings.IndexRune(target, '|'); index != -1 && index != len(target)-1 {
-		label, err := TryParseBuildLabel(target[:index], currentPath)
-		return NamedOutputLabel{BuildLabel: label, Output: target[index+1:]}, err
+		label, err := TryParseBuildLabel(target[:index], pkg.Name)
+		return NamedOutputLabel{BuildLabel: label.ForPackage(pkg), Output: target[index+1:]}, err
 	}
-	return TryParseBuildLabel(target, currentPath)
+	label, err := TryParseBuildLabel(target, pkg.Name)
+	return label.ForPackage(pkg), err
 }
 
 // MustParseNamedOutputLabel is like TryParseNamedOutputLabel but panics on errors.
-func MustParseNamedOutputLabel(target, currentPath string) BuildInput {
-	label, err := TryParseNamedOutputLabel(target, currentPath)
+func MustParseNamedOutputLabel(target string, pkg *Package) BuildInput {
+	label, err := TryParseNamedOutputLabel(target, pkg)
 	if err != nil {
 		panic(err)
 	}
