@@ -146,6 +146,7 @@ func DefaultConfiguration() *Configuration {
 	config.Please.SelfUpdate = true
 	config.Please.DownloadLocation = "https://get.please.build"
 	config.Please.NumOldVersions = 10
+	config.Build.Arch = OsArch
 	config.Build.Lang = "en_GB.UTF-8" // Not the language of the UI, the language passed to rules.
 	config.Build.Nonce = "1402"       // Arbitrary nonce to invalidate config when needed.
 	config.Build.Timeout = cli.Duration(10 * time.Minute)
@@ -250,6 +251,7 @@ type Configuration struct {
 		Port int `help:"Port to start the streaming build event server on."`
 	} `help:"The [events] section in the config contains settings relating to the internal build event system & streaming them externally."`
 	Build struct {
+		Arch              string       `help:"Primary architecture to compile for. Defaults to the host architecture."`
 		Timeout           cli.Duration `help:"Default timeout for Dockerised tests, in seconds. Default is twenty minutes."`
 		Path              []string     `help:"The PATH variable that will be passed to the build processes.\nDefaults to /usr/local/bin:/usr/bin:/bin but of course can be modified if you need to get binaries from other locations." example:"/usr/local/bin:/usr/bin:/bin"`
 		Config            string       `help:"The build config to use when one is not chosen on the command line. Defaults to opt." example:"opt | dbg"`

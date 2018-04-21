@@ -14,6 +14,19 @@ type Subrepo struct {
 	Root string
 	// If this repo is output by a target, this is the target that creates it. Can be nil.
 	Target *BuildTarget
+	// If this repo has a different configuration (e.g. it's for a different architecture), it's set here.
+	Config *Configuration
+}
+
+// SubrepoForArch creates a new subrepo for the given architecture.
+func SubrepoForArch(config *Configuration, arch string) *Subrepo {
+	c := &Configuration{}
+	*c = *config
+	c.Build.Arch = arch
+	return &Subrepo{
+		Name:   arch,
+		Config: c,
+	}
 }
 
 // MakeRelative makes a build label that is within this subrepo relative to it (i.e. strips the leading name part).
