@@ -429,7 +429,14 @@ func (config *Configuration) ContainerisationHash() []byte {
 // GetBuildEnv returns the build environment configured for this config object.
 func (config *Configuration) GetBuildEnv() []string {
 	config.buildEnvOnce.Do(func() {
-		config.buildEnvStored = []string{}
+		config.buildEnvStored = []string{
+			// Need to know these for certain rules, particularly Go rules.
+			"ARCH=" + config.Build.Arch.Arch,
+			"OS=" + config.Build.Arch.OS,
+			// These are slightly modified forms that are more convenient for some things.
+			"XARCH=" + config.Build.Arch.XArch(),
+			"XOS=" + config.Build.Arch.XOS(),
+		}
 
 		// from the BuildEnv config keyword
 		for k, v := range config.BuildEnv {
