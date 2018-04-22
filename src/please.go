@@ -723,7 +723,7 @@ func findOriginalTasks(state *core.BuildState, targets []core.BuildLabel) {
 	}
 	if opts.BuildFlags.Arch.Arch != "" {
 		// Set up a new subrepo for this architecture.
-		state.Graph.AddSubrepo(core.SubrepoForArch(state.Config, opts.BuildFlags.Arch))
+		state.Graph.AddSubrepo(core.SubrepoForArch(state, opts.BuildFlags.Arch))
 	}
 	for _, target := range targets {
 		if target == core.BuildLabelStdin {

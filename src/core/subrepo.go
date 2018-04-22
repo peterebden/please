@@ -15,14 +15,14 @@ type Subrepo struct {
 	Root string
 	// If this repo is output by a target, this is the target that creates it. Can be nil.
 	Target *BuildTarget
-	// If this repo has a different configuration (e.g. it's for a different architecture), it's set here.
-	Config *Configuration
+	// If this repo has a different configuration (e.g. it's for a different architecture), it's stored here
+	State *BuildState
 }
 
 // SubrepoForArch creates a new subrepo for the given architecture.
-func SubrepoForArch(config *Configuration, arch cli.Arch) *Subrepo {
+func SubrepoForArch(state *BuildState, arch cli.Arch) *Subrepo {
 	c := &Configuration{}
-	*c = *config
+	*c = *state.Config
 	c.Build.Arch = arch
 	// Load the architecture-specific config file.
 	// This is slightly wrong in that other things (e.g. user-specified command line overrides) should
@@ -30,9 +30,12 @@ func SubrepoForArch(config *Configuration, arch cli.Arch) *Subrepo {
 	if err := readConfigFile(c, ".plzconfig_"+arch.String()); err != nil {
 		log.Fatalf("Failed to read config file for %s: %s", arch, err)
 	}
+	s := &BuildState{}
+	*s = *state
+	s.Config = c
 	return &Subrepo{
-		Name:   arch.String(),
-		Config: c,
+		Name:  arch.String(),
+		State: s,
 	}
 }
 
