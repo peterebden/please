@@ -161,10 +161,7 @@ func testPrintFields(target *core.BuildTarget, fields []string) string {
 func src(in string) core.BuildInput {
 	pkg := core.NewPackage("src/query")
 	if strings.HasPrefix(in, "//") || strings.HasPrefix(in, ":") {
-		src, err := core.TryParseNamedOutputLabel(in, pkg)
-		if err != nil {
-			panic(err)
-		}
+		src, _ := core.MustParseNamedOutputLabel(in, pkg)
 		return src
 	}
 	return core.FileLabel{File: in, Package: pkg.Name}

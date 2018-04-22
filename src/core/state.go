@@ -490,6 +490,15 @@ func (state *BuildState) ForTarget(target *BuildTarget) *BuildState {
 
 // ForArch creates a copy of this BuildState for a different architecture.
 func (state *BuildState) ForArch(arch cli.Arch) *BuildState {
+	state.progress.mutex.Lock()
+	defer state.progress.mutex.Unlock()
+	// Check if we've got this one already.
+	// N.B. This implicitly handles the case of the host architecture
+	for _, s := range state.progress.allStates {
+		if s.Config.Build.Arch == arch {
+			return s
+		}
+	}
 	// Duplicate & alter configuration
 	c := &Configuration{}
 	*c = *state.Config

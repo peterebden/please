@@ -8,7 +8,6 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -255,7 +254,7 @@ func (arch *Arch) UnmarshalText(text []byte) error {
 
 // UnmarshalFlag implements the flags.Unmarshaler interface.
 func (arch *Arch) UnmarshalFlag(in string) error {
-	if parts := strings.Split(in, "_"); len(parts) == 2 {
+	if parts := strings.Split(in, "_"); len(parts) == 2 && !strings.ContainsRune(in, '/') {
 		arch.OS = parts[0]
 		arch.Arch = parts[1]
 		return nil
@@ -279,9 +278,4 @@ func (arch *Arch) XArch() string {
 		return "x86_64"
 	}
 	return arch.Arch
-}
-
-// IsHost returns true if this architecture is the host architecture.
-func (arch *Arch) IsHost() bool {
-	return arch.OS == runtime.GOOS && arch.Arch == runtime.GOARCH
 }
