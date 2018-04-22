@@ -14,7 +14,7 @@ sh_test(
 )
 
 sh_test(
-    name = 'test_auto_arch',
+    name = 'auto_arch_test',
     src = 'test_arch.sh',
     data = ['@test_x86:record_arch'],
 )
@@ -22,4 +22,10 @@ sh_test(
 plz_e2e_test(
     name = 'cross_compile_test',
     cmd = 'plz test -a test_x86 //test/cross_compile:test_arch',
+)
+
+c_binary(
+    name = 'bin',
+    srcs = ['main.c'],
+    deps = ['//test/cross_compile/lib'],
 )
