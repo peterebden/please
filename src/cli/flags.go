@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -278,4 +279,9 @@ func (arch *Arch) XArch() string {
 		return "x86_64"
 	}
 	return arch.Arch
+}
+
+// IsHost returns true if this architecture is the host architecture.
+func (arch *Arch) IsHost() bool {
+	return arch.OS == runtime.GOOS && arch.Arch == runtime.GOARCH
 }

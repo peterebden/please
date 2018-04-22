@@ -22,22 +22,9 @@ type Subrepo struct {
 
 // SubrepoForArch creates a new subrepo for the given architecture.
 func SubrepoForArch(state *BuildState, arch cli.Arch) *Subrepo {
-	c := &Configuration{}
-	*c = *state.Config
-	c.Build.Arch = arch
-	c.buildEnvStored = &storedBuildEnv{}
-	// Load the architecture-specific config file.
-	// This is slightly wrong in that other things (e.g. user-specified command line overrides) should
-	// in fact take priority over this, but that's a lot more fiddly to get right.
-	if err := readConfigFile(c, ".plzconfig_"+arch.String()); err != nil {
-		log.Fatalf("Failed to read config file for %s: %s", arch, err)
-	}
-	s := &BuildState{}
-	*s = *state
-	s.Config = c
 	return &Subrepo{
 		Name:  arch.String(),
-		State: s,
+		State: state.ForArch(arch),
 	}
 }
 

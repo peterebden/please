@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -144,4 +145,11 @@ func TestXArch(t *testing.T) {
 	assert.Equal(t, "x86_64", a.XArch())
 	a = NewArch("linux", "x86")
 	assert.Equal(t, "x86", a.XArch())
+}
+
+func TestIsHost(t *testing.T) {
+	a := NewArch(runtime.GOOS, runtime.GOARCH)
+	assert.True(t, a.IsHost())
+	a = NewArch("wibble", "wobble")
+	assert.False(t, a.IsHost())
 }

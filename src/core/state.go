@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/Workiva/go-datastructures/queue"
+
+	"cli"
 )
 
 // startTime is as close as we can conveniently get to process start time.
@@ -150,6 +152,8 @@ type stateProgress struct {
 	// Used to track general package parsing requests.
 	pendingPackages     map[string]chan struct{}
 	pendingPackageMutex sync.Mutex
+	// The set of known states
+	allStates []*BuildState
 }
 
 // SystemStats stores information about the system.
@@ -284,7 +288,11 @@ func (state *BuildState) AddOriginalTarget(label BuildLabel, addToList bool) {
 		}
 	}
 	if addToList {
-		state.OriginalTargets = append(state.OriginalTargets, label)
+		// The sets of original targets are duplicated between states for all architectures,
+		// we must add it to all of them to ensure everything sees the same set.
+		for _, s := range state.progress.allStates {
+			s.OriginalTargets = append(s.OriginalTargets, label)
+		}
 	}
 	state.AddPendingParse(label, OriginalTarget, false)
 }
@@ -480,6 +488,26 @@ func (state *BuildState) ForTarget(target *BuildTarget) *BuildState {
 	return state
 }
 
+// ForArch creates a copy of this BuildState for a different architecture.
+func (state *BuildState) ForArch(arch cli.Arch) *BuildState {
+	// Duplicate & alter configuration
+	c := &Configuration{}
+	*c = *state.Config
+	c.Build.Arch = arch
+	c.buildEnvStored = &storedBuildEnv{}
+	// Load the architecture-specific config file.
+	// This is slightly wrong in that other things (e.g. user-specified command line overrides) should
+	// in fact take priority over this, but that's a lot more fiddly to get right.
+	if err := readConfigFile(c, ".plzconfig_"+arch.String()); err != nil {
+		log.Fatalf("Failed to read config file for %s: %s", arch, err)
+	}
+	s := &BuildState{}
+	*s = *state
+	s.Config = c
+	state.progress.allStates = append(state.progress.allStates, s)
+	return s
+}
+
 // NewBuildState constructs and returns a new BuildState.
 // Everyone should use this rather than attempting to construct it themselves;
 // callers can't initialise all the required private fields.
@@ -506,6 +534,7 @@ func NewBuildState(numThreads int, cache Cache, verbosity int, config *Configura
 			pendingPackages: map[string]chan struct{}{},
 		},
 	}
+	state.progress.allStates = []*BuildState{state}
 	state.Hashes.Config = config.Hash()
 	state.Hashes.Containerisation = config.ContainerisationHash()
 	config.Please.NumThreads = numThreads
