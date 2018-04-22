@@ -471,6 +471,15 @@ func (state *BuildState) WaitForBuiltTarget(l BuildLabel, dependingPackage strin
 	return state.WaitForBuiltTarget(l, dependingPackage)
 }
 
+// ForTarget returns the state associated with a given target.
+// This differs if the target is in a subrepo for a different architecture.
+func (state *BuildState) ForTarget(target *BuildTarget) *BuildState {
+	if target.Subrepo != nil && target.Subrepo.State != nil {
+		return target.Subrepo.State
+	}
+	return state
+}
+
 // NewBuildState constructs and returns a new BuildState.
 // Everyone should use this rather than attempting to construct it themselves;
 // callers can't initialise all the required private fields.
