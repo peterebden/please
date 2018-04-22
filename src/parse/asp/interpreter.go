@@ -15,7 +15,9 @@ type interpreter struct {
 	parser          *Parser
 	subincludeScope *scope
 	subincludes     map[string]pyDict
+	config          map[*core.Configuration]*pyConfig
 	mutex           sync.RWMutex
+	configMutex     sync.RWMutex
 }
 
 // newInterpreter creates and returns a new interpreter instance.
@@ -34,6 +36,7 @@ func newInterpreter(state *core.BuildState, p *Parser) *interpreter {
 		scope:        s,
 		parser:       p,
 		subincludes:  map[string]pyDict{},
+		config:       map[*core.Configuration]*pyConfig{},
 	}
 	s.interpreter = i
 	bs.interpreter = i
@@ -79,7 +82,7 @@ func (i *interpreter) interpretAll(pkg *core.Package, statements []*Statement) (
 	// Config needs a little separate tweaking.
 	// Annoyingly we'd like to not have to do this at all, but it's very hard to handle
 	// mutating operations like .setdefault() otherwise.
-	s.Set("CONFIG", i.scope.Lookup("CONFIG").(*pyConfig).Copy())
+	s.Set("CONFIG", i.pkgConfig(pkg).Copy())
 	err = i.interpretStatements(s, statements)
 	if err == nil {
 		s.Callback = true // From here on, if anything else uses this scope, it's in a post-build callback.
@@ -127,6 +130,29 @@ func (i *interpreter) Subinclude(path string) pyDict {
 	defer i.mutex.Unlock()
 	i.subincludes[path] = locals
 	return s.locals
+}
+
+// getConfig returns a new configuration object for the given configuration object.
+func (i *interpreter) getConfig(config *core.Configuration) *pyConfig {
+	i.configMutex.RLock()
+	if c, present := i.config[config]; present {
+		i.configMutex.RUnlock()
+		return c
+	}
+	i.configMutex.RUnlock()
+	i.configMutex.Lock()
+	defer i.configMutex.Unlock()
+	c := newConfig(config)
+	i.config[config] = c
+	return c
+}
+
+// pkgConfig returns a new configuration object for the given package.
+func (i *interpreter) pkgConfig(pkg *core.Package) *pyConfig {
+	if pkg.Subrepo != nil && pkg.Subrepo.State != nil {
+		return i.getConfig(pkg.Subrepo.State.Config)
+	}
+	return i.getConfig(i.scope.state.Config)
 }
 
 // optimiseExpressions performs some general optimisation of expressions by precalculating constants
@@ -256,7 +282,7 @@ func (s *scope) LoadSingletons(state *core.BuildState) {
 	s.Set("True", True)
 	s.Set("False", False)
 	s.Set("None", None)
-	s.Set("CONFIG", newConfig(s.state.Config))
+	s.Set("CONFIG", s.interpreter.getConfig(state.Config))
 }
 
 // interpretStatements interprets a series of statements in a particular scope.
