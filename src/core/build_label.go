@@ -121,14 +121,18 @@ func parseBuildLabelParts(target, currentPath string) (string, string) {
 		}
 		return currentPath, target[1:]
 	} else if target[0] == '@' {
-		// @subrepo//pkg:target syntax
-		if idx := strings.Index(target, "//"); idx == -1 {
-			return "", ""
-		} else if pkg, name := parseBuildLabelParts(target[idx:], currentPath); pkg == "" && name == "" {
-			return "", ""
-		} else {
-			return path.Join(target[1:idx], pkg), name // Combine it to //subrepo/pkg:target
+		// @subrepo//pkg:target or @subrepo:target syntax
+		idx := strings.Index(target, "//")
+		if idx == -1 {
+			if idx = strings.IndexRune(target, ':'); idx == -1 {
+				return "", ""
+			}
 		}
+		pkg, name := parseBuildLabelParts(target[idx:], currentPath)
+		if pkg == "" && name == "" {
+			return "", ""
+		}
+		return path.Join(target[1:idx], pkg), name // Combine it to //subrepo/pkg:target
 	} else if target[0] != '/' || target[1] != '/' {
 		return "", ""
 	} else if idx := strings.IndexRune(target, ':'); idx != -1 {
@@ -354,7 +358,7 @@ func (label BuildLabel) Complete(match string) []flags.Completion {
 // LooksLikeABuildLabel returns true if the string appears to be a build label, false if not.
 // Useful for cases like rule sources where sources can be a filename or a label.
 func LooksLikeABuildLabel(str string) bool {
-	return strings.HasPrefix(str, "//") || strings.HasPrefix(str, ":")
+	return strings.HasPrefix(str, "//") || strings.HasPrefix(str, ":") || (strings.HasPrefix(str, "@") && (strings.ContainsRune(str, ':') || strings.Contains(str, "//")))
 }
 
 // BuildLabels makes slices of build labels sortable.

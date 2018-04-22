@@ -9,7 +9,7 @@ genrule(
 sh_test(
     name = 'test_arch',
     src = 'test_arch.sh',
-    data = [':record_arch'],
+    data = ['@test_x86:record_arch'],
     labels = ['manual'],
 )
 
