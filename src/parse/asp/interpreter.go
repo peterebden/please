@@ -256,9 +256,7 @@ func (s *scope) LoadSingletons(state *core.BuildState) {
 	s.Set("True", True)
 	s.Set("False", False)
 	s.Set("None", None)
-	if s.state != nil { // For bootstrap.
-		s.Set("CONFIG", newConfig(s.state.Config))
-	}
+	s.Set("CONFIG", newConfig(s.state.Config))
 }
 
 // interpretStatements interprets a series of statements in a particular scope.
