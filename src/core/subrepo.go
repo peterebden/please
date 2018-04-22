@@ -25,6 +25,7 @@ func SubrepoForArch(state *BuildState, arch cli.Arch) *Subrepo {
 	c := &Configuration{}
 	*c = *state.Config
 	c.Build.Arch = arch
+	c.buildEnvStored = &storedBuildEnv{}
 	// Load the architecture-specific config file.
 	// This is slightly wrong in that other things (e.g. user-specified command line overrides) should
 	// in fact take priority over this, but that's a lot more fiddly to get right.

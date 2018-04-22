@@ -141,7 +141,7 @@ func defaultPathIfExists(conf *string, dir, file string) {
 
 // DefaultConfiguration returns the default configuration object with no overrides.
 func DefaultConfiguration() *Configuration {
-	config := Configuration{}
+	config := Configuration{buildEnvStored: &storedBuildEnv{}}
 	config.Please.Location = "~/.please"
 	config.Please.SelfUpdate = true
 	config.Please.DownloadLocation = "https://get.please.build"
@@ -390,8 +390,12 @@ type Configuration struct {
 	} `help:"Bazel is an open-sourced version of Google's internal build tool. Please draws a lot of inspiration from the original tool although the two have now diverged in various ways.\nNonetheless, if you've used Bazel, you will likely find Please familiar."`
 
 	// buildEnvStored is a cached form of BuildEnv.
-	buildEnvStored []string
-	buildEnvOnce   sync.Once
+	buildEnvStored *storedBuildEnv
+}
+
+type storedBuildEnv struct {
+	Env  []string
+	Once sync.Once
 }
 
 // Hash returns a hash of the parts of this configuration that affect building targets in general.
@@ -428,8 +432,8 @@ func (config *Configuration) ContainerisationHash() []byte {
 
 // GetBuildEnv returns the build environment configured for this config object.
 func (config *Configuration) GetBuildEnv() []string {
-	config.buildEnvOnce.Do(func() {
-		config.buildEnvStored = []string{
+	config.buildEnvStored.Once.Do(func() {
+		env := []string{
 			// Need to know these for certain rules, particularly Go rules.
 			"ARCH=" + config.Build.Arch.Arch,
 			"OS=" + config.Build.Arch.OS,
@@ -441,20 +445,20 @@ func (config *Configuration) GetBuildEnv() []string {
 		// from the BuildEnv config keyword
 		for k, v := range config.BuildEnv {
 			pair := strings.Replace(strings.ToUpper(k), "-", "_", -1) + "=" + v
-			config.buildEnvStored = append(config.buildEnvStored, pair)
+			env = append(env, pair)
 		}
 
 		// from the user's environment based on the PassEnv config keyword
 		for _, k := range config.Build.PassEnv {
-			v, isSet := os.LookupEnv(k)
-			if isSet {
-				config.buildEnvStored = append(config.buildEnvStored, k+"="+v)
+			if v, isSet := os.LookupEnv(k); isSet {
+				env = append(env, k+"="+v)
 			}
 		}
 
-		sort.Strings(config.buildEnvStored)
+		sort.Strings(env)
+		config.buildEnvStored.Env = env
 	})
-	return config.buildEnvStored
+	return config.buildEnvStored.Env
 }
 
 // ApplyOverrides applies a set of overrides to the config.
