@@ -143,7 +143,7 @@ func parseBuildLabelParts(target, currentPath string, subrepo *Subrepo) (string,
 			return "", "", ""
 		}
 		s := target[1:idx]
-		if subrepo != nil && subrepo.Name != s {
+		if subrepo == nil || !strings.HasPrefix(pkg, s) {
 			pkg = path.Join(s, pkg) // Combine it to //subrepo/pkg:target
 		}
 		return pkg, name, s
