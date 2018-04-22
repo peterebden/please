@@ -222,10 +222,10 @@ func (label NamedOutputLabel) String() string {
 // If the label refers to a subrepo then that's returned separately.
 func MustParseNamedOutputLabel(target string, pkg *Package) (BuildInput, string) {
 	if index := strings.IndexRune(target, '|'); index != -1 && index != len(target)-1 {
-		label, subrepo := ParseBuildLabelSubrepo(target[:index], pkg.Name)
+		label, subrepo := ParseBuildLabelSubrepo(target[:index], pkg)
 		return NamedOutputLabel{BuildLabel: label.ForPackage(pkg), Output: target[index+1:]}, subrepo
 	}
-	label, subrepo := ParseBuildLabelSubrepo(target, pkg.Name)
+	label, subrepo := ParseBuildLabelSubrepo(target, pkg)
 	return label.ForPackage(pkg), subrepo
 }
 

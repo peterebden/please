@@ -337,7 +337,7 @@ func parseSource(s *scope, src string, systemAllowed, tool bool) core.BuildInput
 
 // parseLabel parses a build label, handling potential cross-architecture labels.
 func parseLabel(s *scope, label string) core.BuildLabel {
-	l, subrepo := core.ParseBuildLabelSubrepo(label, s.pkg.Name)
+	l, subrepo := core.ParseBuildLabelSubrepo(label, s.pkg)
 	verifyArchSubrepo(s, subrepo)
 	return l.ForPackage(s.pkg)
 }
