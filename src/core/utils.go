@@ -413,11 +413,16 @@ func IterRuntimeFiles(graph *BuildGraph, target *BuildTarget, absoluteOuts bool)
 			pushOut(path.Join(outDir, out), out)
 		}
 		for _, data := range target.Data {
+			var subrepo *Subrepo
+			label := data.Label()
+			if label != nil {
+				subrepo = graph.TargetOrDie(*label).Subrepo
+			}
 			fullPaths := data.FullPaths(graph)
 			for i, dataPath := range data.Paths(graph) {
-				pushOut(fullPaths[i], target.Subrepo.MakeRelativeName(dataPath))
+				pushOut(fullPaths[i], subrepo.MakeRelativeName(dataPath))
 			}
-			if label := data.Label(); label != nil {
+			if label != nil {
 				for _, dep := range graph.TargetOrDie(*label).ExportedDependencies() {
 					inner(graph.TargetOrDie(dep))
 				}
