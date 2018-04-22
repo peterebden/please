@@ -62,7 +62,7 @@ func BuildEnvironment(state *BuildState, target *BuildTarget, test bool) BuildEn
 	env = append(
 		env,
 		"PKG="+target.Label.PackageName,
-		"PKG_DIR="+target.Label.PackageDir(),
+		"PKG_DIR="+target.Subrepo.MakeRelativeName(target.Label.PackageDir()),
 		"NAME="+target.Label.Name,
 		"CONFIG="+state.Config.Build.Config,
 	)

@@ -24,6 +24,12 @@ func SubrepoForArch(config *Configuration, arch cli.Arch) *Subrepo {
 	c := &Configuration{}
 	*c = *config
 	c.Build.Arch = arch
+	// Load the architecture-specific config file.
+	// This is slightly wrong in that other things (e.g. user-specified command line overrides) should
+	// in fact take priority over this, but that's a lot more fiddly to get right.
+	if err := readConfigFile(c, ".plzconfig_"+arch.String()); err != nil {
+		log.Fatalf("Failed to read config file for %s: %s", arch, err)
+	}
 	return &Subrepo{
 		Name:   arch.String(),
 		Config: c,
@@ -38,7 +44,9 @@ func (s *Subrepo) MakeRelative(label BuildLabel) BuildLabel {
 
 // MakeRelativeName is as MakeRelative but operates only on the package name.
 func (s *Subrepo) MakeRelativeName(name string) string {
-	if !strings.HasPrefix(name, s.Name) {
+	if s == nil {
+		return name
+	} else if !strings.HasPrefix(name, s.Name) {
 		panic("cannot make label relative, it is not within this subrepo")
 	}
 	return strings.TrimPrefix(name[len(s.Name):], "/")
