@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cli"
 	"path"
 	"strings"
 )
@@ -19,12 +20,12 @@ type Subrepo struct {
 }
 
 // SubrepoForArch creates a new subrepo for the given architecture.
-func SubrepoForArch(config *Configuration, arch string) *Subrepo {
+func SubrepoForArch(config *Configuration, arch cli.Arch) *Subrepo {
 	c := &Configuration{}
 	*c = *config
 	c.Build.Arch = arch
 	return &Subrepo{
-		Name:   arch,
+		Name:   arch.String(),
 		Config: c,
 	}
 }

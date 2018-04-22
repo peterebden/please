@@ -122,3 +122,26 @@ func TestGetUsageNoUsage(t *testing.T) {
 	opts := struct{}{}
 	assert.Equal(t, "", getUsage(&opts))
 }
+
+func TestArch(t *testing.T) {
+	a := Arch{}
+	assert.NoError(t, a.UnmarshalFlag("linux_amd64"))
+	assert.Equal(t, "linux", a.OS)
+	assert.Equal(t, "amd64", a.Arch)
+	assert.Equal(t, "linux_amd64", a.String())
+	assert.Error(t, a.UnmarshalFlag("wibble"))
+}
+
+func TestXOS(t *testing.T) {
+	a := NewArch("darwin", "amd64")
+	assert.Equal(t, "osx", a.XOS())
+	a = NewArch("linux", "amd64")
+	assert.Equal(t, "linux", a.XOS())
+}
+
+func TestXArch(t *testing.T) {
+	a := NewArch("darwin", "amd64")
+	assert.Equal(t, "x86_64", a.XArch())
+	a = NewArch("linux", "x86")
+	assert.Equal(t, "x86", a.XArch())
+}

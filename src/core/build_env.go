@@ -5,7 +5,6 @@ import (
 	"os"
 	"path"
 	"regexp"
-	"runtime"
 	"strings"
 )
 
@@ -25,18 +24,13 @@ type BuildEnv []string
 // GeneralBuildEnvironment creates the shell env vars used for a command, not based
 // on any specific target etc.
 func GeneralBuildEnvironment(config *Configuration) BuildEnv {
-	xos := runtime.GOOS
-	if xos == "darwin" {
-		xos = "osx"
-	}
 	env := BuildEnv{
 		// Need to know these for certain rules, particularly Go rules.
-		"ARCH=" + runtime.GOARCH,
-		"OS=" + runtime.GOOS,
+		"ARCH=" + config.Build.Arch.Arch,
+		"OS=" + config.Build.Arch.OS,
 		// These are slightly modified forms that are more convenient for some things.
-		// Right now it's not configurable since we only support amd64.
-		"XARCH=x86_64",
-		"XOS=" + xos,
+		"XARCH=" + config.Build.Arch.XArch(),
+		"XOS=" + config.Build.Arch.XOS(),
 		// Need this for certain tools, for example sass
 		"LANG=" + config.Build.Lang,
 		// Use a restricted PATH; it'd be easier for the user if we pass it through
