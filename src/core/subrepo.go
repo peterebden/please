@@ -2,6 +2,7 @@ package core
 
 import (
 	"cli"
+	"fmt"
 	"path"
 	"strings"
 )
@@ -47,10 +48,11 @@ func (s *Subrepo) MakeRelative(label BuildLabel) BuildLabel {
 
 // MakeRelativeName is as MakeRelative but operates only on the package name.
 func (s *Subrepo) MakeRelativeName(name string) string {
+	// Check for nil, makes it easier to call this without having so many conditionals.
 	if s == nil {
 		return name
 	} else if !strings.HasPrefix(name, s.Name) {
-		panic("cannot make label relative, it is not within this subrepo")
+		panic(fmt.Errorf("cannot make label %s relative, it is not within this subrepo (%s)", name, s.Name))
 	}
 	return strings.TrimPrefix(name[len(s.Name):], "/")
 }

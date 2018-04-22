@@ -300,10 +300,7 @@ func IterSources(graph *BuildGraph, target *BuildTarget) <-chan SourcePair {
 			outDir := dependency.OutDir()
 			for _, dep := range dependency.Outputs() {
 				depPath := path.Join(outDir, dep)
-				pkgName := dependency.Label.PackageName
-				if dependency.Subrepo != nil {
-					pkgName = dependency.Subrepo.MakeRelativeName(pkgName)
-				}
+				pkgName := dependency.Subrepo.MakeRelativeName(dependency.Label.PackageName)
 				tmpPath := path.Join(tmpDir, pkgName, dep)
 				if !donePaths[tmpPath] {
 					ch <- SourcePair{depPath, tmpPath}
@@ -418,7 +415,7 @@ func IterRuntimeFiles(graph *BuildGraph, target *BuildTarget, absoluteOuts bool)
 		for _, data := range target.Data {
 			fullPaths := data.FullPaths(graph)
 			for i, dataPath := range data.Paths(graph) {
-				pushOut(fullPaths[i], dataPath)
+				pushOut(fullPaths[i], target.Subrepo.MakeRelativeName(dataPath))
 			}
 			if label := data.Label(); label != nil {
 				for _, dep := range graph.TargetOrDie(*label).ExportedDependencies() {
