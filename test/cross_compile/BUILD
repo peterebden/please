@@ -9,8 +9,14 @@ genrule(
 sh_test(
     name = 'test_arch',
     src = 'test_arch.sh',
-    data = ['@test_x86:record_arch'],
+    data = [':record_arch'],
     labels = ['manual'],
+)
+
+sh_test(
+    name = 'test_auto_arch',
+    src = 'test_arch.sh',
+    data = ['@test_x86:record_arch'],
 )
 
 plz_e2e_test(
