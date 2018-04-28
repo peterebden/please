@@ -72,11 +72,12 @@ var opts = struct {
 	NoDirEntries          bool              `short:"n" long:"nodir_entries" description:"Don't add directory entries to zip"`
 	RenameDirs            map[string]string `short:"r" long:"rename_dir" description:"Rename directories within zip file"`
 	StoreSuffix           []string          `short:"u" long:"store_suffix" description:"Suffix of filenames to store instead of deflate (i.e. without compression). Note that this only affects files found with --include_other."`
+	Prefix                string            `long:"prefix" description:"Prefix all entries with this directory name."`
 
-	Tar    bool     `long:"tar" description:"Write a tarball instead of a zipfile. Note that most other flags are not honoured if this is given."`
-	Gzip   bool     `short:"z" long:"gzip" description:"Apply gzip compression to the tar file. Only has an effect if --tar is passed."`
-	Prefix string   `long:"prefix" description:"Prefix all entries with this directory name."`
-	Srcs   []string `long:"srcs" env:"SRCS" env-delim:" " description:"Source files for the tarball."`
+	Tar struct {
+		Gzip bool     `short:"z" long:"gzip" description:"Apply gzip compression to the tar file. Only has an effect if --tar is passed."`
+		Srcs []string `long:"srcs" env:"SRCS" env-delim:" " description:"Source files for the tarball."`
+	} `command:"tar" description:"Builds a tarball instead of a zipfile."`
 }{
 	Usage: `
 Jarcat is a binary shipped with Please that helps it operate on .jar and .zip files.
@@ -98,7 +99,7 @@ Any apparent relationship between the name of this tool and bonsai kittens is co
 }
 
 func main() {
-	cli.ParseFlagsOrDie("Jarcat", "12.1.4", &opts)
+	command := cli.ParseFlagsOrDie("Jarcat", "12.1.4", &opts)
 	if opts.DumbMode {
 		opts.Suffix = nil
 		opts.ExcludeSuffix = nil
@@ -106,8 +107,8 @@ func main() {
 	}
 	cli.InitLogging(opts.Verbosity)
 
-	if opts.Tar {
-		if err := tar.Write(opts.Out, opts.Srcs, opts.Prefix, opts.Gzip); err != nil {
+	if command == "tar" {
+		if err := tar.Write(opts.Out, opts.Tar.Srcs, opts.Prefix, opts.Tar.Gzip); err != nil {
 			log.Fatalf("Error writing tarball: %s\n", err)
 		}
 		os.Exit(0)
