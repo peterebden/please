@@ -1,10 +1,7 @@
 go_library(
     name = 'unzip',
     srcs = ['unzip.go'],
-    deps = [
-        '//third_party/go:logging',
-        '//third_party/go/zip',
-    ],
+    deps = ['//third_party/go/zip'],
     visibility = ['//tools/jarcat:all'],
 )
 

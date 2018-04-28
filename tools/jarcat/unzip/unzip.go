@@ -9,12 +9,8 @@ import (
 	"path"
 	"strings"
 
-	"gopkg.in/op/go-logging.v1"
-
 	"third_party/go/zip"
 )
-
-var log = logging.MustGetLogger("unzip")
 
 // Extract extracts the contents of the given zipfile.
 func Extract(in, out, file, prefix string) error {
@@ -80,7 +76,6 @@ func (e *extractor) extractFile(f *zip.File) error {
 		}
 		e.dirs[dir] = struct{}{}
 	}
-	log.Debug("extracting %s to %s", f.Name, out)
 	o, err := os.OpenFile(out, os.O_WRONLY|os.O_CREATE, f.Mode())
 	if err != nil {
 		return err

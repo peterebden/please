@@ -125,12 +125,12 @@ func main() {
 			log.Fatalf("Error writing tarball: %s\n", err)
 		}
 		os.Exit(0)
-	} else if command == "zip" {
+	} else if command == "unzip" {
 		// This comes up if we're in the root directory. Ignore it.
-		if opts.Unzip.Prefix == "." {
-			opts.Unzip.Prefix = ""
+		if opts.Unzip.StripPrefix == "." {
+			opts.Unzip.StripPrefix = ""
 		}
-		if err := unzip.Extract(opts.Unzip.Args.In, opts.Out, opts.Unzip.Args.File, opts.Unzip.Prefix); err != nil {
+		if err := unzip.Extract(opts.Unzip.Args.In, opts.Out, opts.Unzip.Args.File, opts.Unzip.StripPrefix); err != nil {
 			log.Fatalf("Error extracting zipfile: %s", err)
 		}
 		os.Exit(0)
