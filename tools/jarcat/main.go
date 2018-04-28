@@ -16,6 +16,7 @@ import (
 
 	"cli"
 	"tools/jarcat/tar"
+	"tools/jarcat/unzip"
 	"tools/jarcat/zip"
 )
 
@@ -50,7 +51,8 @@ func mustReadPreamble(path string) string {
 
 var opts = struct {
 	Usage     string
-	Verbosity int `short:"v" long:"verbose" default:"1" description:"Verbosity of output (higher number = more output, default 1 -> warnings and errors only)"`
+	Verbosity int    `short:"v" long:"verbose" default:"1" description:"Verbosity of output (higher number = more output, default 1 -> warnings and errors only)"`
+	Out       string `short:"o" long:"output" env:"OUT" description:"Output filename or directory" required:"true"`
 
 	Zip struct {
 		In                    cli.StdinStrings  `short:"i" long:"input" description:"Input directory" required:"true"`
@@ -74,15 +76,21 @@ var opts = struct {
 		RenameDirs            map[string]string `short:"r" long:"rename_dir" description:"Rename directories within zip file"`
 		StoreSuffix           []string          `short:"u" long:"store_suffix" description:"Suffix of filenames to store instead of deflate (i.e. without compression). Note that this only affects files found with --include_other."`
 		Prefix                string            `long:"prefix" description:"Prefix all entries with this directory name."`
-		Out                   string            `short:"o" long:"output" env:"OUT" description:"Output filename" required:"true"`
 	} `command:"zip" alias:"z" description:"Writes an output zipfile"`
 
 	Tar struct {
-		Out    string   `short:"o" long:"output" env:"OUT" description:"Output filename" required:"true"`
 		Gzip   bool     `short:"z" long:"gzip" description:"Apply gzip compression to the tar file. Only has an effect if --tar is passed."`
 		Srcs   []string `long:"srcs" env:"SRCS" env-delim:" " description:"Source files for the tarball."`
 		Prefix string   `long:"prefix" description:"Prefix all entries with this directory name."`
 	} `command:"tar" alias:"t" description:"Builds a tarball instead of a zipfile."`
+
+	Unzip struct {
+		Args struct {
+			In   string `positional-arg-name:"input" required:"true" description:"Input zipfile"`
+			File string `positional-arg-name:"file" description:"File to extract"`
+		} `positional-args:"true"`
+		StripPrefix string `short:"s" long:"strip_prefix" description:"Strip this prefix from extracted files"`
+	} `command:"unzip" alias:"u" alias:"x" description:"Unzips a zipfile"`
 }{
 	Usage: `
 Jarcat is a binary shipped with Please that helps it operate on .jar and .zip files.
@@ -113,8 +121,13 @@ func main() {
 	cli.InitLogging(opts.Verbosity)
 
 	if command == "tar" {
-		if err := tar.Write(opts.Tar.Out, opts.Tar.Srcs, opts.Tar.Prefix, opts.Tar.Gzip); err != nil {
+		if err := tar.Write(opts.Out, opts.Tar.Srcs, opts.Tar.Prefix, opts.Tar.Gzip); err != nil {
 			log.Fatalf("Error writing tarball: %s\n", err)
+		}
+		os.Exit(0)
+	} else if command == "zip" {
+		if err := unzip.Extract(opts.Unzip.Args.In, opts.Out, opts.Unzip.Args.File, opts.Unzip.Prefix); err != nil {
+			log.Fatalf("Error extracting zipfile: %s", err)
 		}
 		os.Exit(0)
 	}
@@ -123,7 +136,7 @@ func main() {
 		opts.Zip.ExcludeInternalPrefix = javaExcludePrefixes
 	}
 
-	f := zip.NewFile(opts.Zip.Out, opts.Zip.Strict)
+	f := zip.NewFile(opts.Out, opts.Zip.Strict)
 	defer f.Close()
 	f.RenameDirs = opts.Zip.RenameDirs
 	f.Include = opts.Zip.IncludeInternalPrefix
