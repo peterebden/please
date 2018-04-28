@@ -5,6 +5,7 @@ go_binary(
         '//src/cli',
         '//third_party/go:logging',
         '//tools/jarcat/tar',
+        '//tools/jarcat/unzip',
         '//tools/jarcat/zip',
     ],
     visibility = ['PUBLIC'],
