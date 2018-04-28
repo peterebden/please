@@ -75,14 +75,14 @@ var opts = struct {
 		StoreSuffix           []string          `short:"u" long:"store_suffix" description:"Suffix of filenames to store instead of deflate (i.e. without compression). Note that this only affects files found with --include_other."`
 		Prefix                string            `long:"prefix" description:"Prefix all entries with this directory name."`
 		Out                   string            `short:"o" long:"output" env:"OUT" description:"Output filename" required:"true"`
-	} `command:"zip" description:"Writes an output zipfile"`
+	} `command:"zip" alias:"z" description:"Writes an output zipfile"`
 
 	Tar struct {
 		Out    string   `short:"o" long:"output" env:"OUT" description:"Output filename" required:"true"`
 		Gzip   bool     `short:"z" long:"gzip" description:"Apply gzip compression to the tar file. Only has an effect if --tar is passed."`
 		Srcs   []string `long:"srcs" env:"SRCS" env-delim:" " description:"Source files for the tarball."`
 		Prefix string   `long:"prefix" description:"Prefix all entries with this directory name."`
-	} `command:"tar" description:"Builds a tarball instead of a zipfile."`
+	} `command:"tar" alias:"t" description:"Builds a tarball instead of a zipfile."`
 }{
 	Usage: `
 Jarcat is a binary shipped with Please that helps it operate on .jar and .zip files.
