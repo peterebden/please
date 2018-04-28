@@ -126,6 +126,10 @@ func main() {
 		}
 		os.Exit(0)
 	} else if command == "zip" {
+		// This comes up if we're in the root directory. Ignore it.
+		if opts.Unzip.Prefix == "." {
+			opts.Unzip.Prefix = ""
+		}
 		if err := unzip.Extract(opts.Unzip.Args.In, opts.Out, opts.Unzip.Args.File, opts.Unzip.Prefix); err != nil {
 			log.Fatalf("Error extracting zipfile: %s", err)
 		}

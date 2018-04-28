@@ -534,13 +534,14 @@ def maven_jar(name:str, id:str, repository:str|list=None, hash:str=None, hashes:
             name = name,
             tag = 'classes',
             srcs = [bin_rule],
-            cmd = 'unzip $SRC classes.jar && mv classes.jar $OUT',
+            cmd = '$TOOL x $SRC classes.jar',
             outs = [name + '.jar'],
             visibility = visibility,
             licences = licences,
             requires = ['java'],
             exported_deps = deps,
             test_only=test_only,
+            tools = [CONFIG.JARCAT_TOOL],
         )
         provides = {
             'java': classes_rule,
