@@ -144,7 +144,7 @@ func (p *parser) parseStatement() *Statement {
 		p.next(EOL)
 	default:
 		if tok.Type == Ident {
-			if p.simpleCall {
+			if p.simpleCall && l.ParenthesisFollows() {
 				p.parseMaybeSimpleCall(s)
 			} else {
 				s.Ident = p.parseIdentStatement()
@@ -572,7 +572,32 @@ func (p *parser) parseLambda() *Lambda {
 	return l
 }
 
+// parseMaybeSimpleCall parses a top-level call statement which may or may not be "simple"
+// (i.e. it's a single call to one function with constant arguments). Whether or not is is
+// deemed to be so, it is parsed into the given statement.
 func (p *parser) parseMaybeSimpleCall(s *Statement) {
-	s.Ident = p.parseIdentStatement()
+	call := &simpleCall{Name: p.next(Ident).Value}
+	p.next('(')
+	allSimple := true
+	names := map[string]bool{}
+	for tok := p.l.Peek(); tok.Type != ')'; tok = p.l.Peek() {
+		arg := CallArgument{}
+		if tok.Type == Ident && p.l.AssignFollows() {
+			// Named argument.
+			arg.Name = tok.Value
+			p.next(Ident)
+			p.next('=')
+			p.assert(!names[arg.Name], tok, "Repeated argument %s", arg.Name)
+			names[arg.Name] = true
+		}
+		expr, simple := p.parseMaybeSimpleArg()
+		arg.Value = expr
+		allSimple = allSimple & simple
 
+		c.Arguments = append(c.Arguments, arg)
+		if !p.optional(',') {
+			break
+		}
+	}
+	p.next(')')
 }

@@ -153,6 +153,12 @@ func (l *lex) AssignFollows() bool {
 	return l.b[l.i] == '=' && l.b[l.i+1] != '='
 }
 
+// ParenthesisFollows is similarly a hack to check if a call is coming up.
+func (l *lex) ParenthesisFollows() bool {
+	l.stripSpaces()
+	return l.b[l.i] == '('
+}
+
 func (l *lex) stripSpaces() {
 	for l.b[l.i] == ' ' {
 		l.i++
