@@ -330,7 +330,13 @@ func (p *parser) parseUnconditionalExpressionInPlace(e *Expression) {
 			Expr: *p.parseValueExpression(),
 		}
 	} else if p.storeConstants && p.parseConstant(e, tok) {
-		constant = true
+		if tok := p.l.Peek(); tok.Type == '.' || tok.Type == '[' || tok.Type == '(' {
+			// It's a constant but followed by a property / index / call, can't optimise it.
+			p.deoptimise(e)
+			p.parseValueExpressionAction(e.Val)
+		} else {
+			constant = true
+		}
 	} else {
 		e.Val = p.parseValueExpression()
 	}
@@ -388,7 +394,12 @@ func (p *parser) parseValueExpression() *ValueExpression {
 	} else {
 		p.fail(tok, "Unexpected token %s", tok)
 	}
-	tok = p.l.Peek()
+	p.parseValueExpressionAction(ve)
+	return ve
+}
+
+func (p *parser) parseValueExpressionAction(ve *ValueExpression) {
+	tok := p.l.Peek()
 	if tok.Type == '[' {
 		ve.Slice = p.parseSlice()
 		tok = p.l.Peek()
@@ -398,7 +409,6 @@ func (p *parser) parseValueExpression() *ValueExpression {
 	} else if p.optional('(') {
 		ve.Call = p.parseCall()
 	}
-	return ve
 }
 
 func (p *parser) parseInt(tok Token) int {
