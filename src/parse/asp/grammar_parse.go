@@ -8,14 +8,13 @@ import (
 )
 
 type parser struct {
-	l          *lex
-	simpleCall bool
+	l              *lex
+	storeConstants bool
 }
 
 // parseFileInput is the only external entry point to the parser, it parses a file into a FileInput structure.
-// If optimise is true then straightforward call statements may be processed into simpleCall instructions;
-// if false then they will not (which is important since they aren't visible externally so anyone wanting a
-// full AST needs that to be disabled.
+// If optimise is true then some expressions will get optimised into constant objects. This isn't always the
+// case since callers can't consume them as a full AST.
 func parseFileInput(r io.Reader, optimise bool) (input *FileInput, err error) {
 	// The rest of the parser functions signal unhappiness by panicking, we
 	// recover any such failures here and convert to an error.
@@ -26,8 +25,8 @@ func parseFileInput(r io.Reader, optimise bool) (input *FileInput, err error) {
 	}()
 
 	p := &parser{
-		l:          newLexer(r),
-		simpleCall: optimise,
+		l:              newLexer(r),
+		storeConstants: optimise,
 	}
 	input = &FileInput{}
 	for tok := p.l.Peek(); tok.Type != EOF; tok = p.l.Peek() {
@@ -144,11 +143,7 @@ func (p *parser) parseStatement() *Statement {
 		p.next(EOL)
 	default:
 		if tok.Type == Ident {
-			if p.simpleCall && l.ParenthesisFollows() {
-				p.parseMaybeSimpleCall(s)
-			} else {
-				s.Ident = p.parseIdentStatement()
-			}
+			s.Ident = p.parseIdentStatement()
 		} else {
 			s.Literal = p.parseExpression()
 		}
@@ -333,6 +328,8 @@ func (p *parser) parseUnconditionalExpressionInPlace(e *Expression) {
 			Op:   tok.Value,
 			Expr: *p.parseValueExpression(),
 		}
+	} else if p.storeConstants && p.parseConstant(e, tok) {
+		// Nothing else to do, constant has been stored.
 	} else {
 		e.Val = p.parseValueExpression()
 	}
@@ -368,11 +365,8 @@ func (p *parser) parseValueExpression() *ValueExpression {
 		ve.String = tok.Value
 		p.l.Next()
 	} else if tok.Type == Int {
-		p.assert(len(tok.Value) < 19, tok, "int literal is too large: %s", tok)
 		p.initField(&ve.Int)
-		i, err := strconv.Atoi(tok.Value)
-		p.assert(err == nil, tok, "invalid int value %s", tok) // Theoretically the lexer shouldn't have fed us this...
-		ve.Int.Int = i
+		ve.Int.Int = p.parseInt(tok)
 		p.l.Next()
 	} else if tok.Value == "False" || tok.Value == "True" || tok.Value == "None" {
 		ve.Bool = tok.Value
@@ -401,6 +395,13 @@ func (p *parser) parseValueExpression() *ValueExpression {
 		ve.Call = p.parseCall()
 	}
 	return ve
+}
+
+func (p *parser) parseInt(tok Token) int {
+	p.assert(len(tok.Value) < 19, tok, "int literal is too large: %s", tok)
+	i, err := strconv.Atoi(tok.Value)
+	p.assert(err == nil, tok, "invalid int value %s", tok) // Theoretically the lexer shouldn't have fed us this...
+	return i
 }
 
 func (p *parser) parseIdentStatement() *IdentStatement {
@@ -572,32 +573,75 @@ func (p *parser) parseLambda() *Lambda {
 	return l
 }
 
-// parseMaybeSimpleCall parses a top-level call statement which may or may not be "simple"
-// (i.e. it's a single call to one function with constant arguments). Whether or not is is
-// deemed to be so, it is parsed into the given statement.
-func (p *parser) parseMaybeSimpleCall(s *Statement) {
-	call := &simpleCall{Name: p.next(Ident).Value}
-	p.next('(')
-	allSimple := true
-	names := map[string]bool{}
-	for tok := p.l.Peek(); tok.Type != ')'; tok = p.l.Peek() {
-		arg := CallArgument{}
-		if tok.Type == Ident && p.l.AssignFollows() {
-			// Named argument.
-			arg.Name = tok.Value
-			p.next(Ident)
-			p.next('=')
-			p.assert(!names[arg.Name], tok, "Repeated argument %s", arg.Name)
-			names[arg.Name] = true
-		}
-		expr, simple := p.parseMaybeSimpleArg()
-		arg.Value = expr
-		allSimple = allSimple & simple
+// parseConstant parses a constant out of the given token (and possibly some following).
+// It returns true if it consumed the object.
+func (p *parser) parseConstant(e *Expression, tok Token) bool {
+	obj, consumed := p.parseConstant2(e, tok, true)
+	if obj != nil {
+		e.Optimised = &OptimisedExpression{Constant: obj}
+		p.l.Next() // isn't done below
+	}
+	return consumed
+}
 
-		c.Arguments = append(c.Arguments, arg)
+func (p *parser) parseConstant2(e *Expression, tok Token, allowList bool) (pyObject, bool) {
+	if tok.Type == String {
+		return pyString(tok.Value), true
+	} else if tok.Type == Int {
+		return pyInt(p.parseInt(tok)), true
+	} else if tok.Type == Ident {
+		if tok.Value == "True" {
+			return True, true
+		} else if tok.Value == "False" {
+			return False, true
+		} else if tok.Value == "None" {
+			return None, true
+		}
+	} else if tok.Type == '[' && allowList {
+		return p.parseMaybeConstantList(e), true
+	}
+	return nil, false
+}
+
+// parseMaybeConstantList parses a list expression which may or may not prove to be constant
+// (we obviously don't know until we've parsed it).
+func (p *parser) parseMaybeConstantList(e *Expression) pyObject {
+	l := pyList{}
+	p.next('[')
+	for tok := p.l.Peek(); tok.Type != ']'; tok = p.l.Peek() {
+		obj, _ := p.parseConstant2(e, tok, false)
+		if obj != nil {
+			l = append(l, obj)
+			p.l.Next()
+		} else {
+			// Did not read the object, we now have to give up on this scheme.
+			p.parseUnconstantList(e, l)
+			return nil
+		}
 		if !p.optional(',') {
 			break
 		}
 	}
-	p.next(')')
+	if tok := p.l.Peek(); tok.Value == "for" {
+		p.parseUnconstantList(e, l)
+		return nil
+	}
+	p.next(']')
+	return l
+}
+
+// parseUnconstantList converts a partly-build constant list back into Expression objects and continues parsing.
+func (p *parser) parseUnconstantList(e *Expression, cl pyList) {
+	l := &List{Values: make([]*Expression, len(cl))}
+	for i, o := range cl {
+		l.Values[i] = &Expression{Optimised: &OptimisedExpression{Constant: o}}
+	}
+	for p.optional(',') {
+		l.Values = append(l.Values, p.parseExpression())
+	}
+	if tok := p.l.Peek(); tok.Value == "for" {
+		l.Comprehension = p.parseComprehension()
+	}
+	p.next(']')
+	e.Val = &ValueExpression{List: l}
 }

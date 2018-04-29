@@ -11,7 +11,6 @@ type FileInput struct {
 // following tokens, it doesn't then make another choice :( )
 type Statement struct {
 	Pos     Position
-	simple  *simpleCall      // Not part of grammar, only used internally.
 	FuncDef *FuncDef         `| @@`
 	For     *ForStatement    `| @@`
 	If      *IfStatement     `| @@`
@@ -279,11 +278,4 @@ var operators = map[string]Operator{
 	"!=":     NotEqual,
 	">=":     GreaterThanOrEqual,
 	"<=":     LessThanOrEqual,
-}
-
-// A simpleCall is used for internal optimisation and implements a
-// fast call instruction with constant arguments.
-type simpleCall struct {
-	Name string
-	Args []CallArgument
 }
