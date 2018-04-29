@@ -63,7 +63,7 @@ func (i *interpreter) LoadBuiltins(filename string, contents []byte, statements 
 	} else if len(contents) != 0 {
 		return i.loadBuiltinStatements(i.parser.ParseData(contents, filename))
 	}
-	return i.loadBuiltinStatements(i.parser.parse(filename))
+	return i.loadBuiltinStatements(i.parser.parse(filename, true))
 }
 
 // loadBuiltinStatements loads statements as builtins.
@@ -118,7 +118,7 @@ func (i *interpreter) Subinclude(path string) pyDict {
 	// Note that there is a race here whereby it's possible for two packages to parse the same
 	// subinclude simultaneously - this doesn't matter since they'll get different but equivalent
 	// scopes, and sooner or later things will sort themselves out.
-	stmts, err := i.parser.parse(path)
+	stmts, err := i.parser.parse(path, true)
 	if err != nil {
 		panic(err) // We're already inside another interpreter, which will handle this for us.
 	}

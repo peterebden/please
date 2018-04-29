@@ -26,7 +26,7 @@ func parseFile(filename string) (*scope, error) {
 	pkg.Filename = "test/package/BUILD"
 	parser := NewParser(state)
 	parser.MustLoadBuiltins("builtins.build_defs", nil, rules.MustAsset("builtins.build_defs.gob"))
-	statements, err := parser.parse(filename)
+	statements, err := parser.parse(filename, true)
 	if err != nil {
 		panic(err)
 	}

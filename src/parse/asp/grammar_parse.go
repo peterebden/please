@@ -8,11 +8,15 @@ import (
 )
 
 type parser struct {
-	l *lex
+	l          *lex
+	simpleCall bool
 }
 
-// parseFileInput is the only external entry point to this class, it parses a file into a FileInput structure.
-func parseFileInput(r io.Reader) (input *FileInput, err error) {
+// parseFileInput is the only external entry point to the parser, it parses a file into a FileInput structure.
+// If optimise is true then straightforward call statements may be processed into simpleCall instructions;
+// if false then they will not (which is important since they aren't visible externally so anyone wanting a
+// full AST needs that to be disabled.
+func parseFileInput(r io.Reader, optimise bool) (input *FileInput, err error) {
 	// The rest of the parser functions signal unhappiness by panicking, we
 	// recover any such failures here and convert to an error.
 	defer func() {
@@ -21,7 +25,10 @@ func parseFileInput(r io.Reader) (input *FileInput, err error) {
 		}
 	}()
 
-	p := &parser{l: newLexer(r)}
+	p := &parser{
+		l:          newLexer(r),
+		simpleCall: optimise,
+	}
 	input = &FileInput{}
 	for tok := p.l.Peek(); tok.Type != EOF; tok = p.l.Peek() {
 		input.Statements = append(input.Statements, p.parseStatement())
@@ -137,7 +144,11 @@ func (p *parser) parseStatement() *Statement {
 		p.next(EOL)
 	default:
 		if tok.Type == Ident {
-			s.Ident = p.parseIdentStatement()
+			if p.simpleCall {
+				p.parseMaybeSimpleCall(s)
+			} else {
+				s.Ident = p.parseIdentStatement()
+			}
 		} else {
 			s.Literal = p.parseExpression()
 		}
@@ -559,4 +570,9 @@ func (p *parser) parseLambda() *Lambda {
 	p.next(':')
 	p.parseExpressionInPlace(&l.Expr)
 	return l
+}
+
+func (p *parser) parseMaybeSimpleCall(s *Statement) {
+	s.Ident = p.parseIdentStatement()
+
 }
