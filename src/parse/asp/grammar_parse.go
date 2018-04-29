@@ -322,6 +322,7 @@ func (p *parser) parseUnconditionalExpression() *Expression {
 }
 
 func (p *parser) parseUnconditionalExpressionInPlace(e *Expression) {
+	constant := false
 	if tok := p.l.Peek(); tok.Type == '-' || tok.Value == "not" {
 		p.l.Next()
 		e.UnaryOp = &UnaryOp{
@@ -329,7 +330,7 @@ func (p *parser) parseUnconditionalExpressionInPlace(e *Expression) {
 			Expr: *p.parseValueExpression(),
 		}
 	} else if p.storeConstants && p.parseConstant(e, tok) {
-		// Nothing else to do, constant has been stored.
+		constant = true
 	} else {
 		e.Val = p.parseValueExpression()
 	}
@@ -355,6 +356,9 @@ func (p *parser) parseUnconditionalExpressionInPlace(e *Expression) {
 			}
 		}
 		tok = p.l.Peek()
+		if constant {
+			p.deoptimise(e)
+		}
 	}
 }
 
@@ -586,7 +590,7 @@ func (p *parser) parseConstant(e *Expression, tok Token) bool {
 
 func (p *parser) parseConstant2(e *Expression, tok Token, allowList bool) (pyObject, bool) {
 	if tok.Type == String {
-		return pyString(tok.Value), true
+		return pyString(stringLiteral(tok.Value)), true
 	} else if tok.Type == Int {
 		return pyInt(p.parseInt(tok)), true
 	} else if tok.Type == Ident {
@@ -626,7 +630,6 @@ func (p *parser) parseMaybeConstantList(e *Expression) pyObject {
 		p.parseUnconstantList(e, l)
 		return nil
 	}
-	p.next(']')
 	return l
 }
 
@@ -636,12 +639,43 @@ func (p *parser) parseUnconstantList(e *Expression, cl pyList) {
 	for i, o := range cl {
 		l.Values[i] = &Expression{Optimised: &OptimisedExpression{Constant: o}}
 	}
-	for p.optional(',') {
+	for tok := p.l.Peek(); tok.Type != ']'; tok = p.l.Peek() {
 		l.Values = append(l.Values, p.parseExpression())
+		if !p.optional(',') {
+			break
+		}
 	}
 	if tok := p.l.Peek(); tok.Value == "for" {
 		l.Comprehension = p.parseComprehension()
 	}
 	p.next(']')
 	e.Val = &ValueExpression{List: l}
+}
+
+// deoptimise converts the optimised slot on an expression back to a normal expression.
+// It's used when we discover that the optimisation won't work because of the following tokens.
+func (p *parser) deoptimise(e *Expression) {
+	e.Val = p.deoptimise2(e.Optimised.Constant)
+	e.Optimised = nil
+}
+
+func (p *parser) deoptimise2(o pyObject) *ValueExpression {
+	if s, ok := o.(pyString); ok {
+		return &ValueExpression{String: `"` + string(s) + `"`}
+	} else if b, ok := o.(pyBool); ok {
+		return &ValueExpression{Bool: b.String()}
+	} else if i, ok := o.(pyInt); ok {
+		v := &ValueExpression{}
+		p.initField(&v.Int)
+		v.Int.Int = int(i)
+		return v
+	} else if l, ok := o.(pyList); ok {
+		l2 := &List{Values: make([]*Expression, len(l))}
+		for i, o := range l {
+			l2.Values[i] = &Expression{Optimised: &OptimisedExpression{Constant: o}}
+		}
+		return &ValueExpression{List: l2}
+	}
+	log.Fatalf("Unknown type at deoptimisation") // Shouldn't really get here
+	return nil
 }
