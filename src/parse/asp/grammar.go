@@ -88,6 +88,8 @@ type Expression struct {
 type OptimisedExpression struct {
 	// Used to optimise constant expressions.
 	Constant pyObject
+	// Used for expressions that have a constant but also contain an operator etc.
+	PartConstant pyObject
 	// Similarly applied to optimise simple lookups of local variables.
 	Local string
 	// And similarly applied to optimise lookups into configuration.

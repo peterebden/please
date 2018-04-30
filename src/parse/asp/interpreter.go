@@ -372,13 +372,16 @@ func (s *scope) interpretFor(stmt *ForStatement) pyObject {
 
 func (s *scope) interpretExpression(expr *Expression) pyObject {
 	// Check the optimised sites first
+	var obj pyObject
 	if expr.Optimised != nil {
 		if expr.Optimised.Constant != nil {
 			return expr.Optimised.Constant
 		} else if expr.Optimised.Local != "" {
 			return s.Lookup(expr.Optimised.Local)
+		} else if expr.Optimised.Config != "" {
+			return s.config.Property(expr.Optimised.Config)
 		}
-		return s.config.Property(expr.Optimised.Config)
+		obj = expr.Optimised.PartConstant
 	}
 	defer func() {
 		if r := recover(); r != nil {
@@ -388,7 +391,6 @@ func (s *scope) interpretExpression(expr *Expression) pyObject {
 	if expr.If != nil && !s.interpretExpression(expr.If.Condition).IsTruthy() {
 		return s.interpretExpression(expr.If.Else)
 	}
-	var obj pyObject
 	if expr.Val != nil {
 		obj = s.interpretValueExpression(expr.Val)
 	} else if expr.UnaryOp != nil {

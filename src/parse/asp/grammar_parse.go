@@ -312,6 +312,12 @@ func (p *parser) parseInlineIf(e *Expression) {
 		e.If = &InlineIf{Condition: p.parseExpression()}
 		p.nextv("else")
 		e.If.Else = p.parseExpression()
+	} else if e.Optimised != nil && e.Optimised.PartConstant != nil {
+		// See if we can further optimise the part constant to fully constant.
+		if e.Val.Slice == nil && e.Val.Property == nil && e.Val.Call == nil && len(e.Op) == 0 {
+			e.Optimised.Constant = e.Optimised.PartConstant
+			e.Optimised.PartConstant = nil
+		}
 	}
 }
 
@@ -322,23 +328,14 @@ func (p *parser) parseUnconditionalExpression() *Expression {
 }
 
 func (p *parser) parseUnconditionalExpressionInPlace(e *Expression) {
-	constant := false
 	if tok := p.l.Peek(); tok.Type == '-' || tok.Value == "not" {
 		p.l.Next()
 		e.UnaryOp = &UnaryOp{
 			Op:   tok.Value,
-			Expr: *p.parseValueExpression(),
-		}
-	} else if p.storeConstants && p.parseConstant(e, tok) {
-		if tok := p.l.Peek(); tok.Type == '.' || tok.Type == '[' || tok.Type == '(' {
-			// It's a constant but followed by a property / index / call, can't optimise it.
-			p.deoptimise(e)
-			p.parseValueExpressionAction(e.Val)
-		} else {
-			constant = true
+			Expr: *p.parseValueExpression(nil),
 		}
 	} else {
-		e.Val = p.parseValueExpression()
+		e.Val = p.parseValueExpression(e)
 	}
 	tok := p.l.Peek()
 	if tok.Value == "not" {
@@ -362,36 +359,54 @@ func (p *parser) parseUnconditionalExpressionInPlace(e *Expression) {
 			}
 		}
 		tok = p.l.Peek()
-		if constant {
-			p.deoptimise(e)
-		}
 	}
 }
 
-func (p *parser) parseValueExpression() *ValueExpression {
+func (p *parser) parseValueExpression(e *Expression) *ValueExpression {
 	ve := &ValueExpression{}
 	tok := p.l.Peek()
-	if tok.Type == String {
-		ve.String = tok.Value
+	switch tok.Type {
+	case String:
+		if p.storeConstants && e != nil {
+			e.Optimised = &OptimisedExpression{PartConstant: pyString(stringLiteral(tok.Value))}
+		} else {
+			ve.String = tok.Value
+		}
 		p.l.Next()
-	} else if tok.Type == Int {
-		p.initField(&ve.Int)
-		ve.Int.Int = p.parseInt(tok)
+	case Int:
+		if p.storeConstants && e != nil {
+			e.Optimised = &OptimisedExpression{PartConstant: pyInt(p.parseInt(tok))}
+		} else {
+			p.initField(&ve.Int)
+			ve.Int.Int = p.parseInt(tok)
+		}
 		p.l.Next()
-	} else if tok.Value == "False" || tok.Value == "True" || tok.Value == "None" {
-		ve.Bool = tok.Value
-		p.l.Next()
-	} else if tok.Type == '[' {
+	case '[':
 		ve.List = p.parseList('[', ']')
-	} else if tok.Type == '(' {
+	case '(':
 		ve.Tuple = p.parseList('(', ')')
-	} else if tok.Type == '{' {
+	case '{':
 		ve.Dict = p.parseDict()
-	} else if tok.Value == "lambda" {
-		ve.Lambda = p.parseLambda()
-	} else if tok.Type == Ident {
-		ve.Ident = p.parseIdentExpr()
-	} else {
+	case Ident:
+		if tok.Value == "False" || tok.Value == "True" || tok.Value == "None" {
+			if p.storeConstants && e != nil {
+				if tok.Value == "True" {
+					e.Optimised = &OptimisedExpression{PartConstant: True}
+				} else if tok.Value == "False" {
+					e.Optimised = &OptimisedExpression{PartConstant: False}
+				} else {
+					e.Optimised = &OptimisedExpression{PartConstant: None}
+				}
+			} else {
+				ve.Bool = tok.Value
+			}
+			p.l.Next()
+		} else if tok.Value == "lambda" {
+			ve.Lambda = p.parseLambda()
+		} else {
+			ve.Ident = p.parseIdentExpr()
+		}
+	default:
 		p.fail(tok, "Unexpected token %s", tok)
 	}
 	p.parseValueExpressionAction(ve)
@@ -587,10 +602,11 @@ func (p *parser) parseLambda() *Lambda {
 	return l
 }
 
+/*
 // parseConstant parses a constant out of the given token (and possibly some following).
 // It returns true if it consumed the object.
 func (p *parser) parseConstant(e *Expression, tok Token) bool {
-	obj, consumed := p.parseConstant2(e, tok, true)
+	obj, consumed := p.parseConstant2(e, tok)
 	if obj != nil {
 		e.Optimised = &OptimisedExpression{Constant: obj}
 		p.l.Next() // isn't done below
@@ -598,7 +614,7 @@ func (p *parser) parseConstant(e *Expression, tok Token) bool {
 	return consumed
 }
 
-func (p *parser) parseConstant2(e *Expression, tok Token, allowList bool) (pyObject, bool) {
+func (p *parser) parseConstant2(e *Expression, tok Token) (pyObject, bool) {
 	if tok.Type == String {
 		return pyString(stringLiteral(tok.Value)), true
 	} else if tok.Type == Int {
@@ -611,7 +627,9 @@ func (p *parser) parseConstant2(e *Expression, tok Token, allowList bool) (pyObj
 		} else if tok.Value == "None" {
 			return None, true
 		}
-	} else if tok.Type == '[' && allowList {
+	} else if tok.Type == '[' {
+		l := p.parseList()
+
 		return p.parseMaybeConstantList(e), true
 	}
 	return nil, false
@@ -642,50 +660,4 @@ func (p *parser) parseMaybeConstantList(e *Expression) pyObject {
 	}
 	return l
 }
-
-// parseUnconstantList converts a partly-build constant list back into Expression objects and continues parsing.
-func (p *parser) parseUnconstantList(e *Expression, cl pyList) {
-	l := &List{Values: make([]*Expression, len(cl))}
-	for i, o := range cl {
-		l.Values[i] = &Expression{Optimised: &OptimisedExpression{Constant: o}}
-	}
-	for tok := p.l.Peek(); tok.Type != ']'; tok = p.l.Peek() {
-		l.Values = append(l.Values, p.parseExpression())
-		if !p.optional(',') {
-			break
-		}
-	}
-	if tok := p.l.Peek(); tok.Value == "for" {
-		l.Comprehension = p.parseComprehension()
-	}
-	p.next(']')
-	e.Val = &ValueExpression{List: l}
-}
-
-// deoptimise converts the optimised slot on an expression back to a normal expression.
-// It's used when we discover that the optimisation won't work because of the following tokens.
-func (p *parser) deoptimise(e *Expression) {
-	e.Val = p.deoptimise2(e.Optimised.Constant)
-	e.Optimised = nil
-}
-
-func (p *parser) deoptimise2(o pyObject) *ValueExpression {
-	if s, ok := o.(pyString); ok {
-		return &ValueExpression{String: `"` + string(s) + `"`}
-	} else if b, ok := o.(pyBool); ok {
-		return &ValueExpression{Bool: b.String()}
-	} else if i, ok := o.(pyInt); ok {
-		v := &ValueExpression{}
-		p.initField(&v.Int)
-		v.Int.Int = int(i)
-		return v
-	} else if l, ok := o.(pyList); ok {
-		l2 := &List{Values: make([]*Expression, len(l))}
-		for i, o := range l {
-			l2.Values[i] = &Expression{Optimised: &OptimisedExpression{Constant: o}}
-		}
-		return &ValueExpression{List: l2}
-	}
-	log.Fatalf("Unknown type at deoptimisation") // Shouldn't really get here
-	return nil
-}
+*/
