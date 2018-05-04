@@ -220,7 +220,7 @@ func printTestResults(state *core.BuildState, aggregatedResults core.TestResults
 	if len(failedTargets) > 0 {
 		for _, failed := range failedTargets {
 			target := state.Graph.TargetOrDie(failed)
-			if len(target.Results.Failures) == 0 {
+			if target.Results.Failed == 0 {
 				if target.Results.TimedOut {
 					printf("${WHITE_ON_RED}Fail:${RED_NO_BG} %s ${WHITE_ON_RED}Timed out${RESET}\n", target.Label)
 				} else {
@@ -229,7 +229,10 @@ func printTestResults(state *core.BuildState, aggregatedResults core.TestResults
 			} else {
 				printf("${WHITE_ON_RED}Fail:${RED_NO_BG} %s ${BOLD_GREEN}%3d passed ${BOLD_YELLOW}%3d skipped ${BOLD_RED}%3d failed ${BOLD_WHITE}Took %s${RESET}\n",
 					target.Label, target.Results.Passed, target.Results.Skipped, target.Results.Failed, target.Results.Duration.Round(durationGranularity))
-				for _, failure := range target.Results.Failures {
+				for _, failure := range target.Results.Results {
+					if failure.Success {
+						continue
+					}
 					printf("${BOLD_RED}Failure: %s in %s${RESET}\n", failure.Type, failure.Name)
 					printf("%s\n", failure.Traceback)
 					if len(failure.Stdout) > 0 {
@@ -267,11 +270,11 @@ func printTestResults(state *core.BuildState, aggregatedResults core.TestResults
 				}
 				for _, result := range target.Results.Results {
 					if result.Success {
-						printf(fmt.Sprintf("    ${GREEN}%%%ds${RESET} ${BOLD_GREEN}PASS${RESET} %s\n", width+1), result.Name, result.Duration)
+						printf(fmt.Sprintf("    ${GREEN}%%-%ds${RESET} ${BOLD_GREEN}PASS${RESET} %%s\n", width+1), result.Name, result.Duration)
 					} else if result.Skipped {
-						printf(fmt.Sprintf("    ${YELLOW}%%%ds${RESET} ${BOLD_YELLOW}SKIP${RESET}\n", width+1), result.Name, result.Duration)
+						printf(fmt.Sprintf("    ${YELLOW}%%-%ds${RESET} ${BOLD_YELLOW}SKIP${RESET} %%s\n", width+1), result.Name, result.Duration)
 					} else {
-						printf(fmt.Sprintf("    ${RED}%%%ds${RESET} ${BOLD_RED}FAIL{RESET}\n", width+1), result.Name, result.Duration)
+						printf(fmt.Sprintf("    ${RED}%%-%ds${RESET} ${BOLD_RED}FAIL${RESET} %%s\n", width+1), result.Name, result.Duration)
 					}
 				}
 			}
