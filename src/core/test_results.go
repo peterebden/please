@@ -31,6 +31,7 @@ type TestResult struct {
 	Stderr    string        // Standard error during test
 	Duration  time.Duration // Time the test took
 	Success   bool          // True if the test was successful
+	Skipped   bool          // True if the test was skipped
 }
 
 // Aggregate aggregates the given results into this one.

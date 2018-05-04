@@ -258,8 +258,21 @@ func printTestResults(state *core.BuildState, aggregatedResults core.TestResults
 				printf("${GREEN}%s${RESET} %s\n", target.Label, testResultMessage(target.Results, failedTargets))
 			}
 			if detailed {
-				for _, pass := range target.Results.Passes {
-					printf("    ${GREEN}%s${RESET} ${BOLD_GREEN}PASS${RESET}\n", pass)
+				// Determine max width of test name so we align them
+				width := 0
+				for _, result := range target.Results.Results {
+					if len(result.Name) > width {
+						width = len(result.Name)
+					}
+				}
+				for _, result := range target.Results.Results {
+					if result.Success {
+						printf(fmt.Sprintf("    ${GREEN}%%%ds${RESET} ${BOLD_GREEN}PASS${RESET} %s\n", width+1), result.Name, result.Duration)
+					} else if result.Skipped {
+						printf(fmt.Sprintf("    ${YELLOW}%%%ds${RESET} ${BOLD_YELLOW}SKIP${RESET}\n", width+1), result.Name, result.Duration)
+					} else {
+						printf(fmt.Sprintf("    ${RED}%%%ds${RESET} ${BOLD_RED}FAIL{RESET}\n", width+1), result.Name, result.Duration)
+					}
 				}
 			}
 			if state.ShowTestOutput && target.Results.Output != "" {
