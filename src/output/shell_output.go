@@ -58,7 +58,7 @@ type buildingTargetData struct {
 
 // MonitorState monitors the build while it's running (essentially until state.Results is closed)
 // and prints output while it's happening.
-func MonitorState(state *core.BuildState, numThreads int, plainOutput, keepGoing, shouldBuild, shouldTest, shouldRun, showStatus bool, traceFile string) bool {
+func MonitorState(state *core.BuildState, numThreads int, plainOutput, keepGoing, shouldBuild, shouldTest, shouldRun, showStatus, detailedTests bool, traceFile string) bool {
 	failedTargetMap := map[core.BuildLabel]error{}
 	buildingTargets := make([]buildingTarget, numThreads)
 
@@ -118,7 +118,7 @@ func MonitorState(state *core.BuildState, numThreads int, plainOutput, keepGoing
 	}
 	if state.Verbosity > 0 && shouldBuild {
 		if shouldTest { // Got to the test phase, report their results.
-			printTestResults(state, aggregatedResults, failedTargets, duration)
+			printTestResults(state, aggregatedResults, failedTargets, duration, detailedTests)
 		} else if state.NeedHashesOnly {
 			printHashes(state, duration)
 		} else if state.PrepareOnly {
@@ -216,7 +216,7 @@ func processResult(state *core.BuildState, result *core.BuildResult, buildingTar
 	}
 }
 
-func printTestResults(state *core.BuildState, aggregatedResults core.TestResults, failedTargets []core.BuildLabel, duration time.Duration) {
+func printTestResults(state *core.BuildState, aggregatedResults core.TestResults, failedTargets []core.BuildLabel, duration time.Duration, detailed bool) {
 	if len(failedTargets) > 0 {
 		for _, failed := range failedTargets {
 			target := state.Graph.TargetOrDie(failed)
@@ -256,6 +256,11 @@ func printTestResults(state *core.BuildState, aggregatedResults core.TestResults
 				printf("${RED}%s${RESET} %s\n", target.Label, testResultMessage(target.Results, failedTargets))
 			} else {
 				printf("${GREEN}%s${RESET} %s\n", target.Label, testResultMessage(target.Results, failedTargets))
+			}
+			if detailed {
+				for _, pass := range target.Results.Passes {
+					printf("    ${GREEN}%s${RESET} ${BOLD_GREEN}PASS${RESET}\n", pass)
+				}
 			}
 			if state.ShowTestOutput && target.Results.Output != "" {
 				printf("Test output:\n%s\n", target.Results.Output)
