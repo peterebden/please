@@ -488,6 +488,10 @@ go_get(
 go_get(
     name = 'docker',
     get = 'docker.io/go-docker',
+    install = [
+        '',
+        'api/...',
+    ],
     revision = 'v1.0.0',
     deps = [
         ':docker-distribution',

@@ -1,3 +1,5 @@
+//+build !bootstrap
+
 // Support for containerising tests. Currently Docker only.
 
 package test
@@ -5,22 +7,30 @@ package test
 import (
 	"fmt"
 	"io/ioutil"
-	"os"
+	"net/http"
 	"path"
 	"strings"
+	"sync"
 	"time"
+
+	"docker.io/go-docker"
+	"docker.io/go-docker/api"
 
 	"build"
 	"core"
 )
 
-func runContainerisedTest(state *core.BuildState, target *core.BuildTarget) ([]byte, error) {
-	// Unset Docker environment variables. These typically cause things to fail if set
-	// in inexplicable ways. If these turn out to be otherwise useful we may make this configurable.
-	os.Unsetenv("DOCKER_TLS_VERIFY")
-	os.Unsetenv("DOCKER_HOST")
-	os.Unsetenv("DOCKER_CERT_PATH")
-	os.Unsetenv("DOCKER_API_VERSION")
+var dockerClient *docker.Client
+var dockerClientOnce sync.Once
+
+func runContainerisedTest(state *core.BuildState, target *core.BuildTarget) (out []byte, err error) {
+	dockerClientOnce.Do(func() {
+		httpClient := &http.Client{Timeout: time.Second * 20}
+		dockerClient, err = docker.NewClient(docker.DefaultDockerHost, api.DefaultVersion, httpClient, nil)
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	testDir := path.Join(core.RepoRoot, target.TestDir())
 	replacedCmd := build.ReplaceTestSequences(state, target, target.GetTestCommand(state))
@@ -53,7 +63,7 @@ func runContainerisedTest(state *core.BuildState, target *core.BuildTarget) ([]b
 	replacedCmd = "mkdir -p /tmp/test && cp -r /tmp/test_in/* /tmp/test && cd /tmp/test && " + replacedCmd
 	command = append(command, "-v", testDir+":/tmp/test_in", "-w", "/tmp/test_in", containerName, "bash", "-o", "pipefail", "-c", replacedCmd)
 	log.Debug("Running containerised test %s: %s", target.Label, strings.Join(command, " "))
-	_, out, err := core.ExecWithTimeout(target, target.TestDir(), nil, target.TestTimeout, state.Config.Test.Timeout, state.ShowAllOutput, false, command)
+	_, out, err = core.ExecWithTimeout(target, target.TestDir(), nil, target.TestTimeout, state.Config.Test.Timeout, state.ShowAllOutput, false, command)
 	retrieveResultsAndRemoveContainer(state, target, cidfile, err == nil)
 	return out, err
 }

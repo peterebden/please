@@ -1,11 +1,15 @@
 go_library(
     name = 'test',
-    srcs = glob(['*.go'], exclude = ['*_test.go']),
+    srcs = glob(['*.go'], exclude = [
+        '*_stub.go',
+        '*_test.go',
+    ]),
     deps = [
         '//src/build',
         '//src/core',
         '//src/fs',
         '//src/metrics',
+        '//third_party/go:docker',
         '//third_party/go:logging',
         '//third_party/go:tools',
     ],
