@@ -78,8 +78,8 @@ func runContainerisedTest(state *core.BuildState, target *core.BuildTarget) (out
 			Target: config.WorkingDir,
 		}},
 	}
-	log.Debug("Running %s in container. Equivalent command: docker run -it --rm -e %s -u \"%s\" %s %s",
-		strings.Join(config.Env, " -e "), config.User, config.Image, strings.Join(config.Cmd, " "))
+	log.Debug("Running %s in container. Equivalent command: docker run -it --rm -e %s -w %s -u \"%s\" %s %s",
+		target.Label, strings.Join(config.Env, " -e "), config.WorkingDir, config.User, config.Image, strings.Join(config.Cmd, " "))
 	c, err := dockerClient.ContainerCreate(context.Background(), config, hostConfig, nil, "")
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create container: %s", err)
@@ -88,9 +88,12 @@ func runContainerisedTest(state *core.BuildState, target *core.BuildTarget) (out
 		log.Warning("%s creating container: %s", target.Label, warning)
 	}
 	defer func() {
+		if err := dockerClient.ContainerStop(context.Background(), c.ID, nil); err != nil {
+			log.Warning("Failed to stop container for %s: %s", target.Label, err)
+			return // ContainerRemove will fail if it's not stopped.
+		}
 		if err := dockerClient.ContainerRemove(context.Background(), c.ID, types.ContainerRemoveOptions{
 			RemoveVolumes: true,
-			RemoveLinks:   true,
 			Force:         true,
 		}); err != nil {
 			log.Warning("Failed to remove container for %s: %s", target.Label, err)
