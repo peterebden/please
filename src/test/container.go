@@ -53,7 +53,7 @@ func runContainerisedTest(state *core.BuildState, target *core.BuildTarget) (out
 	// Gentle hack: remove the absolute path from the command
 	replacedCmd = strings.Replace(replacedCmd, targetTestDir, targetTestDir, -1)
 
-	env := core.BuildEnvironment(state, target, true)
+	env := core.TestEnvironment(state, target, testDir)
 	env.Replace("RESULTS_FILE", resultsFile)
 	env.Replace("GTEST_OUTPUT", "xml:"+resultsFile)
 
@@ -62,7 +62,7 @@ func runContainerisedTest(state *core.BuildState, target *core.BuildTarget) (out
 		// TODO(peterebden): Do we still need LC_ALL here? It was kinda hacky before...
 		Env:        append(env, "LC_ALL=C.UTF-8"),
 		WorkingDir: testDir,
-		Cmd:        []string{"bash", "-c", replacedCmd},
+		Cmd:        []string{"bash", "-uo", "pipefail", "-c", replacedCmd},
 		Tty:        true, // This makes it a lot easier to read later on.
 	}
 	if target.ContainerSettings != nil {
@@ -74,12 +74,13 @@ func runContainerisedTest(state *core.BuildState, target *core.BuildTarget) (out
 	hostConfig := &container.HostConfig{
 		Mounts: []mount.Mount{{
 			Type:   mount.TypeBind,
-			Source: testDir,
+			Source: targetTestDir,
 			Target: config.WorkingDir,
 		}},
 	}
-	log.Debug("Running %s in container. Equivalent command: docker run -it --rm -e %s -w %s -u \"%s\" %s %s",
-		target.Label, strings.Join(config.Env, " -e "), config.WorkingDir, config.User, config.Image, strings.Join(config.Cmd, " "))
+	log.Debug("Running %s in container. Equivalent command: docker run -it --rm -e %s -w %s -v %s:%s -u \"%s\" %s %s",
+		target.Label, strings.Join(config.Env, " -e "), config.WorkingDir, targetTestDir, config.WorkingDir,
+		config.User, config.Image, strings.Join(config.Cmd, " "))
 	c, err := dockerClient.ContainerCreate(context.Background(), config, hostConfig, nil, "")
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create container: %s", err)
