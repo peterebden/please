@@ -36,6 +36,9 @@ func runContainerisedTest(state *core.BuildState, target *core.BuildTarget) (out
 		dockerClient, err = docker.NewClient(docker.DefaultDockerHost, api.DefaultVersion, nil, nil)
 		if err != nil {
 			log.Error("%s", err)
+		} else {
+			dockerClient.NegotiateAPIVersion(context.Background())
+			log.Debug("Docker client negotiated API version %s", dockerClient.ClientVersion())
 		}
 	})
 	if err != nil {
@@ -50,11 +53,6 @@ func runContainerisedTest(state *core.BuildState, target *core.BuildTarget) (out
 	// Gentle hack: remove the absolute path from the command
 	replacedCmd = strings.Replace(replacedCmd, targetTestDir, targetTestDir, -1)
 
-	timeout := int(target.TestTimeout.Seconds())
-	if timeout == 0 {
-		timeout = int(time.Duration(state.Config.Test.Timeout).Seconds())
-	}
-
 	env := core.BuildEnvironment(state, target, true)
 	env.Replace("RESULTS_FILE", resultsFile)
 	env.Replace("GTEST_OUTPUT", "xml:"+resultsFile)
@@ -62,11 +60,10 @@ func runContainerisedTest(state *core.BuildState, target *core.BuildTarget) (out
 	config := &container.Config{
 		Image: state.Config.Docker.DefaultImage,
 		// TODO(peterebden): Do we still need LC_ALL here? It was kinda hacky before...
-		Env:         append(env, "LC_ALL=C.UTF-8"),
-		WorkingDir:  testDir,
-		Cmd:         []string{"bash", "-c", replacedCmd},
-		StopTimeout: &timeout,
-		Tty:         true, // This makes it a lot easier to read later on.
+		Env:        append(env, "LC_ALL=C.UTF-8"),
+		WorkingDir: testDir,
+		Cmd:        []string{"bash", "-c", replacedCmd},
+		Tty:        true, // This makes it a lot easier to read later on.
 	}
 	if target.ContainerSettings != nil {
 		if target.ContainerSettings.DockerImage != "" {
@@ -102,7 +99,14 @@ func runContainerisedTest(state *core.BuildState, target *core.BuildTarget) (out
 	if err := dockerClient.ContainerStart(context.Background(), c.ID, types.ContainerStartOptions{}); err != nil {
 		return nil, fmt.Errorf("Failed to start container: %s", err)
 	}
-	waitChan, errChan := dockerClient.ContainerWait(context.Background(), c.ID, container.WaitConditionNotRunning)
+
+	timeout := target.TestTimeout
+	if timeout == 0 {
+		timeout = time.Duration(state.Config.Test.Timeout)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	waitChan, errChan := dockerClient.ContainerWait(ctx, c.ID, container.WaitConditionNotRunning)
 	var status int64
 	select {
 	case body := <-waitChan:
