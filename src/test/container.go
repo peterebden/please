@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"path"
 	"strings"
@@ -34,13 +33,15 @@ func runContainerisedTest(state *core.BuildState, target *core.BuildTarget) (out
 	const testDir = "/tmp/test"
 
 	dockerClientOnce.Do(func() {
-		httpClient := &http.Client{Timeout: time.Second * 20}
-		dockerClient, err = docker.NewClient(docker.DefaultDockerHost, api.DefaultVersion, httpClient, nil)
+		dockerClient, err = docker.NewClient(docker.DefaultDockerHost, api.DefaultVersion, nil, nil)
+		if err != nil {
+			log.Error("%s", err)
+		}
 	})
 	if err != nil {
 		return nil, err
 	} else if dockerClient == nil {
-		return nil, fmt.Errorf("failed to initialise client")
+		return nil, fmt.Errorf("failed to initialise Docker client")
 	}
 
 	targetTestDir := path.Join(core.RepoRoot, target.TestDir())
