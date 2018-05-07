@@ -183,6 +183,16 @@ func (env BuildEnv) ReplaceEnvironment(s string) string {
 	return ""
 }
 
+// Replace replaces the value of the given variable in this BuildEnv.
+func (env BuildEnv) Replace(key, value string) {
+	key = key + "="
+	for i, e := range env {
+		if strings.HasPrefix(e, key) {
+			env[i] = key + value
+		}
+	}
+}
+
 // Redacted implements the interface for our logging implementation.
 func (env BuildEnv) Redacted() interface{} {
 	r := make(BuildEnv, len(env))
