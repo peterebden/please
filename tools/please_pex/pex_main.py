@@ -36,7 +36,10 @@ class SoImport(object):
                 if path:
                     if path.startswith('.bootstrap/'):
                         path = path[len('.bootstrap/'):]
-                    self.modules.setdefault(path.replace('/', '.'), name)
+                    importpath = path.replace('/', '.')
+                    self.modules.setdefault(importpath, name)
+                    if path.startswith(MODULE_DIR):
+                        self.modules.setdefault(importpath[len(MODULE_DIR)+1:], name)
             if self.modules:
                 self.zf = zf
 
@@ -66,6 +69,29 @@ class SoImport(object):
             if path.endswith(suffix):
                 return path[:-len(suffix)], suffix
         return None, None
+
+
+class ModuleDirImport(object):
+    """Handles imports to a directory equivalently to them being at the top level.
+
+    This means that if one writes `import third_party.python.six`, it's imported like `import six`,
+    but becomes accessible under both names. This handles both the fully-qualified import names
+    and packages importing as their expected top-level names internally.
+    """
+
+    def __init__(self, module_dir=MODULE_DIR):
+        self.prefix = module_dir.replace('/', '.') + '.'
+
+    def find_module(self, fullname, path=None):
+        """Attempt to locate module. Returns self if found, None if not."""
+        if fullname.startswith(self.prefix):
+            return self
+
+    def load_module(self, fullname):
+        """Actually load a module that we said we'd handle in find_module."""
+        module = importlib.import_module(fullname[len(self.prefix):])
+        sys.modules[fullname] = module
+        return module
 
 
 def clean_sys_path():
