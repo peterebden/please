@@ -132,3 +132,9 @@ python_test(
     ],
     deps = ["//third_party/python:pandas"],
 )
+
+python_test(
+    name = "unicode_test",
+    srcs = ["unicode_test.py"],
+    labels = ["py3"],
+)
