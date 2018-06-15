@@ -571,3 +571,9 @@ go_get(
     install = ["buildifier"],
     revision = "0.11.1",
 )
+
+go_get(
+    name = "xxhash",
+    get = "github.com/OneOfOne/xxhash",
+    revision = "6def279d2ce6c81a79dd1c1be580f03bb216fb8a",
+)

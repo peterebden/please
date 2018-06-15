@@ -1,7 +1,7 @@
 package fs
 
 import (
-	"crypto/sha1"
+	//	"crypto/sha1"
 	"fmt"
 	"hash"
 	"io"
@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/OneOfOne/xxhash"
 )
 
 // boolTrueHashValue is used when we need to write something indicating a bool in the input.
@@ -86,7 +88,8 @@ func (hasher *PathHasher) SetHash(path string, hash []byte) {
 }
 
 func (hasher *PathHasher) hash(path string) ([]byte, error) {
-	h := sha1.New()
+	//h := sha1.New()
+	h := xxhash.New64()
 	info, err := os.Lstat(path)
 	if err == nil && info.Mode()&os.ModeSymlink != 0 {
 		// Handle symlinks specially (don't attempt to read their contents).

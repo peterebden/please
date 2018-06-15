@@ -366,6 +366,7 @@ func moveOutputs(state *core.BuildState, target *core.BuildTarget) ([]string, bo
 func moveOutput(state *core.BuildState, target *core.BuildTarget, tmpOutput, realOutput string) (bool, error) {
 	// hash the file
 	newHash, err := state.PathHasher.Hash(tmpOutput, false)
+	log.Fatalf("%d", len(newHash))
 	if err != nil {
 		return true, err
 	}
