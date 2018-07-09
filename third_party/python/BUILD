@@ -179,7 +179,7 @@ python_wheel(
 pip_library(
     name = "numpy",
     test_only = True,
-    version = "1.14.0",
+    version = "1.14.5",
     zip_safe = False,
 )
 
@@ -202,7 +202,7 @@ pip_library(
 pip_library(
     name = "pandas",
     test_only = True,
-    version = "0.22.0",
+    version = "0.23.3",
     deps = [
         ":dateutil",
         ":numpy",
