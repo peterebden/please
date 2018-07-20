@@ -472,6 +472,9 @@ var buildFunctions = map[string]func() bool{
 		state := core.NewBuildState(1, nil, opts.OutputFlags.Verbosity, config)
 		return follow.ConnectClient(state, opts.Follow.Args.URL.String(), opts.Follow.Retries, time.Duration(opts.Follow.Delay))
 	},
+	"serve": func() bool {
+		return remote.Serve(opts.Serve.Port, Please)
+	},
 	"outputs": func() bool {
 		success, state := runBuild(opts.Export.Outputs.Args.Targets, "", true, false)
 		if success {
@@ -693,11 +696,7 @@ func newCache(config *core.Configuration) core.Cache {
 }
 
 // Please starts & runs the main build process through to its completion.
-func Please(targets []core.BuildLabel, config *core.Configuration, remote string, prettyOutput, shouldBuild, shouldTest bool) (bool, *core.BuildState) {
-	if remote != "" {
-		return remote.DispatchRemoteBuild(targets, remote,
-	}
-
+func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput, shouldBuild, shouldTest bool) (bool, *core.BuildState) {
 	if opts.BuildFlags.NumThreads > 0 {
 		config.Please.NumThreads = opts.BuildFlags.NumThreads
 	} else if config.Please.NumThreads <= 0 {
@@ -864,7 +863,10 @@ func runBuild(targets []core.BuildLabel, remote string, shouldBuild, shouldTest 
 		targets = core.InitialPackage()
 	}
 	pretty := prettyOutput(opts.OutputFlags.InteractiveOutput, opts.OutputFlags.PlainOutput, opts.OutputFlags.Verbosity)
-	return Please(targets, remote, config, pretty, shouldBuild, shouldTest)
+	if remote != "" {
+		return remote.RunRemoteBuild(targets, remote, pretty, shouldBuild, shouldTest)
+	}
+	return Please(targets, config, pretty, shouldBuild, shouldTest)
 }
 
 // readConfigAndSetRoot reads the .plzconfig files and moves to the repo root.
