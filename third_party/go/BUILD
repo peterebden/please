@@ -111,38 +111,20 @@ go_get(
 go_get(
     name = "grpc",
     exported_deps = [":net"],
-    get = "google.golang.org/grpc",
-    install = [
-        "",
-        "balancer",
-        "balancer/base",
-        "balancer/roundrobin",
-        "codes",
-        "connectivity",
-        "credentials",
-        "encoding",
-        "encoding/gzip",
-        "encoding/proto",
-        "grpclb/grpc_lb_v1/messages",
-        "grpclog",
-        "health",
-        "health/grpc_health_v1",
-        "internal",
-        "keepalive",
-        "metadata",
-        "naming",
-        "peer",
-        "resolver",
-        "resolver/dns",
-        "resolver/passthrough",
-        "stats",
-        "status",
-        "tap",
-        "transport",
-    ],
+    get = "google.golang.org/grpc/...",
     repo = "github.com/grpc/grpc-go",
-    revision = "v1.10.0",
+    revision = "v1.13.0",
+    strip = [
+        "examples",
+        "test",
+        "credentials/oauth",
+        "interop",
+        "benchmark",
+        "stress",
+        "grpclb/grpclb_test.go",
+    ],
     deps = [
+        ":glog",
         ":protobuf",
         ":rpcstatus",
     ],
@@ -157,9 +139,16 @@ go_get(
 )
 
 go_get(
+    name = "glog",
+    get = "github.com/golang/glog",
+    revision = "23def4e6c14b4da8ac2ed8007337bc5eb5007998",
+)
+
+go_get(
     name = "protobuf",
     get = "github.com/golang/protobuf/...",
-    revision = "130e6b02ab059e7b717a096f397c5b60111cae74",
+    revision = "v1.1.0",
+    strip = ["conformance"],
 )
 
 go_get(

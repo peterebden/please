@@ -101,7 +101,8 @@ func TestWithOutput(t *testing.T) {
 	serverState := core.NewBuildState(5, nil, 4, core.DefaultConfiguration())
 	addr, shutdown := initialiseServer(serverState, 0)
 	clientState := core.NewBuildState(1, nil, 4, core.DefaultConfiguration())
-	connectClient(clientState, addr, retries, delay)
+	client := connectClient(clientState, addr, retries, delay)
+	beginFollowing(clientState, client, addr)
 	go func() {
 		serverState.LogBuildResult(0, l1, core.PackageParsed, fmt.Sprintf("Parsed %s", l1))
 		serverState.LogBuildResult(0, l1, core.TargetBuilding, fmt.Sprintf("Building %s", l1))
@@ -122,7 +123,8 @@ func TestResources(t *testing.T) {
 	addr, shutdown := initialiseServer(serverState, 0)
 	defer shutdown()
 	clientState := core.NewBuildState(1, nil, 4, core.DefaultConfiguration())
-	connectClient(clientState, addr, retries, delay)
+	client := connectClient(clientState, addr, retries, delay)
+	beginFollowing(clientState, client, addr)
 	// Fortunately this is a lot less fiddly than the others, because we always
 	// receive updates eventually. On the downside it's hard to know when it'll
 	// be done since we can't observe the actual goroutines that are doing it.
