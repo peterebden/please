@@ -89,7 +89,8 @@ var opts struct {
 	Build struct {
 		Prepare    bool     `long:"prepare" description:"Prepare build directory for these targets but don't build them."`
 		Shell      bool     `long:"shell" description:"Like --prepare, but opens a shell in the build directory with the appropriate environment variables."`
-		ShowStatus bool     `long:"show_status" hidden:"true" description:"Show status of each target in output after build"`
+		ShowStatus bool     `long:"show_status" hidden:"true" description:"Show status of each target in output after build. Deprecated."`
+		Remote     cli.URL  `long:"remote" description:"Execute build remotely (see plz serve for details)"`
 		Args       struct { // Inner nesting is necessary to make positional-args work :(
 			Targets []core.BuildLabel `positional-arg-name:"targets" description:"Targets to build"`
 		} `positional-args:"true" required:"true"`
@@ -119,6 +120,7 @@ var opts struct {
 		Failed          bool         `short:"f" long:"failed" description:"Runs just the test cases that failed from the immediately previous run."`
 		Detailed        bool         `long:"detailed" description:"Prints more detailed output after tests."`
 		Shell           bool         `long:"shell" description:"Opens a shell in the test directory with the appropriate environment variables."`
+		Remote          cli.URL      `long:"remote" description:"Execute build remotely (see plz serve for details)"`
 		// Slightly awkward since we can specify a single test with arguments or multiple test targets.
 		Args struct {
 			Target core.BuildLabel `positional-arg-name:"target" description:"Target to test"`
@@ -141,6 +143,7 @@ var opts struct {
 		Failed              bool         `short:"f" long:"failed" description:"Runs just the test cases that failed from the immediately previous run."`
 		Detailed            bool         `long:"detailed" description:"Prints more detailed output after tests."`
 		Shell               bool         `long:"shell" description:"Opens a shell in the test directory with the appropriate environment variables."`
+		Remote              cli.URL      `long:"remote" description:"Execute build remotely (see plz serve for details)"`
 		Args                struct {
 			Target core.BuildLabel `positional-arg-name:"target" description:"Target to test" group:"one test"`
 			Args   []string        `positional-arg-name:"arguments" description:"Arguments or test selectors" group:"one test"`
@@ -233,6 +236,10 @@ var opts struct {
 		} `positional-args:"true" required:"yes"`
 	} `command:"follow" description:"Connects to a remote Please instance to stream build events from."`
 
+	Serve struct {
+		Port int `short:"p" long:"port" default:"7778" description:"Port to serve on"`
+	} `command:"serve" description:"Starts a server to listen for remote commands."`
+
 	Help struct {
 		Args struct {
 			Topic help.Topic `positional-arg-name:"topic" description:"Topic to display help on"`
@@ -247,7 +254,8 @@ var opts struct {
 	} `command:"tool" hidden:"true" description:"Invoke one of Please's sub-tools"`
 
 	Query struct {
-		Deps struct {
+		Remote cli.URL `long:"remote" description:"Execute build remotely (see plz serve for details)"`
+		Deps   struct {
 			Unique bool `long:"unique" short:"u" description:"Only output each dependency once"`
 			Args   struct {
 				Targets []core.BuildLabel `positional-arg-name:"targets" description:"Targets to query" required:"true"`
@@ -330,7 +338,7 @@ var opts struct {
 // Functions are called after args are parsed and return true for success.
 var buildFunctions = map[string]func() bool{
 	"build": func() bool {
-		success, _ := runBuild(opts.Build.Args.Targets, true, false)
+		success, _ := runBuild(opts.Build.Args.Targets, "", true, false)
 		return success
 	},
 	"rebuild": func() bool {
@@ -338,11 +346,11 @@ var buildFunctions = map[string]func() bool{
 		// you use 'plz rebuild', you don't want the cache coming in and mucking things up.
 		// 'plz clean' followed by 'plz build' would still work in those cases, anyway.
 		opts.FeatureFlags.NoCache = true
-		success, _ := runBuild(opts.Rebuild.Args.Targets, true, false)
+		success, _ := runBuild(opts.Rebuild.Args.Targets, "", true, false)
 		return success
 	},
 	"hash": func() bool {
-		success, state := runBuild(opts.Hash.Args.Targets, true, false)
+		success, state := runBuild(opts.Hash.Args.Targets, "", true, false)
 		if opts.Hash.Detailed {
 			for _, target := range state.ExpandOriginalTargets() {
 				build.PrintHashes(state, state.Graph.TargetOrDie(target))
@@ -355,7 +363,7 @@ var buildFunctions = map[string]func() bool{
 	},
 	"test": func() bool {
 		targets := testTargets(opts.Test.Args.Target, opts.Test.Args.Args, opts.Test.Failed, opts.Test.TestResultsFile)
-		success, _ := doTest(targets, opts.Test.SurefireDir, opts.Test.TestResultsFile)
+		success, _ := doTest(targets, opts.Test.Remote.String(), opts.Test.SurefireDir, opts.Test.TestResultsFile)
 		return success || opts.Test.FailingTestsOk
 	},
 	"cover": func() bool {
@@ -366,7 +374,7 @@ var buildFunctions = map[string]func() bool{
 		}
 		targets := testTargets(opts.Cover.Args.Target, opts.Cover.Args.Args, opts.Cover.Failed, opts.Cover.TestResultsFile)
 		os.RemoveAll(string(opts.Cover.CoverageResultsFile))
-		success, state := doTest(targets, opts.Cover.SurefireDir, opts.Cover.TestResultsFile)
+		success, state := doTest(targets, opts.Cover.Remote.String(), opts.Cover.SurefireDir, opts.Cover.TestResultsFile)
 		test.AddOriginalTargetsToCoverage(state, opts.Cover.IncludeAllFiles)
 		test.RemoveFilesFromCoverage(state.Coverage, state.Config.Cover.ExcludeExtension)
 		test.WriteCoverageToFileOrDie(state.Coverage, string(opts.Cover.CoverageResultsFile))
@@ -379,19 +387,19 @@ var buildFunctions = map[string]func() bool{
 		return success || opts.Cover.FailingTestsOk
 	},
 	"run": func() bool {
-		if success, state := runBuild([]core.BuildLabel{opts.Run.Args.Target}, true, false); success {
+		if success, state := runBuild([]core.BuildLabel{opts.Run.Args.Target}, "", true, false); success {
 			run.Run(state, opts.Run.Args.Target, opts.Run.Args.Args, opts.Run.Env)
 		}
 		return false // We should never return from run.Run so if we make it here something's wrong.
 	},
 	"parallel": func() bool {
-		if success, state := runBuild(opts.Run.Parallel.PositionalArgs.Targets, true, false); success {
+		if success, state := runBuild(opts.Run.Parallel.PositionalArgs.Targets, "", true, false); success {
 			os.Exit(run.Parallel(state, state.ExpandOriginalTargets(), opts.Run.Parallel.Args, opts.Run.Parallel.NumTasks, opts.Run.Parallel.Quiet, opts.Run.Env))
 		}
 		return false
 	},
 	"sequential": func() bool {
-		if success, state := runBuild(opts.Run.Sequential.PositionalArgs.Targets, true, false); success {
+		if success, state := runBuild(opts.Run.Sequential.PositionalArgs.Targets, "", true, false); success {
 			os.Exit(run.Sequential(state, state.ExpandOriginalTargets(), opts.Run.Sequential.Args, opts.Run.Sequential.Quiet, opts.Run.Env))
 		}
 		return false
@@ -401,7 +409,7 @@ var buildFunctions = map[string]func() bool{
 		if len(opts.Clean.Args.Targets) == 0 {
 			if len(opts.BuildFlags.Include) == 0 && len(opts.BuildFlags.Exclude) == 0 {
 				// Clean everything, doesn't require parsing at all.
-				if !opts.Clean.Remote {
+				if !opts.Clean.Remote.String() {
 					// Don't construct the remote caches if they didn't pass --remote.
 					config.Cache.RPCURL = ""
 					config.Cache.HTTPURL = ""
@@ -411,14 +419,14 @@ var buildFunctions = map[string]func() bool{
 			}
 			opts.Clean.Args.Targets = core.WholeGraph
 		}
-		if success, state := runBuild(opts.Clean.Args.Targets, false, false); success {
+		if success, state := runBuild(opts.Clean.Args.Targets, "", false, false); success {
 			clean.Targets(state, state.ExpandOriginalTargets(), !opts.FeatureFlags.NoCache)
 			return true
 		}
 		return false
 	},
 	"watch": func() bool {
-		success, state := runBuild(opts.Watch.Args.Targets, false, false)
+		success, state := runBuild(opts.Watch.Args.Targets, "", false, false)
 		if success {
 			watch.Watch(state, state.ExpandOriginalTargets(), opts.Watch.Run)
 		}
@@ -440,7 +448,7 @@ var buildFunctions = map[string]func() bool{
 		return false
 	},
 	"gc": func() bool {
-		success, state := runBuild(core.WholeGraph, false, false)
+		success, state := runBuild(core.WholeGraph, "", false, false)
 		if success {
 			state.OriginalTargets = state.Config.Gc.Keep
 			gc.GarbageCollect(state, opts.Gc.Args.Targets, state.ExpandOriginalTargets(), state.Config.Gc.Keep, state.Config.Gc.KeepLabel,
@@ -453,7 +461,7 @@ var buildFunctions = map[string]func() bool{
 		return true
 	},
 	"export": func() bool {
-		success, state := runBuild(opts.Export.Args.Targets, false, false)
+		success, state := runBuild(opts.Export.Args.Targets, "", false, false)
 		if success {
 			export.ToDir(state, opts.Export.Output, state.ExpandOriginalTargets())
 		}
@@ -465,7 +473,7 @@ var buildFunctions = map[string]func() bool{
 		return follow.ConnectClient(state, opts.Follow.Args.URL.String(), opts.Follow.Retries, time.Duration(opts.Follow.Delay))
 	},
 	"outputs": func() bool {
-		success, state := runBuild(opts.Export.Outputs.Args.Targets, true, false)
+		success, state := runBuild(opts.Export.Outputs.Args.Targets, "", true, false)
 		if success {
 			export.Outputs(state, opts.Export.Output, state.ExpandOriginalTargets())
 		}
@@ -615,7 +623,7 @@ func runQuery(needFullParse bool, labels []core.BuildLabel, onSuccess func(state
 	if len(labels) == 0 {
 		labels = core.WholeGraph
 	}
-	if success, state := runBuild(labels, false, false); success {
+	if success, state := runBuild(labels, opts.Query.Remote.String(), false, false); success {
 		onSuccess(state)
 		return true
 	}
@@ -649,11 +657,11 @@ func please(tid int, state *core.BuildState, parsePackageOnly bool, include, exc
 	}
 }
 
-func doTest(targets []core.BuildLabel, surefireDir cli.Filepath, resultsFile cli.Filepath) (bool, *core.BuildState) {
+func doTest(targets []core.BuildLabel, remote string, surefireDir, resultsFile cli.Filepath) (bool, *core.BuildState) {
 	os.RemoveAll(string(surefireDir))
 	os.RemoveAll(string(resultsFile))
 	os.MkdirAll(string(surefireDir), core.DirPermissions)
-	success, state := runBuild(targets, true, true)
+	success, state := runBuild(targets, remote, true, true)
 	test.CopySurefireXmlFilesToDir(state.Graph, string(surefireDir))
 	test.WriteResultsToFileOrDie(state.Graph, string(resultsFile))
 	return success, state
@@ -685,7 +693,11 @@ func newCache(config *core.Configuration) core.Cache {
 }
 
 // Please starts & runs the main build process through to its completion.
-func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput, shouldBuild, shouldTest bool) (bool, *core.BuildState) {
+func Please(targets []core.BuildLabel, config *core.Configuration, remote string, prettyOutput, shouldBuild, shouldTest bool) (bool, *core.BuildState) {
+	if remote != "" {
+		return remote.DispatchRemoteBuild(targets, remote,
+	}
+
 	if opts.BuildFlags.NumThreads > 0 {
 		config.Please.NumThreads = opts.BuildFlags.NumThreads
 	} else if config.Please.NumThreads <= 0 {
@@ -847,12 +859,12 @@ func readConfig(forceUpdate bool) *core.Configuration {
 
 // Runs the actual build
 // Which phases get run are controlled by shouldBuild and shouldTest.
-func runBuild(targets []core.BuildLabel, shouldBuild, shouldTest bool) (bool, *core.BuildState) {
+func runBuild(targets []core.BuildLabel, remote string, shouldBuild, shouldTest bool) (bool, *core.BuildState) {
 	if len(targets) == 0 {
 		targets = core.InitialPackage()
 	}
 	pretty := prettyOutput(opts.OutputFlags.InteractiveOutput, opts.OutputFlags.PlainOutput, opts.OutputFlags.Verbosity)
-	return Please(targets, config, pretty, shouldBuild, shouldTest)
+	return Please(targets, remote, config, pretty, shouldBuild, shouldTest)
 }
 
 // readConfigAndSetRoot reads the .plzconfig files and moves to the repo root.
