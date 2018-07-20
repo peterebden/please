@@ -1,8 +1,8 @@
 // +build bootstrap
 
-// Package follow implements remote communication between plz instances.
+// Package remote implements remote communication between plz instances.
 // This file is a stub used only for initial bootstrap.
-package follow
+package remote
 
 import (
 	"time"

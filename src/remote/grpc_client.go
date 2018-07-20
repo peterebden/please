@@ -1,6 +1,6 @@
 // +build !bootstrap
 
-package follow
+package remote
 
 import (
 	"fmt"
@@ -13,54 +13,60 @@ import (
 	"google.golang.org/grpc/status"
 
 	"core"
-	pb "follow/proto/build_event"
 	"output"
+	pb "remote/proto/build_event"
 )
 
 // Used to track the state of the remote connection.
 var remoteClosed, remoteDisconnected bool
 
-// ConnectClient connects a gRPC client to the given URL.
+// Follow connects a gRPC client to the given URL to follow an existing build.
 // It returns once the client has received that the remote build finished,
 // returning true if that build was successful.
 // It dies on any errors.
-func ConnectClient(state *core.BuildState, url string, retries int, delay time.Duration) bool {
-	connectClient(state, url, retries, delay)
+func Follow(state *core.BuildState, url string, retries int, delay time.Duration) bool {
+	client := connectClient(state, url, retries, delay)
+	beginFollowing(state, client, url)
 	// Now run output, this will exit when the goroutine in connectClient() hits its end.
 	return runOutput(state)
 }
 
 // connectClient connects a gRPC client to the given URL.
 // It is split out of the above for testing purposes.
-func connectClient(state *core.BuildState, url string, retries int, delay time.Duration) {
-	var err error
+func connectClient(state *core.BuildState, url string, retries int, delay time.Duration) pb.PlzEventsClient {
 	for i := 0; i <= retries; i++ {
-		if err = connectSingleTry(state, url); err == nil {
-			return
+		if client, err := connectSingleTry(state, url); err == nil {
+			return client
 		} else if retries > 0 && i < retries {
 			log.Warning("Failed to connect to remote server, will retry in %s: %s", delay, err)
 			time.Sleep(delay)
+		} else {
+			log.Fatalf("%s", err)
 		}
 	}
-	log.Fatalf("%s", err)
+	return nil
 }
 
 // connectSingleTry performs one try at connecting the gRPC client.
-func connectSingleTry(state *core.BuildState, url string) error {
+func connectSingleTry(state *core.BuildState, url string) (pb.PlzEventsClient, error) {
 	// TODO(peterebden): TLS
-	conn, err := grpc.Dial(url, grpc.WithInsecure())
-	if err != nil {
-		return err
-	}
-	client := pb.NewPlzEventsClient(conn)
-	// Get the deets of what the server is doing.
-	resp, err := client.ServerConfig(context.Background(), &pb.ServerConfigRequest{})
+	conn, err := grpc.Dial(url, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		if s, ok := status.FromError(err); ok && s.Code() == codes.Unavailable {
 			// Slightly nicer version for an obvious failure which gets a bit technical by default
-			return fmt.Errorf("Failed to set up communication with remote server; check the address is correct and it's running")
+			return nil, fmt.Errorf("Failed to set up communication with remote server; check the address is correct and it's running")
 		}
-		return fmt.Errorf("Failed to set up communication with remote server: %s", err)
+		return nil, err
+	}
+	return pb.NewPlzEventsClient(conn), nil
+}
+
+// beginFollowing sets up for following the progress of the remote build.
+func beginFollowing(state *core.BuildState, client pb.PlzEventsClient, url string) {
+	// Get the deets of what the server is doing.
+	resp, err := client.ServerConfig(context.Background(), &pb.ServerConfigRequest{})
+	if err != nil {
+		log.Fatalf("Failed to set up communication with remote server: %s", err)
 	}
 	// Let the user know we're connected now and what it's up to.
 	output.PrintConnectionMessage(url, fromProtoBuildLabels(resp.OriginalTargets), resp.Tests, resp.Coverage)
@@ -80,7 +86,7 @@ func connectSingleTry(state *core.BuildState, url string) error {
 	// Now start streaming events into it
 	stream, err := client.BuildEvents(context.Background(), &pb.BuildEventRequest{})
 	if err != nil {
-		return fmt.Errorf("Error receiving build events: %s", err)
+		log.Fatalf("Error receiving build events: %s", err)
 	}
 	go func() {
 		for {
@@ -101,7 +107,6 @@ func connectSingleTry(state *core.BuildState, url string) error {
 	log.Info("Established connection to remote server for build events")
 	// Stream back resource usage as well
 	go streamResources(state, client)
-	return nil
 }
 
 // streamEvent adds an event to our internal stream.

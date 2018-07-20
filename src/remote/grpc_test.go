@@ -8,7 +8,7 @@
 // That doesn't work so well for a test where everything happens on the scale of
 // microseconds and we want to assert precise events, but we do the best we can.
 
-package follow
+package remote
 
 import (
 	"fmt"
@@ -59,7 +59,8 @@ func TestClientToServerCommunication(t *testing.T) {
 	serverState.LogBuildResult(1, l3, core.TargetBuilding, fmt.Sprintf("Building %s", l3))
 
 	clientState := core.NewBuildState(1, nil, 4, core.DefaultConfiguration())
-	connectClient(clientState, addr, retries, delay)
+	client := connectClient(clientState, addr, retries, delay)
+	beginFollowing(clientState, client, addr)
 	// The client state should have synced up with the server's number of threads
 	assert.Equal(t, 5, clientState.Config.Please.NumThreads)
 

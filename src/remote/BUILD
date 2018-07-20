@@ -1,5 +1,5 @@
 go_library(
-    name = "follow",
+    name = "remote",
     srcs = [
         "grpc_client.go",
         "grpc_server.go",
@@ -9,8 +9,8 @@ go_library(
     visibility = ["PUBLIC"],
     deps = [
         "//src/core",
-        "//src/follow/proto:build_event",
         "//src/output",
+        "//src/remote/proto:build_event",
         "//third_party/go:grpc",
         "//third_party/go:logging",
         "//third_party/go:net",
@@ -25,7 +25,7 @@ go_test(
     # to the server, even though that's running. Maybe something related to its network config?
     labels = ["no_circleci"],
     deps = [
-        ":follow",
+        ":remote",
         "//src/cli",
         "//src/core",
         "//third_party/go:testify",

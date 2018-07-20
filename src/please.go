@@ -21,7 +21,6 @@ import (
 	"cli"
 	"core"
 	"export"
-	"follow"
 	"fs"
 	"gc"
 	"hashes"
@@ -30,6 +29,7 @@ import (
 	"output"
 	"parse"
 	"query"
+	"remote"
 	"run"
 	"sync"
 	"test"
@@ -409,7 +409,7 @@ var buildFunctions = map[string]func() bool{
 		if len(opts.Clean.Args.Targets) == 0 {
 			if len(opts.BuildFlags.Include) == 0 && len(opts.BuildFlags.Exclude) == 0 {
 				// Clean everything, doesn't require parsing at all.
-				if !opts.Clean.Remote.String() {
+				if !opts.Clean.Remote {
 					// Don't construct the remote caches if they didn't pass --remote.
 					config.Cache.RPCURL = ""
 					config.Cache.HTTPURL = ""
@@ -470,7 +470,7 @@ var buildFunctions = map[string]func() bool{
 	"follow": func() bool {
 		// This is only temporary, ConnectClient will alter it to match the server.
 		state := core.NewBuildState(1, nil, opts.OutputFlags.Verbosity, config)
-		return follow.ConnectClient(state, opts.Follow.Args.URL.String(), opts.Follow.Retries, time.Duration(opts.Follow.Delay))
+		return remote.Follow(state, opts.Follow.Args.URL.String(), opts.Follow.Retries, time.Duration(opts.Follow.Delay))
 	},
 	"serve": func() bool {
 		return remote.Serve(opts.Serve.Port, Please)
@@ -588,18 +588,24 @@ var buildFunctions = map[string]func() bool{
 		return true
 	},
 	"changes": func() bool {
+		if opts.Query.Remote != "" {
+			// TODO(peterebden): this is unfortunate; we will need to fix. It will probably
+			//                   need a separate RPC though since query changes is really two
+			//                   builds in one.
+			log.Fatalf("--remote isn't supported with plz query changes at present")
+		}
 		// Temporarily set this flag on to avoid fatal errors from the first parse.
 		keepGoing := opts.BuildFlags.KeepGoing
 		opts.BuildFlags.KeepGoing = true
 		original := query.MustGetRevision(opts.Query.Changes.CurrentCommand)
 		files := opts.Query.Changes.Args.Files.Get()
 		query.MustCheckout(opts.Query.Changes.Since, opts.Query.Changes.CheckoutCommand)
-		_, before := runBuild(core.WholeGraph, false, false)
+		_, before := runBuild(core.WholeGraph, "", false, false)
 		opts.BuildFlags.KeepGoing = keepGoing
 		// N.B. Ignore failure here; if we can't parse the graph before then it will suffice to
 		//      assume that anything we don't know about has changed.
 		query.MustCheckout(original, opts.Query.Changes.CheckoutCommand)
-		success, after := runBuild(core.WholeGraph, false, false)
+		success, after := runBuild(core.WholeGraph, "", false, false)
 		if !success {
 			return false
 		}
@@ -728,11 +734,11 @@ func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput,
 	parse.InitParser(state)
 	build.Init(state)
 	if config.Events.Port != 0 && shouldBuild {
-		shutdown := follow.InitialiseServer(state, config.Events.Port)
+		shutdown := remote.InitialiseServer(state, config.Events.Port)
 		defer shutdown()
 	}
 	if config.Events.Port != 0 || config.Display.SystemStats {
-		go follow.UpdateResources(state)
+		go remote.UpdateResources(state)
 	}
 	metrics.InitFromConfig(config)
 	// Acquire the lock before we start building

@@ -1,6 +1,6 @@
 // +build !bootstrap
 
-package follow
+package remote
 
 import (
 	"time"

@@ -5,14 +5,14 @@
 // The duplication is unfortunate but it's preferable to needing
 // to run proto / gRPC compilers at bootstrap time.
 
-package follow
+package remote
 
 import (
 	"errors"
 	"time"
 
 	"core"
-	pb "follow/proto/build_event"
+	pb "remote/proto/build_event"
 )
 
 // toProto converts an internal test result into a proto type.
@@ -183,7 +183,6 @@ func fromProtoTestSkip(s *pb.TestSkip) *core.TestResultSkip {
 		Message: s.Message,
 	}
 }
-
 
 // fromProtoBuildLabel converts a proto build label to the internal version.
 func fromProtoBuildLabel(label *pb.BuildLabel) core.BuildLabel {
