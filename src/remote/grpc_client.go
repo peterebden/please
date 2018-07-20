@@ -25,15 +25,15 @@ var remoteClosed, remoteDisconnected bool
 // returning true if that build was successful.
 // It dies on any errors.
 func Follow(state *core.BuildState, url string, retries int, delay time.Duration) bool {
-	client := connectClient(state, url, retries, delay)
-	beginFollowing(state, client, url)
+	conn := connectClient(state, url, retries, delay)
+	beginFollowing(state, conn, url)
 	// Now run output, this will exit when the goroutine in connectClient() hits its end.
 	return runOutput(state)
 }
 
 // connectClient connects a gRPC client to the given URL.
 // It is split out of the above for testing purposes.
-func connectClient(state *core.BuildState, url string, retries int, delay time.Duration) pb.PlzEventsClient {
+func connectClient(state *core.BuildState, url string, retries int, delay time.Duration) *grpc.ClientConn {
 	for i := 0; i <= retries; i++ {
 		if client, err := connectSingleTry(state, url); err == nil {
 			return client
@@ -48,9 +48,9 @@ func connectClient(state *core.BuildState, url string, retries int, delay time.D
 }
 
 // connectSingleTry performs one try at connecting the gRPC client.
-func connectSingleTry(state *core.BuildState, url string) (pb.PlzEventsClient, error) {
+func connectSingleTry(state *core.BuildState, url string) (*grpc.ClientConn, error) {
 	// TODO(peterebden): TLS
-	conn, err := grpc.Dial(url, grpc.WithInsecure(), grpc.WithBlock())
+	conn, err := grpc.Dial(url, grpc.WithInsecure())
 	if err != nil {
 		if s, ok := status.FromError(err); ok && s.Code() == codes.Unavailable {
 			// Slightly nicer version for an obvious failure which gets a bit technical by default
@@ -58,11 +58,12 @@ func connectSingleTry(state *core.BuildState, url string) (pb.PlzEventsClient, e
 		}
 		return nil, err
 	}
-	return pb.NewPlzEventsClient(conn), nil
+	return conn, nil
 }
 
 // beginFollowing sets up for following the progress of the remote build.
-func beginFollowing(state *core.BuildState, client pb.PlzEventsClient, url string) {
+func beginFollowing(state *core.BuildState, conn *grpc.ClientConn, url string) {
+	client := pb.NewPlzEventsClient(conn)
 	// Get the deets of what the server is doing.
 	resp, err := client.ServerConfig(context.Background(), &pb.ServerConfigRequest{})
 	if err != nil {

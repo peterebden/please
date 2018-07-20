@@ -237,7 +237,7 @@ var opts struct {
 	} `command:"follow" description:"Connects to a remote Please instance to stream build events from."`
 
 	Serve struct {
-		Port int `short:"p" long:"port" default:"7778" description:"Port to serve on"`
+		Port int `short:"p" long:"port" default:"7777" description:"Port to serve on"`
 	} `command:"serve" description:"Starts a server to listen for remote commands."`
 
 	Help struct {

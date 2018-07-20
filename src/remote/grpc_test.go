@@ -43,7 +43,7 @@ func TestClientToServerCommunication(t *testing.T) {
 	// client connected & ready to receive events before we push them all into the
 	// server and shut it down again.
 	serverState := core.NewBuildState(5, nil, 4, core.DefaultConfiguration())
-	addr, shutdown := initialiseServer(serverState, 0)
+	addr, shutdown := initialiseServer(serverState, nil, 0)
 
 	// This is a bit awkward. We want to assert that we receive a matching set of
 	// build events, but it's difficult to build strong synchronisation into this
@@ -99,7 +99,7 @@ func TestClientToServerCommunication(t *testing.T) {
 
 func TestWithOutput(t *testing.T) {
 	serverState := core.NewBuildState(5, nil, 4, core.DefaultConfiguration())
-	addr, shutdown := initialiseServer(serverState, 0)
+	addr, shutdown := initialiseServer(serverState, nil, 0)
 	clientState := core.NewBuildState(1, nil, 4, core.DefaultConfiguration())
 	client := connectClient(clientState, addr, retries, delay)
 	beginFollowing(clientState, client, addr)
@@ -120,7 +120,7 @@ func TestWithOutput(t *testing.T) {
 func TestResources(t *testing.T) {
 	serverState := core.NewBuildState(5, nil, 4, core.DefaultConfiguration())
 	go UpdateResources(serverState)
-	addr, shutdown := initialiseServer(serverState, 0)
+	addr, shutdown := initialiseServer(serverState, nil, 0)
 	defer shutdown()
 	clientState := core.NewBuildState(1, nil, 4, core.DefaultConfiguration())
 	client := connectClient(clientState, addr, retries, delay)

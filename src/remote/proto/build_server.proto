@@ -1,0 +1,27 @@
+// Defines the protocol for requesting remote builds.
+syntax = "proto3";
+
+package proto.build_event;
+
+service PlzBuilds {
+    // Requests a remote build.
+    // Note that this may take a long time due to the nature of the request, so the client
+    // should be careful about setting timeouts.
+    // It does not provide progress indicators - those can be retrieved using the
+    // PlzEvents::BuildEvents rpc.
+    rpc Build(RemoteBuildRequest) returns (RemoteBuildResponse);
+}
+
+message RemoteBuildRequest{
+    // The set of targets to build
+    repeated BuildLabel targets = 1;
+    // True if it needs to build things (queries for example do not)
+    bool should_build = 2;
+    // True if it needs to run tests
+    bool should_test = 3;
+    // True if it needs coverage.
+    bool should_cover = 4;
+}
+
+message RemoteBuildResponse{
+}

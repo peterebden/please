@@ -32,13 +32,20 @@ const buffering = 1000
 // It dies on any errors.
 // The returned function should be called to shut down once the server is no longer required.
 func InitialiseServer(state *core.BuildState, port int) func() {
-	_, f := initialiseServer(state, port)
+	_, f := initialiseServer(state, false, port)
 	return f
+}
+
+// Serve starts serving for remote builds.
+// It dies on any errors.
+func Serve(port int, callback CallbackFunc) {
+	server := &buildServer{Callback: callback}
+	initialiseServer(nil, server, port)
 }
 
 // initialiseServer sets up the gRPC server on the given port.
 // It's split out from the above for testing purposes.
-func initialiseServer(state *core.BuildState, port int) (string, func()) {
+func initialiseServer(state *core.BuildState, b *BuildServer, port int) (string, func()) {
 	// Set up the channel that we'll get messages off
 	state.RemoteResults = make(chan *core.BuildResult, buffering)
 	// TODO(peterebden): TLS support
@@ -51,8 +58,14 @@ func initialiseServer(state *core.BuildState, port int) (string, func()) {
 	server := &eventServer{State: state}
 	go server.MultiplexEvents(state.RemoteResults)
 	pb.RegisterPlzEventsServer(s, server)
+	if b != nil {
+		b.EventServer = server
+		pb.RegisterPlzBuildsServer(s, b)
+		log.Notice("Serving builds over gRPC on :%s", addr)
+	} else {
+		log.Notice("Serving events over gRPC on :%s", addr)
+	}
 	go s.Serve(lis)
-	log.Notice("Serving events over gRPC on :%s", addr)
 	return addr, func() {
 		close(state.RemoteResults)
 		stopServer(s)
