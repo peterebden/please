@@ -30,9 +30,16 @@ var log = logging.MustGetLogger("output")
 const durationGranularity = 10 * time.Millisecond
 const testDurationGranularity = time.Millisecond
 
+// forceColouredOutput is true if coloured output has been forced on.
+var forceColouredOutput = false
+
 // SetColouredOutput forces on or off coloured output in logging and other console output.
 func SetColouredOutput(on bool) {
-	cli.StdErrIsATerminal = on
+	if on {
+		forceColouredOutput = true
+	} else {
+		cli.StdErrIsATerminal = false
+	}
 }
 
 // Used to track currently building targets.
