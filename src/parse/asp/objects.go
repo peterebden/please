@@ -839,11 +839,13 @@ func (g *pyGlob) Property(name string) pyObject {
 func (g *pyGlob) Operator(operator Operator, operand pyObject) pyObject {
 	// Expand the glob if it's added to a list.
 	if operator == Add {
-		l, ok := operand.(pyList)
-		if !ok {
-			panic(fmt.Sprintf("can't add glob and %s", operand.Type()))
+		if l, ok := operand.(pyList); ok {
+			return append(fromStringList(g.LocalPaths(nil)), l...)
+		} else if g2, ok := operand.(*pyGlob); ok {
+			// This is generally a bad idea but can be useful in rare cases (e.g. if they have different excludes).
+			return append(g.Expand(), g2.Expand()...)
 		}
-		return append(fromStringList(g.LocalPaths(nil)), l...)
+		panic(fmt.Sprintf("can't add glob and %s", operand.Type()))
 	} else if operator == In {
 		return g.Expand().Operator(operator, operand)
 	}
