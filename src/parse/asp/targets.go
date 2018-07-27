@@ -309,7 +309,7 @@ func parseVisibility(s *scope, vis string) core.BuildLabel {
 func parseBuildInput(s *scope, in pyObject, name string, systemAllowed, tool bool) core.BuildInput {
 	src, ok := in.(pyString)
 	if !ok {
-		s.Assert(in == None, "Items in %s must be strings", name)
+		s.Assert(in == None, "Items in %s must be strings, not %s", name, in.Type())
 		return nil
 	}
 	return parseSource(s, string(src), systemAllowed, tool)

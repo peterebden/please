@@ -254,7 +254,7 @@ func (l pyList) Operator(operator Operator, operand pyObject) pyObject {
 		} else if l2, ok := operand.(pyFrozenList); ok {
 			return append(l, l2.pyList...)
 		} else if g, ok := operand.(*pyGlob); ok {
-			return append(l, g.Expand())
+			return append(l, g.Expand()...)
 		}
 		panic("Cannot add list and " + operand.Type())
 	case In, NotIn:
@@ -844,6 +844,8 @@ func (g *pyGlob) Operator(operator Operator, operand pyObject) pyObject {
 			panic(fmt.Sprintf("can't add glob and %s", operand.Type()))
 		}
 		return append(fromStringList(g.LocalPaths(nil)), l...)
+	} else if operator == In {
+		return g.Expand().Operator(operator, operand)
 	}
 	panic(fmt.Sprintf("Operator %s is not defined for glob objects", operator))
 }
