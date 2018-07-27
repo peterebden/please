@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"cli"
 	"core"
-	"fs"
 )
 
 // A pyObject is the base type for all interpreter objects.
@@ -249,14 +249,14 @@ func (l pyList) Property(name string) pyObject {
 func (l pyList) Operator(operator Operator, operand pyObject) pyObject {
 	switch operator {
 	case Add:
-		l2, ok := operand.(pyList)
-		if !ok {
-			if l2, ok := operand.(pyFrozenList); ok {
-				return append(l, l2.pyList...)
-			}
-			panic("Cannot add list and " + operand.Type())
+		if l2, ok := operand.(pyList); ok {
+			return append(l, l2...)
+		} else if l2, ok := operand.(pyFrozenList); ok {
+			return append(l, l2.pyList...)
+		} else if g, ok := operand.(*pyGlob); ok {
+			return append(l, g.Expand())
 		}
-		return append(l, l2...)
+		panic("Cannot add list and " + operand.Type())
 	case In, NotIn:
 		for _, item := range l {
 			if item == operand {
@@ -640,6 +640,10 @@ func (f *pyFunc) validateType(s *scope, i int, expr *Expression) pyObject {
 			return val
 		}
 	}
+	// glob objects can be passed in place of lists.
+	if actual == "glob" && cli.ContainsString("list", f.types[i]) {
+		return val
+	}
 	// Using integers in place of booleans seems common in Bazel BUILD files :(
 	if s.state.Config.Bazel.Compatibility && f.types[i][0] == "bool" && actual == "int" {
 		return val
@@ -811,15 +815,13 @@ func (c *pyFrozenConfig) Property(name string) pyObject {
 
 // A pyGlob is a type returned from calling glob() to facilitate lazy execution.
 type pyGlob struct {
-	include, exclude, results []string
-	scope                     *scope
+	core.Glob
 }
 
 func (g *pyGlob) String() string {
-	if len(g.exclude) > 0 {
-		return fmt.Sprintf(`glob(include=["%s"], exclude=["%s"])`, strings.Join(g.include, `", "`), strings.Join(g.exclude, `", "`))
-	}
-	return fmt.Sprintf(`glob(include=["%s"])`, strings.Join(g.include, `", "`))
+	// TODO(peterebden): is there a better way of handling this?
+	g2 := &core.Glob{Include: g.Include, Exclude: g.Exclude}
+	return g2.String()
 }
 
 func (g *pyGlob) Type() string {
@@ -838,8 +840,10 @@ func (g *pyGlob) Operator(operator Operator, operand pyObject) pyObject {
 	// Expand the glob if it's added to a list.
 	if operator == Add {
 		l, ok := operand.(pyList)
-		g.scope.Assert(ok, "can't add glob and %s", operand.Type())
-		return append(fromStringList(g.Execute()), l...)
+		if !ok {
+			panic(fmt.Sprintf("can't add glob and %s", operand.Type()))
+		}
+		return append(fromStringList(g.LocalPaths(nil)), l...)
 	}
 	panic(fmt.Sprintf("Operator %s is not defined for glob objects", operator))
 }
@@ -849,16 +853,9 @@ func (g *pyGlob) IndexAssign(index, value pyObject) {
 }
 
 func (g *pyGlob) Len() int {
-	return len(g.Execute())
+	return len(g.LocalPaths(nil))
 }
 
-// Execute runs this glob and returns its results.
-func (g *pyGlob) Execute() []string {
-	// Explicitly checking for nil to try to distinguish from an executed glob with no results.
-	// (Although it is still a somewhat open question whether that should itself be an error...)
-	if g.results == nil {
-		excl := append(g.exclude, g.scope.state.Config.Parse.BuildFileName...)
-		g.results = fs.Glob(g.scope.state.Config.Parse.BuildFileName, g.scope.pkg.SourceRoot(), g.include, excl, excl, false)
-	}
-	return g.results
+func (g *pyGlob) Expand() pyList {
+	return fromStringList(g.LocalPaths(nil))
 }

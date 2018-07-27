@@ -177,7 +177,13 @@ func addMaybeNamed(s *scope, name string, obj pyObject, anon func(core.BuildInpu
 		for k, v := range d {
 			if v != None {
 				l, ok := asList(v)
-				s.Assert(ok, "Values of %s must be lists of strings", name)
+				if !ok {
+					if g, ok := v.(*pyGlob); ok {
+						named(k, &g.Glob)
+						continue
+					}
+					s.Assert(ok, "Values of %s must be lists of strings", name)
+				}
 				for _, li := range l {
 					if bi := parseBuildInput(s, li, name, systemAllowed, tool); bi != nil {
 						named(k, bi)
@@ -185,6 +191,8 @@ func addMaybeNamed(s *scope, name string, obj pyObject, anon func(core.BuildInpu
 				}
 			}
 		}
+	} else if g, ok := obj.(*pyGlob); ok {
+		anon(&g.Glob)
 	} else if obj != None {
 		s.Assert(false, "Argument %s must be a list or dict, not %s", name, obj.Type())
 	}

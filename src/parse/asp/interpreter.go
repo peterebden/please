@@ -672,7 +672,7 @@ func (s *scope) iterate(expr *Expression) pyList {
 	} else if l, ok := o.(pyFrozenList); ok {
 		return l.pyList
 	} else if g, ok := o.(*pyGlob); ok {
-		return fromStringList(g.Execute())
+		return g.Expand()
 	}
 	s.Assert(false, "Non-iterable type %s; must be a list", o.Type())
 	return nil

@@ -3,8 +3,11 @@
 package core
 
 import (
+	"fmt"
 	"path"
 	"strings"
+
+	"fs"
 )
 
 // A BuildInput represents some kind of input to a build rule. They can be implemented
@@ -257,4 +260,54 @@ func (label URLLabel) nonOutputLabel() *BuildLabel {
 // String returns a string representation of this input.
 func (label URLLabel) String() string {
 	return string(label)
+}
+
+// A Glob represents a build input that's described as a glob expression.
+type Glob struct {
+	Include, Exclude, results []string
+	BasePath                  string
+	Config                    *Configuration
+}
+
+// Paths returns a slice of paths to the files of this input.
+func (g *Glob) Paths(graph *BuildGraph) []string {
+	paths := g.LocalPaths(graph)
+	ret := make([]string, len(paths))
+	for i, p := range paths {
+		ret[i] = path.Join(g.BasePath, p)
+	}
+	return ret
+}
+
+// FullPaths is like Paths but includes the leading plz-out/gen directory.
+func (g *Glob) FullPaths(graph *BuildGraph) []string {
+	return g.Paths(graph)
+}
+
+// LocalPaths returns paths within the local package
+func (g *Glob) LocalPaths(graph *BuildGraph) []string {
+	// Explicitly checking for nil to try to distinguish from an executed glob with no results.
+	// (Although it is still a somewhat open question whether that should itself be an error...)
+	if g.results == nil {
+		excl := append(g.Exclude, g.Config.Parse.BuildFileName...)
+		g.results = fs.Glob(g.Config.Parse.BuildFileName, g.BasePath, g.Include, excl, excl, false)
+	}
+	return g.results
+}
+
+// Label returns the build rule associated with this input. For a Glob it's always nil.
+func (g *Glob) Label() *BuildLabel {
+	return nil
+}
+
+func (g *Glob) nonOutputLabel() *BuildLabel {
+	return nil
+}
+
+// String returns a string representation of this input.
+func (g *Glob) String() string {
+	if len(g.Exclude) > 0 {
+		return fmt.Sprintf(`glob(include=["%s"], exclude=["%s"])`, strings.Join(g.Include, `", "`), strings.Join(g.Exclude, `", "`))
+	}
+	return fmt.Sprintf(`glob(include=["%s"])`, strings.Join(g.Include, `", "`))
 }

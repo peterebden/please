@@ -404,9 +404,12 @@ func strType(s *scope, args []pyObject) pyObject {
 
 func glob(s *scope, args []pyObject) pyObject {
 	return &pyGlob{
-		include: asStringList(s, args[0], "include"),
-		exclude: asStringList(s, args[1], "exclude"),
-		scope:   s,
+		Glob: core.Glob{
+			Include:  asStringList(s, args[0], "include"),
+			Exclude:  asStringList(s, args[1], "exclude"),
+			Config:   s.state.Config,
+			BasePath: s.pkg.SourceRoot(),
+		},
 	}
 }
 
