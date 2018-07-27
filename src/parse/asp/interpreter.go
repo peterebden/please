@@ -663,16 +663,19 @@ func (s *scope) unpackNames(names []string, obj pyObject) {
 }
 
 // iterate returns the result of the given expression as a pyList, which is our only iterable type.
+// well, technically, it can also be a pyFrozenList. Our two iterable types.
+// Or in fact a glob object. Among our many iterable types are...
 func (s *scope) iterate(expr *Expression) pyList {
 	o := s.interpretExpression(expr)
-	l, ok := o.(pyList)
-	if !ok {
-		if l, ok := o.(pyFrozenList); ok {
-			return l.pyList
-		}
+	if l, ok := o.(pyList); ok {
+		return l
+	} else if l, ok := o.(pyFrozenList); ok {
+		return l.pyList
+	} else if g, ok := o.(*pyGlob); ok {
+		return fromStringList(g.Execute())
 	}
-	s.Assert(ok, "Non-iterable type %s; must be a list", o.Type())
-	return l
+	s.Assert(false, "Non-iterable type %s; must be a list", o.Type())
+	return nil
 }
 
 // evaluateExpressions runs a series of Python expressions in this scope and creates a series of concrete objects from them.

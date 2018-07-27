@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"core"
+	"fs"
 )
 
 // A pyObject is the base type for all interpreter objects.
@@ -806,4 +807,58 @@ func (c *pyFrozenConfig) Property(name string) pyObject {
 		panic("Config object is not assignable in this scope")
 	}
 	return c.pyConfig.Property(name)
+}
+
+// A pyGlob is a type returned from calling glob() to facilitate lazy execution.
+type pyGlob struct {
+	include, exclude, results []string
+	scope                     *scope
+}
+
+func (g *pyGlob) String() string {
+	if len(g.exclude) > 0 {
+		return fmt.Sprintf(`glob(include=["%s"], exclude=["%s"])`, strings.Join(g.include, `", "`), strings.Join(g.exclude, `", "`))
+	}
+	return fmt.Sprintf(`glob(include=["%s"])`, strings.Join(g.include, `", "`))
+}
+
+func (g *pyGlob) Type() string {
+	return "glob"
+}
+
+func (g *pyGlob) IsTruthy() bool {
+	return true // glob objects are always true to themselves
+}
+
+func (g *pyGlob) Property(name string) pyObject {
+	panic("Cannot access properties of a glob")
+}
+
+func (g *pyGlob) Operator(operator Operator, operand pyObject) pyObject {
+	// Expand the glob if it's added to a list.
+	if operator == Add {
+		l, ok := operand.(pyList)
+		g.scope.Assert(ok, "can't add glob and %s", operand.Type())
+		return append(fromStringList(g.Execute()), l...)
+	}
+	panic(fmt.Sprintf("Operator %s is not defined for glob objects", operator))
+}
+
+func (g *pyGlob) IndexAssign(index, value pyObject) {
+	panic("Cannot assign to the results of a glob")
+}
+
+func (g *pyGlob) Len() int {
+	return len(g.Execute())
+}
+
+// Execute runs this glob and returns its results.
+func (g *pyGlob) Execute() []string {
+	// Explicitly checking for nil to try to distinguish from an executed glob with no results.
+	// (Although it is still a somewhat open question whether that should itself be an error...)
+	if g.results == nil {
+		excl := append(g.exclude, g.scope.state.Config.Parse.BuildFileName...)
+		g.results = fs.Glob(g.scope.state.Config.Parse.BuildFileName, g.scope.pkg.SourceRoot(), g.include, excl, excl, false)
+	}
+	return g.results
 }

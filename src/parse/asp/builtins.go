@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"core"
-	"fs"
 )
 
 // A few sneaky globals for when we don't have a scope handy
@@ -404,11 +403,11 @@ func strType(s *scope, args []pyObject) pyObject {
 }
 
 func glob(s *scope, args []pyObject) pyObject {
-	include := asStringList(s, args[0], "include")
-	exclude := asStringList(s, args[1], "exclude")
-	hidden := args[2].IsTruthy()
-	exclude = append(exclude, s.state.Config.Parse.BuildFileName...)
-	return fromStringList(fs.Glob(s.state.Config.Parse.BuildFileName, s.pkg.SourceRoot(), include, exclude, exclude, hidden))
+	return &pyGlob{
+		include: asStringList(s, args[0], "include"),
+		exclude: asStringList(s, args[1], "exclude"),
+		scope:   s,
+	}
 }
 
 func asStringList(s *scope, arg pyObject, name string) []string {
