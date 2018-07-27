@@ -403,7 +403,7 @@ func strType(s *scope, args []pyObject) pyObject {
 }
 
 func glob(s *scope, args []pyObject) pyObject {
-	return &pyGlob{
+	g := &pyGlob{
 		Glob: core.Glob{
 			Include:  asStringList(s, args[0], "include"),
 			Exclude:  asStringList(s, args[1], "exclude"),
@@ -411,6 +411,10 @@ func glob(s *scope, args []pyObject) pyObject {
 			BasePath: s.pkg.SourceRoot(),
 		},
 	}
+	if s.state.Config.Parse.DeferGlob {
+		return g
+	}
+	return g.Expand()
 }
 
 func asStringList(s *scope, arg pyObject, name string) []string {

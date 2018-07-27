@@ -641,7 +641,7 @@ func (f *pyFunc) validateType(s *scope, i int, expr *Expression) pyObject {
 		}
 	}
 	// glob objects can be passed in place of lists.
-	if actual == "glob" && cli.ContainsString("list", f.types[i]) {
+	if s.state.Config.Parse.DeferGlob && actual == "glob" && cli.ContainsString("list", f.types[i]) {
 		return val
 	}
 	// Using integers in place of booleans seems common in Bazel BUILD files :(
