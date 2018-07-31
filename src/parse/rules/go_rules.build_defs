@@ -720,9 +720,9 @@ def _go_import_path_cmd(import_path):
     elif import_path.startswith('/'):
         raise ConfigError('GO_IMPORT_PATH cannot start with a /')
     elif '/' in import_path:
-        return ' && mkdir -p %s && ln -s $TMP_DIR %s' % (dirname(import_path), import_path)
+        return ' mkdir -p %s && ln -s $TMP_DIR %s' % (dirname(import_path), import_path)
     else:
-        return ' && ln -s $TMP_DIR ' + import_path
+        return ' ln -s $TMP_DIR ' + import_path
 
 
 def _collect_linker_flags(static):
