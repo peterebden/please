@@ -317,9 +317,19 @@ func prepareDirectory(directory string, remove bool) error {
 
 // Symlinks the source files of this rule into its temp directory.
 func prepareSources(graph *core.BuildGraph, target *core.BuildTarget) error {
+	needGo := target.HasLabel("go")
 	for source := range core.IterSources(graph, target) {
 		if err := core.PrepareSourcePair(source); err != nil {
 			return err
+		}
+		// Hack for Go; import "a/b/c" -> "a/b/c.a", but we would output it as "a/b/c/c.a"
+		// because we can't output up a directory. Doing this here saves us from having to
+		// walk over everything awkwardly in Bash.
+		if needGo && strings.HasSuffix(source.Src, ".a") {
+			source.Tmp = path.Join(path.Dir(path.Dir(source.Tmp)), path.Base(source.Tmp))
+			if err := core.PrepareSourcePair(source); err != nil {
+				log.Warning("Failed to link Go library into expected place: %s", err)
+			}
 		}
 	}
 	return nil
