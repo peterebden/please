@@ -447,7 +447,7 @@ def cgo_test(name:str, srcs:list, data:list=None, deps:list=None, visibility:lis
 
 def go_get(name:str, get:str|list, repo:str='', deps:list=[], exported_deps:list=None,
            visibility:list=None, patch:str=None, binary:bool=False, test_only:bool&testonly=False,
-           install:list=None, revision:str|list=None, strip:list=None, hashes:list=None,
+           install:list=[], revision:str|list=None, strip:list=None, hashes:list=None,
            extra_outs:list=[]):
     """Defines a dependency on a third-party Go library.
 
@@ -505,7 +505,15 @@ def go_get(name:str, get:str|list, repo:str='', deps:list=[], exported_deps:list
             revision = revision,
             strip = strip,
         )
-        outs += [getroot]
+        if not binary:
+            root = 'pkg/%s_%s/%s' % (CONFIG.OS, CONFIG.ARCH, getroot)
+            if not install and not getone.endswith('...'):
+                # Just getting the top-level package so just collect the .a file
+                outs += [root + '.a']
+            elif '' in install:
+                outs += [root, root + '.a']
+            else:
+                outs += [root]
         deps += [get_rule]
         provides = {'go': ':' + name, 'go_src': get_rule}
         if install:
@@ -526,11 +534,6 @@ def go_get(name:str, get:str|list, repo:str='', deps:list=[], exported_deps:list
         ]
     if binary:
         outs = ['bin/' + name]
-    else:
-        # Outputs are created one directory down from where we want them.
-        # For most it doesn't matter but the top-level one will get lost.
-        cmd += [' if [ -f ${OUTS}.a ]; then mkdir -p $OUTS && mv ${OUTS}.a $OUTS; fi']
-        outs = ['pkg/%s_%s/%s' % (CONFIG.OS, CONFIG.ARCH, out) for out in outs]
     return build_rule(
         name = name,
         outs = outs,
