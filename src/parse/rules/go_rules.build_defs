@@ -662,13 +662,13 @@ def _replace_test_package(name, output, static):
                 binary_cmds, _ = _go_binary_cmds(static=static, ldflags=ldflags, pkg_config=pkg_config)
                 if name_changed:
                     for k, v in binary_cmds.items():
-                        set_command(new_name, k, f'mv -f $PKG_DIR/{new_name}.a $PKG_DIR/{pkg_name}.a && {v}')
+                        set_command(new_name, k, f'mv -f $PKG_DIR/{new_name}.a $(dirname $PKG_DIR)/{pkg_name}.a && {v}')
                 else:
                     for k, v in binary_cmds.items():
                         set_command(new_name, k, v)
             if name_changed:
                 for k, v in _go_library_cmds().items():
-                    set_command(lib, k, f'mv -f $PKG_DIR/{new_name}.a $PKG_DIR/{pkg_name}.a && {v}')
+                    set_command(lib, k, f'mv -f $PKG_DIR/{new_name}.a $(dirname $PKG_DIR)/{pkg_name}.a && {v}')
 
 
 def _go_library_cmds(complete=True, all_srcs=False, cover=True, filter_srcs=True):
@@ -720,9 +720,9 @@ def _go_import_path_cmd(import_path):
     elif import_path.startswith('/'):
         raise ConfigError('GO_IMPORT_PATH cannot start with a /')
     elif '/' in import_path:
-        return ' mkdir -p %s && ln -s $TMP_DIR %s' % (dirname(import_path), import_path)
+        return ' mkdir -p %s && ln -s $TMP_DIR %s && ' % (dirname(import_path), import_path)
     else:
-        return ' ln -s $TMP_DIR ' + import_path
+        return ' ln -s $TMP_DIR && ' + import_path
 
 
 def _collect_linker_flags(static):
