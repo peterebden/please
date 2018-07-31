@@ -493,6 +493,7 @@ def go_get(name:str, get:str|list, repo:str='', deps:list=[], exported_deps:list
     all_installs = []
     outs = extra_outs
     provides = None
+    extra_libs = []
     for getone, revision, tag in zip(get, revision, tags):
         get_rule, getroot = _go_get_download(
             name = name,
@@ -507,13 +508,15 @@ def go_get(name:str, get:str|list, repo:str='', deps:list=[], exported_deps:list
         )
         if not binary:
             root = 'pkg/%s_%s/%s' % (CONFIG.OS, CONFIG.ARCH, getroot)
-            if not install and not getone.endswith('...'):
-                # Just getting the top-level package so just collect the .a file
-                outs += [root + '.a']
-            elif '' in install:
+            if getone.endswith('...'):
                 outs += [root, root + '.a']
-            else:
+                extra_libs += [root]
+            elif install:
                 outs += [root]
+                if '' in install:
+                    outs += [root + '.a']
+            else:
+                outs += [root + '.a']
         deps += [get_rule]
         provides = {'go': ':' + name, 'go_src': get_rule}
         if install:
@@ -534,6 +537,8 @@ def go_get(name:str, get:str|list, repo:str='', deps:list=[], exported_deps:list
         ]
     if binary:
         outs = ['bin/' + name]
+    else:
+        cmd += [f'touch {x}.a' for x in extra_libs]  # Bit hacky but does make things work.
     return build_rule(
         name = name,
         outs = outs,
