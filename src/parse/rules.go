@@ -23,6 +23,16 @@ func PrintRuleArgs(state *core.BuildState, labels []core.BuildLabel) {
 	os.Stdout.Write(b)
 }
 
+// BuiltinRuleNames returns the names of all builtin rules.
+func BuiltinRuleNames(state *core.BuildState, labels []core.BuildLabel) []string {
+	env := getRuleArgs(state, labels)
+	ret := make([]string, 0, len(env.Functions))
+	for function := range env.Functions {
+		ret = append(ret, function)
+	}
+	return ret
+}
+
 // getRuleArgs retrieves the arguments of builtin rules. It's split from PrintRuleArgs for testing.
 func getRuleArgs(state *core.BuildState, labels []core.BuildLabel) environment {
 	p := newAspParser(state)

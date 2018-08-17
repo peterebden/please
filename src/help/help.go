@@ -15,6 +15,7 @@ import (
 
 	"cli"
 	"utils"
+	"parse"
 )
 
 var log = logging.MustGetLogger("help")
@@ -103,6 +104,8 @@ func allTopics() []string {
 			topics = append(topics, t)
 		}
 	}
+	state, rules := initParser()
+	topics = append(topics, parse.BuiltinRuleNames(state, rules)...)
 	sort.Strings(topics)
 	return topics
 }
