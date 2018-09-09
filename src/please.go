@@ -37,6 +37,7 @@ import (
 	"update"
 	"utils"
 	"watch"
+	"worker"
 )
 
 var log = logging.MustGetLogger("plz")
@@ -757,7 +758,7 @@ func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput,
 	shouldRun := !opts.Run.Args.Target.IsEmpty()
 	success := output.MonitorState(state, config.Please.NumThreads, !prettyOutput, opts.BuildFlags.KeepGoing, shouldBuild, shouldTest, shouldRun, opts.Build.ShowStatus, detailedTests, string(opts.OutputFlags.TraceFile))
 	metrics.Stop()
-	build.StopWorkers()
+	worker.StopAll()
 	if c != nil {
 		c.Shutdown()
 	}
