@@ -66,6 +66,8 @@ type BuildState struct {
 	Graph *BuildGraph
 	// Stream of pending tasks
 	pendingTasks *queue.PriorityQueue
+	// Stream of pending tests. Only used if there are remote test workers.
+	pendingTests *queue.PriorityQueue
 	// Stream of results from the build
 	Results chan *BuildResult
 	// Stream of results pushed to remote clients.
@@ -104,6 +106,8 @@ type BuildState struct {
 	Include, Exclude []string
 	// Actual targets to exclude from discovery
 	ExcludeTargets []BuildLabel
+	// Number of remote test workers.
+	NumTestWorkers int
 	// True if we require rule hashes to be correctly verified (usually the case).
 	VerifyHashes bool
 	// Aggregated coverage for this run
@@ -136,7 +140,7 @@ type BuildState struct {
 	// True once we have killed the workers, so we only do it once.
 	workersKilled bool
 	// Number of running workers
-	numWorkers int
+	NumWorkers int
 	// Experimental directories
 	experimentalLabels []BuildLabel
 	// Various items for tracking progress.
@@ -210,13 +214,27 @@ func (state *BuildState) AddPendingBuild(label BuildLabel, forSubinclude bool) {
 // AddPendingTest adds a task for a pending test of a target.
 func (state *BuildState) AddPendingTest(label BuildLabel) {
 	if state.NeedTests {
-		state.addPending(label, Test)
+		if state.NumTestWorkers > 0 {
+			atomic.AddInt64(&state.progress.numPending, 1)
+			state.pendingTests.Put(pendingTask{Label: label, Type: Test})
+		} else {
+			state.addPending(label, Test)
+		}
 	}
 }
 
 // NextTask receives the next task that should be processed according to the priority queues.
 func (state *BuildState) NextTask() (BuildLabel, BuildLabel, TaskType) {
-	t, err := state.pendingTasks.Get(1)
+	return state.nextTask(state.pendingTasks)
+}
+
+// NextTest retrieves the next test task that should be processed.
+func (state *BuildState) NextTest() (BuildLabel, BuildLabel, TaskType) {
+	return state.nextTask(state.pendingTests)
+}
+
+func (state *BuildState) nextTask(q *queue.PriorityQueue) (BuildLabel, BuildLabel, TaskType) {
+	t, err := q.Get(1)
 	if err != nil {
 		log.Fatalf("error receiving next task: %s", err)
 	}
@@ -240,7 +258,7 @@ func (state *BuildState) TaskDone(wasBuildOrTest bool) {
 		atomic.AddInt64(&state.progress.numRunning, -1)
 	}
 	if atomic.AddInt64(&state.progress.numPending, -1) <= 0 {
-		state.Stop(state.numWorkers)
+		state.Stop(state.NumWorkers)
 	}
 }
 
@@ -262,7 +280,7 @@ func (state *BuildState) Kill(n int) {
 func (state *BuildState) KillAll() {
 	if !state.workersKilled {
 		state.workersKilled = true
-		state.Kill(state.numWorkers)
+		state.Kill(state.NumWorkers)
 	}
 }
 
@@ -600,7 +618,7 @@ func NewBuildState(numThreads int, cache Cache, verbosity int, config *Configura
 		VerifyHashes: true,
 		NeedBuild:    true,
 		Coverage:     TestCoverage{Files: map[string][]LineCoverage{}},
-		numWorkers:   numThreads,
+		NumWorkers:   numThreads,
 		Stats:        &SystemStats{},
 		progress: &stateProgress{
 			numActive:       1, // One for the initial target adding on the main thread.
@@ -616,6 +634,13 @@ func NewBuildState(numThreads int, cache Cache, verbosity int, config *Configura
 	config.Please.NumThreads = numThreads
 	for _, exp := range config.Parse.ExperimentalDir {
 		state.experimentalLabels = append(state.experimentalLabels, BuildLabel{PackageName: exp, Name: "..."})
+	}
+	if config.Test.RemoteURL != "" {
+		state.NumTestWorkers = config.Test.NumRemoteWorkers
+		if state.NumTestWorkers == 0 {
+			state.NumTestWorkers = numThreads
+		}
+		state.pendingTests = queue.NewPriorityQueue(1000, true)
 	}
 	return state
 }

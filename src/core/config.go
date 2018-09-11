@@ -330,6 +330,8 @@ type Configuration struct {
 		Timeout          cli.Duration `help:"Default timeout applied to all tests. Can be overridden on a per-rule basis."`
 		DefaultContainer string       `help:"Sets the default type of containerisation to use for tests that are given container = True.\nCurrently the only available option is 'docker', we expect to add support for more engines in future." options:"none,docker"`
 		Sandbox          bool         `help:"True to sandbox individual tests, which isolates them using namespaces. Somewhat experimental, only works on Linux and requires please_sandbox to be installed separately." var:"TEST_SANDBOX"`
+		RemoteURL        cli.URL      `help:"URL of the remote test worker server. Setting this enables submitting remote tests to them."`
+		NumRemoteWorkers int          `help:"The number of remote test workers to start (in addition to normal worker threads)"`
 	}
 	Cover struct {
 		FileExtension    []string `help:"Extensions of files to consider for coverage.\nDefaults to a reasonably obvious set for the builtin rules including .go, .py, .java, etc."`

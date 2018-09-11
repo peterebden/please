@@ -65,7 +65,7 @@ func connectSingleTry(state *core.BuildState, url string) error {
 	// Let the user know we're connected now and what it's up to.
 	output.PrintConnectionMessage(url, fromProtoBuildLabels(resp.OriginalTargets), resp.Tests, resp.Coverage)
 	// Update the config appropriately; the output code reads some of its fields.
-	state.Config.Please.NumThreads = int(resp.NumThreads)
+	state.NumWorkers = int(resp.NumThreads)
 	state.NeedBuild = false // We're not actually building ourselves
 	state.NeedTests = resp.Tests
 	state.NeedCoverage = resp.Coverage
@@ -138,7 +138,7 @@ func streamResources(state *core.BuildState, client pb.PlzEventsClient) {
 
 // runOutput is just a wrapper around output.MonitorState for convenience in testing.
 func runOutput(state *core.BuildState) bool {
-	success := output.MonitorState(state, state.Config.Please.NumThreads, state.Verbosity >= 4, false, false, state.NeedTests, false, false, false, "")
+	success := output.MonitorState(state, state.Verbosity >= 4, false, false, state.NeedTests, false, false, false, "")
 	output.PrintDisconnectionMessage(success, remoteClosed, remoteDisconnected)
 	return success
 }
