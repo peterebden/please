@@ -10,6 +10,9 @@ syntax = "proto3";
 service RemoteTestMaster {
     // Requests a remote server to execute a test on.
     rpc GetTestWorker(TestWorkerRequest) returns (TestWorkerResponse);
+    // Called by the worker to register itself and stream information back and forth about
+    // what it's doing.
+    rpc ConnectWorker(stream ConnectWorkerRequest) returns (ConnectWorkerResponse);
 }
 
 service RemoteTestWorker {
@@ -50,4 +53,14 @@ message RemoteTestResponse {
     map<string, bytes> results = 2;
     // Stderr of the test.
     bytes stderr = 3;
+}
+
+message ConnectWorkerRequest {
+    // Name of the worker that's connecting
+    string name = 1;
+    // Its public URL (which callers would connect to it on).
+    string url = 2;
+}
+
+message ConnectWorkerResponse {
 }
