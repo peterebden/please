@@ -1,0 +1,53 @@
+// Defines messages relating to remote testing.
+//
+// This is designed for two separate classes of server; a master that manages state and
+// allocates tests to a set of workers that do the actual work. For efficiency test data
+// is not routed through the master (since they can involve moving large binaries about
+// the place and the master would rapidly become a bottleneck).
+
+syntax = "proto3";
+
+service RemoteTestMaster {
+    // Requests a remote server to execute a test on.
+    rpc GetTestWorker(TestWorkerRequest) returns (TestWorkerResponse);
+}
+
+service RemoteTestWorker {
+    // Dispatches a remote test for execution.
+    rpc ExecuteTest(RemoteTestRequest) returns (RemoteTestResponse);
+}
+
+message TestWorkerRequest {
+    // The rule under test
+    string rule = 1;
+    // Labels applied to this rule.
+    repeated string labels = 2;
+}
+
+message TestWorkerResponse {
+    // True if a server was successfully found.
+    bool success = 1;
+    // The URL of the remote worker to send this test to.
+    string url = 2;
+    // On failure, contains the error message of what went wrong.
+    string error = 3;
+}
+
+
+message RemoteTestRequest {
+    // The rule under test
+    string rule = 1;
+    // The files that are needed for it, by filename.
+    map<string, bytes> files = 2;
+    // The test command to run
+    string command = 3;
+}
+
+message RemoteTestResponse {
+    // Exit code of the process.
+    int32 exit_code = 1;
+    // Raw results files
+    map<string, bytes> results = 2;
+    // Stderr of the test.
+    bytes stderr = 3;
+}

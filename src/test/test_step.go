@@ -325,7 +325,13 @@ func prepareAndRunTest(tid int, state *core.BuildState, target *core.BuildTarget
 		state.LogBuildError(tid, target.Label, core.TargetTestFailed, err, "Failed to prepare test directory for %s: %s", target.Label, err)
 		return []byte{}, err
 	}
-	return runPossiblyContainerisedTest(tid, state, target)
+	// Containerised tests must run locally. Otherwise we run remotely if possible.
+	if target.Containerise {
+		return runPossiblyContainerisedTest(tid, state, target)
+	} else if state.NumTestWorkers > 0 {
+		return runTestRemotely(tid, state, target)
+	}
+	return runTest(state, target)
 }
 
 func parseTestOutput(stdout []byte, stderr string, runError error, duration time.Duration, target *core.BuildTarget, outputFile string) core.TestSuite {

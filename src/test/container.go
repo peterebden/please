@@ -170,21 +170,18 @@ func runContainerisedTest(tid int, state *core.BuildState, target *core.BuildTar
 }
 
 func runPossiblyContainerisedTest(tid int, state *core.BuildState, target *core.BuildTarget) (out []byte, err error) {
-	if target.Containerise {
-		if state.Config.Test.DefaultContainer == core.ContainerImplementationNone {
-			log.Warning("Target %s specifies that it should be tested in a container, but test "+
-				"containers are disabled in your .plzconfig.", target.Label)
-			return runTest(state, target)
-		}
-		out, err = runContainerisedTest(tid, state, target)
-		if err != nil && state.Config.Docker.AllowLocalFallback {
-			log.Warning("Failed to run %s containerised: %s %s. Falling back to local version.",
-				target.Label, out, err)
-			return runTest(state, target)
-		}
-		return out, err
+	if state.Config.Test.DefaultContainer == core.ContainerImplementationNone {
+		log.Warning("Target %s specifies that it should be tested in a container, but test "+
+			"containers are disabled in your .plzconfig.", target.Label)
+		return runTest(state, target)
 	}
-	return runTest(state, target)
+	out, err = runContainerisedTest(tid, state, target)
+	if err != nil && state.Config.Docker.AllowLocalFallback {
+		log.Warning("Failed to run %s containerised: %s %s. Falling back to local version.",
+			target.Label, out, err)
+		return runTest(state, target)
+	}
+	return out, err
 }
 
 // retrieveFile retrieves a single file (or directory) from a Docker container.
