@@ -69,6 +69,8 @@ type BuildState struct {
 	Graph *BuildGraph
 	// Stream of pending tasks
 	pendingTasks *queue.PriorityQueue
+	// Stream of pending remote tasks. Only used if there are remote test workers.
+	pendingRemoteTasks *queue.PriorityQueue
 	// Stream of results from the build
 	Results chan *BuildResult
 	// Stream of results pushed to remote clients.
@@ -139,7 +141,9 @@ type BuildState struct {
 	// True once we have killed the workers, so we only do it once.
 	workersKilled bool
 	// Number of running workers
-	numWorkers int
+	NumWorkers int
+	// Number of remote test workers.
+	NumRemoteWorkers int
 	// Experimental directories
 	experimentalLabels []BuildLabel
 	// Various items for tracking progress.
@@ -219,7 +223,16 @@ func (state *BuildState) AddPendingTest(label BuildLabel) {
 
 // NextTask receives the next task that should be processed according to the priority queues.
 func (state *BuildState) NextTask() (BuildLabel, BuildLabel, TaskType) {
-	t, err := state.pendingTasks.Get(1)
+	return state.nextTask(state.pendingTasks)
+}
+
+// NextTest retrieves the next task that should be processed remotely.
+func (state *BuildState) NextRemoteTask() (BuildLabel, BuildLabel, TaskType) {
+	return state.nextTask(state.pendingRemoteTasks)
+}
+
+func (state *BuildState) nextTask(q *queue.PriorityQueue) (BuildLabel, BuildLabel, TaskType) {
+	t, err := q.Get(1)
 	if err != nil {
 		log.Fatalf("error receiving next task: %s", err)
 	}
@@ -243,7 +256,7 @@ func (state *BuildState) TaskDone(wasBuildOrTest bool) {
 		atomic.AddInt64(&state.progress.numRunning, -1)
 	}
 	if atomic.AddInt64(&state.progress.numPending, -1) <= 0 {
-		state.Stop(state.numWorkers)
+		state.Stop(state.NumWorkers)
 	}
 }
 
@@ -265,7 +278,7 @@ func (state *BuildState) Kill(n int) {
 func (state *BuildState) KillAll() {
 	if !state.workersKilled {
 		state.workersKilled = true
-		state.Kill(state.numWorkers)
+		state.Kill(state.NumWorkers)
 	}
 }
 
@@ -610,7 +623,7 @@ func NewBuildState(numThreads int, cache Cache, verbosity int, config *Configura
 		VerifyHashes: true,
 		NeedBuild:    true,
 		Coverage:     TestCoverage{Files: map[string][]LineCoverage{}},
-		numWorkers:   numThreads,
+		NumWorkers:   numThreads,
 		Stats:        &SystemStats{},
 		progress: &stateProgress{
 			numActive:       1, // One for the initial target adding on the main thread.
@@ -626,6 +639,13 @@ func NewBuildState(numThreads int, cache Cache, verbosity int, config *Configura
 	config.Please.NumThreads = numThreads
 	for _, exp := range config.Parse.ExperimentalDir {
 		state.experimentalLabels = append(state.experimentalLabels, BuildLabel{PackageName: exp, Name: "..."})
+	}
+	if config.Build.RemoteURL != "" {
+		state.NumRemoteWorkers = config.Build.NumRemoteWorkers
+		if state.NumRemoteWorkers == 0 {
+			state.NumRemoteWorkers = numThreads
+		}
+		state.pendingRemoteTasks = queue.NewPriorityQueue(1000, true)
 	}
 	return state
 }

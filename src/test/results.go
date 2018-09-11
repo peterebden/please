@@ -21,6 +21,10 @@ func parseTestResultsImpl(outputFile string) (core.TestSuite, error) {
 	if err != nil {
 		return core.TestSuite{}, err
 	}
+	return parseTestResultContents(bytes)
+}
+
+func parseTestResultContents(bytes []byte) (core.TestSuite, error) {
 	if len(bytes) == 0 {
 		return core.TestSuite{}, fmt.Errorf("No results")
 	} else if looksLikeJUnitXMLTestResults(bytes) {
@@ -33,6 +37,18 @@ func parseTestResultsImpl(outputFile string) (core.TestSuite, error) {
 	} else {
 		return parseGoTestResults(bytes)
 	}
+}
+
+func parseAllTestResultContents(results map[string][]byte) (core.TestSuite, error) {
+	ret := core.TestSuite{}
+	for _, contents := range results {
+		suite, err := parseTestResultContents(contents)
+		if err != nil {
+			return ret, err
+		}
+		ret.Collapse(suite)
+	}
+	return ret, nil
 }
 
 func parseTestResultsDir(outputDir string) (core.TestSuite, error) {

@@ -720,6 +720,22 @@ func please(tid int, state *core.BuildState, parsePackageOnly bool, include, exc
 	}
 }
 
+func pleaseRemote(tid int, state *core.BuildState) {
+	for {
+		label, _, t := state.NextRemoteTask()
+		switch t {
+		case core.Stop, core.Kill:
+			return
+		case core.Build, core.SubincludeBuild:
+			build.Build(tid, state, label)
+			state.TaskDone(true)
+		case core.Test:
+			test.Test(tid, state, label)
+			state.TaskDone(true)
+		}
+	}
+}
+
 // set the watch
 func setWatchedTarget(state *core.BuildState, labels core.BuildLabels) string {
 	if opts.Watch.Run {
@@ -833,12 +849,18 @@ func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput,
 	go findOriginalTasks(state, targets)
 	// Start up all the build workers
 	var wg sync.WaitGroup
-	wg.Add(config.Please.NumThreads)
-	for i := 0; i < config.Please.NumThreads; i++ {
+	wg.Add(state.NumWorkers + state.NumTestWorkers)
+	for i := 0; i < state.NumWorkers; i++ {
 		go func(tid int) {
 			please(tid, state, opts.ParsePackageOnly, opts.BuildFlags.Include, opts.BuildFlags.Exclude)
 			wg.Done()
 		}(i)
+	}
+	for i := 0; i < state.NumTestWorkers; i++ {
+		go func(tid int) {
+			pleaseTest(tid, state, opts.ParsePackageOnly, opts.BuildFlags.Include, opts.BuildFlags.Exclude)
+			wg.Done()
+		}(i + state.NumWorkers)
 	}
 	// Wait until they've all exited, which they'll do once they have no tasks left.
 	go func() {
@@ -847,7 +869,7 @@ func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput,
 	}()
 	// Draw stuff to the screen while there are still results coming through.
 	shouldRun := !opts.Run.Args.Target.IsEmpty()
-	success := output.MonitorState(state, config.Please.NumThreads, !prettyOutput, opts.BuildFlags.KeepGoing, state.NeedBuild, state.NeedTests, shouldRun, opts.Build.ShowStatus, detailedTests, string(opts.OutputFlags.TraceFile))
+	success := output.MonitorState(state, !prettyOutput, opts.BuildFlags.KeepGoing, state.NeedBuild, state.NeedTests, shouldRun, opts.Build.ShowStatus, detailedTests, string(opts.OutputFlags.TraceFile))
 
 	if state.Cache != nil {
 		state.Cache.Shutdown()

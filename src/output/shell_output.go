@@ -58,9 +58,9 @@ type buildingTargetData struct {
 
 // MonitorState monitors the build while it's running (essentially until state.TestCases is closed)
 // and prints output while it's happening.
-func MonitorState(state *core.BuildState, numThreads int, plainOutput, keepGoing, shouldBuild, shouldTest, shouldRun, showStatus, detailedTests bool, traceFile string) bool {
+func MonitorState(state *core.BuildState, plainOutput, keepGoing, shouldBuild, shouldTest, shouldRun, showStatus, detailedTests bool, traceFile string) bool {
 	failedTargetMap := map[core.BuildLabel]error{}
-	buildingTargets := make([]buildingTarget, numThreads)
+	buildingTargets := make([]buildingTarget, state.NumWorkers+state.NumTestWorkers)
 
 	if len(state.Config.Please.Motd) != 0 {
 		r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))

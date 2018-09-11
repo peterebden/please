@@ -1,0 +1,84 @@
+// Defines messages relating to remote testing.
+//
+// This is designed for two separate classes of server; a master that manages state and
+// allocates tests to a set of workers that do the actual work. For efficiency test data
+// is not routed through the master (since they can involve moving large binaries about
+// the place and the master would rapidly become a bottleneck).
+
+syntax = "proto3";
+
+service RemoteTestMaster {
+    // Requests a remote server to execute a test on.
+    rpc GetTestWorker(TestWorkerRequest) returns (TestWorkerResponse);
+    // Called by the worker to register itself and stream information back and forth about
+    // what it's doing.
+    rpc ConnectWorker(stream ConnectWorkerRequest) returns (stream ConnectWorkerResponse);
+}
+
+service RemoteTestWorker {
+    // Dispatches a remote test for execution.
+    rpc ExecuteTest(RemoteTestRequest) returns (RemoteTestResponse);
+}
+
+message BuildLabel {
+    string package_name = 1;
+    string name = 2;
+}
+
+message TestWorkerRequest {
+    // The rule under test
+    BuildLabel rule = 1;
+    // Labels applied to this rule.
+    repeated string labels = 2;
+}
+
+message TestWorkerResponse {
+    // True if a server was successfully found.
+    bool success = 1;
+    // The URL of the remote worker to send this test to.
+    string url = 2;
+    // A friendly name for this server. Informational only. May be empty.
+    string name = 3;
+    // On failure, contains the error message of what went wrong.
+    string error = 4;
+}
+
+message RemoteTestRequest {
+    // The rule under test
+    BuildLabel rule = 1;
+    // The output files for the rule, by filename.
+    map<string, bytes> outputs = 2;
+    // Additional data files for the test, by filename.
+    map<string, bytes> data = 3;
+    // The test command to run
+    string command = 4;
+    // True if this request needs coverage.
+    bool coverage = 5;
+    // Timeout for this test, in seconds
+    int32 timeout = 6;
+}
+
+message RemoteTestResponse {
+    // True if the test process completed successfully (i.e. exited with 0).
+    bool success = 1;
+    // Raw results files
+    map<string, bytes> results = 2;
+    // Stderr of the test.
+    bytes stderr = 3;
+    // Error if something went wrong.
+    string error = 4;
+}
+
+message ConnectWorkerRequest {
+    // Name of the worker that's connecting
+    string name = 1;
+    // Its public URL (which callers would connect to it on).
+    string url = 2;
+    // Sent when a build is completed.
+    bool build_complete = 3;
+}
+
+message ConnectWorkerResponse {
+    // Sent when the server closes the connection.
+    string error = 1;
+}
