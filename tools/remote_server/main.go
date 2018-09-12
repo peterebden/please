@@ -5,7 +5,8 @@ import (
 	"gopkg.in/op/go-logging.v1"
 
 	"cli"
-	"tools/remote_server/server"
+	"tools/remote_server/master"
+	"tools/remote_server/worker"
 )
 
 var log = logging.MustGetLogger("remote_server")
@@ -36,9 +37,9 @@ func main() {
 	command := cli.ParseFlagsOrDie("remote_server", "13.2.0", &opts)
 	if command == "master" {
 		log.Notice("Starting as a master")
-		server.StartMaster(opts.Master.Port)
+		master.Start(opts.Master.Port)
 	} else {
 		log.Notice("Starting as a worker, connecting to master at %s", opts.Worker.Master)
-		server.ConnectMaster(opts.Worker.Master.String(), opts.Worker.Name)
+		worker.Connect(opts.Worker.Master.String(), opts.Worker.Name)
 	}
 }

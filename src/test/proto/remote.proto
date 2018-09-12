@@ -32,8 +32,10 @@ message TestWorkerResponse {
     bool success = 1;
     // The URL of the remote worker to send this test to.
     string url = 2;
+    // A friendly name for this server. Informational only. May be empty.
+    string name = 3;
     // On failure, contains the error message of what went wrong.
-    string error = 3;
+    string error = 4;
 }
 
 
@@ -60,7 +62,11 @@ message ConnectWorkerRequest {
     string name = 1;
     // Its public URL (which callers would connect to it on).
     string url = 2;
+    // Sent when a build is completed.
+    bool build_complete = 3;
 }
 
 message ConnectWorkerResponse {
+    // Sent when the server closes the connection.
+    string error = 1;
 }
