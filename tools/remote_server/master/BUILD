@@ -13,6 +13,7 @@ go_library(
 go_test(
     name = "master_test",
     srcs = ["master_test.go"],
+    labels = ["manual"],  # Race conditions abound.
     deps = [
         ":master",
         "//src/grpcutil",

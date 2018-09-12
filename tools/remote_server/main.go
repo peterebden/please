@@ -14,14 +14,15 @@ var log = logging.MustGetLogger("remote_server")
 var opts = struct {
 	Usage     string
 	Verbosity cli.Verbosity `short:"v" long:"verbosity" default:"warning" description:"Verbosity of output (higher number = more output)"`
+	Port      int           `short:"p" long:"port" default:"9922" description:"Port to serve on"`
 
 	Master struct {
-		Port int `short:"p" long:"port" default:"9922" description:"Port to serve on"`
 	} `command:"master" description:"Starts this server as the master"`
 
 	Worker struct {
 		Master cli.URL `short:"m" long:"master" required:"true" description:"URL of the master to connect to"`
 		Name   string  `short:"n" long:"name" description:"Name of this worker instance."`
+		URL    cli.URL `short:"u" long:"url" required:"true" description:"Public URL of this instance"`
 	} `command:"worker" description:"Starts this server as a worker"`
 }{
 	Usage: `
@@ -37,9 +38,9 @@ func main() {
 	command := cli.ParseFlagsOrDie("remote_server", "13.2.0", &opts)
 	if command == "master" {
 		log.Notice("Starting as a master")
-		master.Start(opts.Master.Port)
+		master.Start(opts.Port)
 	} else {
 		log.Notice("Starting as a worker, connecting to master at %s", opts.Worker.Master)
-		worker.Connect(opts.Worker.Master.String(), opts.Worker.Name)
+		worker.Connect(opts.Worker.Master.String(), opts.Worker.Name, opts.Worker.URL.String(), opts.Port)
 	}
 }
