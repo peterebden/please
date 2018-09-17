@@ -54,17 +54,18 @@ message RemoteTestRequest {
     string command = 4;
     // True if this request needs coverage.
     bool coverage = 5;
+    // Timeout for this test, in seconds
+    int32 timeout = 6;
 }
 
 message RemoteTestResponse {
-    // Exit code of the process.
-    int32 exit_code = 1;
+    // True if the test process completed successfully (i.e. exited with 0).
+    bool success = 1;
     // Raw results files
     map<string, bytes> results = 2;
     // Stderr of the test.
     bytes stderr = 3;
     // Error if something went wrong.
-    // This is only set if a structural error occurs, not if the test just fails.
     string error = 4;
 }
 

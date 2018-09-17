@@ -3,6 +3,7 @@ go_library(
     srcs = ["worker.go"],
     visibility = ["PUBLIC"],
     deps = [
+        "//src/build",
         "//src/core",
         "//src/grpcutil",
         "//src/test/proto:remote",
