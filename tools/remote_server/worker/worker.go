@@ -114,7 +114,7 @@ func (w *worker) runTest(ctx context.Context, req *pb.RemoteTestRequest) ([]byte
 	}
 	state := core.DefaultBuildState()
 	state.NeedCoverage = req.Coverage
-	cmd := build.ReplaceTestSequences(state, target, target.GetTestCommand(state))
+	cmd := build.ReplaceTestSequences(state, target, req.Command)
 	env := core.TestEnvironment(state, target, w.Dir)
 	timeout := time.Duration(req.Timeout) * time.Second
 	log.Notice("Running test %s\nENVIRONMENT:\n%s\n%s", target.Label, strings.Join(env, "\n"), cmd)

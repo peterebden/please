@@ -4,6 +4,8 @@ package test
 
 import (
 	"context"
+	"io/ioutil"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,8 +36,12 @@ func runTestRemotely(tid int, state *core.BuildState, target *core.BuildTarget) 
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
 	defer cancel()
+	rule := &pb.BuildLabel{
+		PackageName: target.Label.PackageName,
+		Name:        target.Label.Name,
+	}
 	response, err := remoteClient.GetTestWorker(ctx, &pb.TestWorkerRequest{
-		Rule:   target.Label.String(),
+		Rule:   rule,
 		Labels: target.Labels,
 	})
 	if err != nil {
@@ -51,22 +57,35 @@ func runTestRemotely(tid int, state *core.BuildState, target *core.BuildTarget) 
 	client := pb.NewRemoteTestWorkerClient(conn)
 
 	timeout := testTimeout(state.Config, target)
+	outputs, err := loadTargetFiles(target.FullOutputs(), target.OutDir())
+	if err != nil {
+		return core.TestSuite{}, err
+	}
+	data, err := loadTargetFiles(target.AllData(state.Graph), "")
+	if err != nil {
+		return core.TestSuite{}, err
+	}
+	req := &pb.RemoteTestRequest{
+		Rule:     rule,
+		Outputs:  outputs,
+		Data:     data,
+		Command:  target.GetTestCommand(state),
+		Coverage: state.NeedCoverage,
+		Timeout:  int32(timeout / time.Second),
+	}
 	ctx, cancel = context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	startTime := time.Now()
-	resp, err := client.ExecuteTest(req)
+	resp, err := client.ExecuteTest(ctx, req)
 	duration := time.Since(startTime)
 	if err != nil {
 		return core.TestSuite{}, err
 	}
-	// From here we've got a good test response, so don't return errors any more.
-	return core.TestSuite{
-		Package:    strings.Replace(target.Label.PackageName, "/", ".", -1),
-		Name:       target.Label.Name,
-		Duration:   duration,
-		Properties: parsedSuite.Properties,
-		TestCases:  parsedSuite.TestCases,
-	}, nil
+	suite, err := parseAllTestResultContents(resp.Results)
+	suite.Package = strings.Replace(target.Label.PackageName, "/", ".", -1)
+	suite.Name = target.Label.Name
+	suite.Duration = duration
+	return suite, err
 }
 
 // testTimeout returns the timeout duration for a test, falling back to the config if it doesn't have one set.
@@ -75,4 +94,19 @@ func testTimeout(config *core.Configuration, target *core.BuildTarget) time.Dura
 		return target.TestTimeout
 	}
 	return time.Duration(config.Test.Timeout)
+}
+
+// loadTargetFiles loads a set of files for a target into the given map.
+func loadTargetFiles(files []string, strip string) (map[string][]byte, error) {
+	ret := map[string][]byte{}
+	for _, file := range files {
+		b, err := ioutil.ReadFile(file)
+		if err != nil {
+			return nil, err
+		} else if strip != "" {
+			file = strings.TrimLeft(strings.TrimPrefix(file, strip), "/")
+		}
+		ret[file] = b
+	}
+	return ret, nil
 }

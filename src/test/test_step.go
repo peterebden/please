@@ -335,8 +335,6 @@ func prepareAndRunTest(tid int, state *core.BuildState, target *core.BuildTarget
 	// Containerised tests must run locally. Otherwise we run remotely if possible.
 	if target.Containerise {
 		return runPossiblyContainerisedTest(tid, state, target)
-	} else if state.NumTestWorkers > 0 {
-		return runTestRemotely(tid, state, target)
 	}
 	return runTest(state, target)
 }

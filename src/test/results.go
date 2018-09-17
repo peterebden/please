@@ -39,6 +39,18 @@ func parseTestResultContents(bytes []byte) (core.TestSuite, error) {
 	}
 }
 
+func parseAllTestResultContents(results map[string][]byte) (core.TestSuite, error) {
+	ret := core.TestSuite{}
+	for _, contents := range results {
+		suite, err := parseTestResultContents(contents)
+		if err != nil {
+			return ret, err
+		}
+		ret.Collapse(suite)
+	}
+	return ret, nil
+}
+
 func parseTestResultsDir(outputDir string) (core.TestSuite, error) {
 	results := core.TestSuite{}
 	if !core.PathExists(outputDir) {
