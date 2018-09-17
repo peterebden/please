@@ -3,15 +3,18 @@ package worker
 import (
 	"context"
 	"io/ioutil"
+	"os"
 	"path"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	"google.golang.org/grpc"
 	"gopkg.in/op/go-logging.v1"
 
 	"build"
+	"cli"
 	"core"
 	"fs"
 	"grpcutil"
@@ -44,7 +47,7 @@ func Connect(master, name, url string, port int, dir string) {
 	if err != nil {
 		log.Fatalf("Failed to connect: %s", err)
 	}
-	worker.Client = client
+	w.Client = client
 	// We won't receive a response until the server stops.
 	resp, err := stream.CloseAndRecv()
 	if err != nil {
@@ -81,7 +84,7 @@ func (w *worker) ExecuteTest(ctx context.Context, req *pb.RemoteTestRequest) (*p
 	stderr, err := w.runTest(ctx, req)
 	resp := &pb.RemoteTestResponse{
 		Success: err == nil,
-		Results: w.findResults(req),
+		Results: w.findResults(),
 		Stderr:  stderr,
 	}
 	if err != nil {
@@ -101,26 +104,26 @@ func (w *worker) runTest(ctx context.Context, req *pb.RemoteTestRequest) ([]byte
 	}
 	// Using a default state here is not really accurate but is the best we can do for now.
 	// TODO(peterebden): Find some way of specifying this on the worker.
+	state := core.NewDefaultBuildState()
+	state.NeedCoverage = req.Coverage
 	target := core.NewBuildTarget(core.BuildLabel{
-		PackageName: req.Label.PackageName,
-		Name:        req.Label.Name,
+		PackageName: req.Rule.PackageName,
+		Name:        req.Rule.Name,
 	})
 	// Set up target files - these become env vars later.
-	for _, output := range orderedFiles(req.Outputs) {
+	for _, output := range w.orderedFiles(req.Outputs) {
 		target.AddOutput(output)
 	}
-	for _, datum := range orderedFiles(req.Data) {
+	for _, datum := range w.orderedFiles(req.Data) {
 		target.AddDatum(core.FileLabel{File: datum})
 	}
-	state := core.DefaultBuildState()
-	state.NeedCoverage = req.Coverage
 	cmd := build.ReplaceTestSequences(state, target, req.Command)
 	env := core.TestEnvironment(state, target, w.Dir)
 	timeout := time.Duration(req.Timeout) * time.Second
 	log.Notice("Running test %s\nENVIRONMENT:\n%s\n%s", target.Label, strings.Join(env, "\n"), cmd)
 	// TODO(peterebden): The second-to-last argument allows sandboxing. We should probably allow
 	//                   configuring that on the build agent.
-	_, stderr, err := core.ExecWithTimeoutShellStdStreams(state, target, w.Dir, env, timeout, timeout, false, cmd, false, false)
+	_, stderr, err := core.ExecWithTimeoutShellStdStreams(state, target, w.Dir, env, timeout, cli.Duration(timeout), false, cmd, false, false)
 	return stderr, err
 }
 
@@ -149,11 +152,12 @@ func (w *worker) orderedFiles(in map[string][]byte) []string {
 // findResults reads the results files for a test.
 func (w *worker) findResults() map[string][]byte {
 	ret := map[string][]byte{}
-	fs.Walk(w.Dir, func(name string, isDir bool) {
+	fs.Walk(w.Dir, func(name string, isDir bool) error {
 		if !isDir {
 			b, _ := ioutil.ReadFile(name)
 			ret[name] = b
 		}
+		return nil
 	})
 	return ret
 }

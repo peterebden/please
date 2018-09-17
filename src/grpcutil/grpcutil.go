@@ -23,6 +23,7 @@ func StartServer(s *grpc.Server, port int) {
 		log.Fatalf("%s", err)
 	}
 	go HandleSignals(s)
+	log.Notice("Serving on port %d", port)
 	s.Serve(lis)
 }
 

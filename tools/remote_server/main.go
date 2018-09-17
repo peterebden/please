@@ -13,7 +13,7 @@ var log = logging.MustGetLogger("remote_server")
 
 var opts = struct {
 	Usage     string
-	Verbosity cli.Verbosity `short:"v" long:"verbosity" default:"warning" description:"Verbosity of output (higher number = more output)"`
+	Verbosity cli.Verbosity `short:"v" long:"verbosity" default:"notice" description:"Verbosity of output (higher number = more output)"`
 	Port      int           `short:"p" long:"port" default:"9922" description:"Port to serve on"`
 
 	Master struct {
@@ -37,6 +37,7 @@ start up and register themselves, the master then hands them out to clients on r
 
 func main() {
 	command := cli.ParseFlagsOrDie("remote_server", "13.2.0", &opts)
+	cli.InitLogging(opts.Verbosity)
 	if command == "master" {
 		log.Notice("Starting as a master")
 		master.Start(opts.Port)
