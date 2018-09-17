@@ -13,6 +13,7 @@ import (
 
 	"build"
 	"core"
+	"fs"
 	"grpcutil"
 	pb "test/proto/remote"
 )
@@ -142,5 +143,17 @@ func (w *worker) orderedFiles(in map[string][]byte) []string {
 		ret = append(ret, file)
 	}
 	sort.Strings(ret)
+	return ret
+}
+
+// findResults reads the results files for a test.
+func (w *worker) findResults() map[string][]byte {
+	ret := map[string][]byte{}
+	fs.Walk(w.Dir, func(name string, isDir bool) {
+		if !isDir {
+			b, _ := ioutil.ReadFile(name)
+			ret[name] = b
+		}
+	})
 	return ret
 }

@@ -5,6 +5,7 @@ go_library(
     deps = [
         "//src/build",
         "//src/core",
+        "//src/fs",
         "//src/grpcutil",
         "//src/test/proto:remote",
         "//third_party/go:grpc",

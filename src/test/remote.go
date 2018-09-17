@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	"google.golang.org/grpc"
 
 	"core"
@@ -16,11 +17,14 @@ import (
 var remoteClient pb.RemoteTestMasterClient
 var remoteClientOnce sync.Once
 
-func runTestRemotely(tid int, state *core.BuildState, target *core.BuildTarget) ([]byte, error) {
+const dialTimeout = 10 * time.Second
+
+func runTestRemotely(tid int, state *core.BuildState, target *core.BuildTarget) (core.TestSuite, error) {
 	state.LogBuildResult(tid, target.Label, core.TargetTesting, "Contacting remote server...")
 	remoteClientOnce.Do(func() {
 		// TODO(peterebden): Add TLS support (as always)
-		conn, err := grpc.Dial(state.Config.Test.RemoteURL.String(), grpc.WithTimeout(10*time.Second), grpc.WithInsecure())
+		conn, err := grpc.Dial(state.Config.Test.RemoteURL.String(), grpc.WithTimeout(dialTimeout), grpc.WithInsecure(),
+			grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(grpc_retry.WithMax(3))))
 		if err != nil {
 			// It's not very nice to die here, but in practice this very rarely happens since we
 			// didn't pass WithBlock(), so most errors are picked up by the RPC call below.
@@ -28,7 +32,7 @@ func runTestRemotely(tid int, state *core.BuildState, target *core.BuildTarget) 
 		}
 		remoteClient = pb.NewRemoteTestMasterClient(conn)
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), testTimeout(state.Config, target))
+	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
 	defer cancel()
 	response, err := remoteClient.GetTestWorker(ctx, &pb.TestWorkerRequest{
 		Rule:   target.Label.String(),
@@ -36,10 +40,33 @@ func runTestRemotely(tid int, state *core.BuildState, target *core.BuildTarget) 
 	})
 	if err != nil {
 		log.Error("Failed to contact remote worker server: %s", err)
-		return nil, err
+		return core.TestSuite{}, err
 	}
-	response = response
-	panic("didn't expect to get here")
+	// Now dial up a gRPC channel to the worker.
+	conn, err := grpc.Dial(response.Url, grpc.WithTimeout(dialTimeout), grpc.WithInsecure(),
+		grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(grpc_retry.WithMax(3))))
+	if err != nil {
+		return core.TestSuite{}, err
+	}
+	client := pb.NewRemoteTestWorkerClient(conn)
+
+	timeout := testTimeout(state.Config, target)
+	ctx, cancel = context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	startTime := time.Now()
+	resp, err := client.ExecuteTest(req)
+	duration := time.Since(startTime)
+	if err != nil {
+		return core.TestSuite{}, err
+	}
+	// From here we've got a good test response, so don't return errors any more.
+	return core.TestSuite{
+		Package:    strings.Replace(target.Label.PackageName, "/", ".", -1),
+		Name:       target.Label.Name,
+		Duration:   duration,
+		Properties: parsedSuite.Properties,
+		TestCases:  parsedSuite.TestCases,
+	}, nil
 }
 
 // testTimeout returns the timeout duration for a test, falling back to the config if it doesn't have one set.

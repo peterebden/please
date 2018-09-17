@@ -21,6 +21,10 @@ func parseTestResultsImpl(outputFile string) (core.TestSuite, error) {
 	if err != nil {
 		return core.TestSuite{}, err
 	}
+	return parseTestResultContents(bytes)
+}
+
+func parseTestResultContents(bytes []byte) (core.TestSuite, error) {
 	if len(bytes) == 0 {
 		return core.TestSuite{}, fmt.Errorf("No results")
 	} else if looksLikeJUnitXMLTestResults(bytes) {
