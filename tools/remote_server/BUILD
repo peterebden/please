@@ -6,6 +6,7 @@ go_binary(
         "//src/cli",
         "//src/test/proto:remote",
         "//third_party/go:logging",
-        "//tools/remote_server/server",
+        "//tools/remote_server/master",
+        "//tools/remote_server/worker",
     ],
 )
