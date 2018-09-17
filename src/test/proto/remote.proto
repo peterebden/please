@@ -12,7 +12,7 @@ service RemoteTestMaster {
     rpc GetTestWorker(TestWorkerRequest) returns (TestWorkerResponse);
     // Called by the worker to register itself and stream information back and forth about
     // what it's doing.
-    rpc ConnectWorker(stream ConnectWorkerRequest) returns (ConnectWorkerResponse);
+    rpc ConnectWorker(stream ConnectWorkerRequest) returns (stream ConnectWorkerResponse);
 }
 
 service RemoteTestWorker {

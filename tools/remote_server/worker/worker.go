@@ -49,7 +49,7 @@ func Connect(master, name, url string, port int, dir string) {
 	}
 	w.Client = client
 	// We won't receive a response until the server stops.
-	resp, err := stream.CloseAndRecv()
+	resp, err := stream.Recv()
 	if err != nil {
 		log.Fatalf("Stream terminated: %s", err)
 	}

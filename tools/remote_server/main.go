@@ -42,7 +42,7 @@ func main() {
 		log.Notice("Starting as a master")
 		master.Start(opts.Port)
 	} else {
-		log.Notice("Starting as a worker, connecting to master at %s", opts.Worker.Master)
+		log.Notice("Starting as worker %s, connecting to master at %s", opts.Worker.Name, opts.Worker.Master)
 		worker.Connect(opts.Worker.Master.String(), opts.Worker.Name, opts.Worker.URL.String(), opts.Port, opts.Worker.Dir)
 	}
 }

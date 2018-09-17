@@ -49,7 +49,10 @@ func (m *master) ConnectWorker(srv pb.RemoteTestMaster_ConnectWorkerServer) erro
 	if err != nil {
 		return err
 	} else if msg.Url == "" {
-		return srv.SendAndClose(&pb.ConnectWorkerResponse{Error: "Must provide a URL"})
+		if err := srv.Send(&pb.ConnectWorkerResponse{Error: "Must provide a URL"}); err != nil {
+			return err
+		}
+		return io.EOF
 	}
 	// Name isn't compulsory.
 	name := msg.Name
