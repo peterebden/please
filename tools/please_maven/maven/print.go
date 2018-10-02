@@ -7,14 +7,18 @@ import (
 	"text/template"
 )
 
-const mavenJarTemplate = `maven_jar(
+const mavenJarTemplate = `
+{{- if Needed .GroupID .ArtifactID -}}
+maven_jar(
     name = '{{ .ArtifactID }}',
     id = '{{ .GroupID }}:{{ .ArtifactID }}:{{ .Version }}',
     hash = '',{{ if .Dependencies.Dependency }}
     deps = [
-{{ range .Dependencies.Dependency }}        ':{{ .ArtifactID }}',
+{{ range .Dependencies.Dependency }}        '{{ Dep .GroupID .ArtifactID }}',
 {{ end }}    ],{{ end }}
-)`
+)
+{{- end -}}
+`
 
 // AllDependencies returns all the dependencies of these artifacts in a short format
 // that we consume later. The format is vaguely akin to a Maven id, although we consider
@@ -24,21 +28,24 @@ const mavenJarTemplate = `maven_jar(
 //
 // Alternatively if buildRules is true, it will return a series of maven_jar rules
 // that could be pasted into a BUILD file.
-func AllDependencies(f *Fetch, artifacts []Artifact, concurrency int, indent, buildRules bool) []string {
+func AllDependencies(f *Fetch, artifacts []Artifact, concurrency int, indent, buildRules bool, graph *Graph) []string {
 	f.Resolver.Run(artifacts, concurrency)
 	f.Resolver.Mediate()
 
 	done := map[unversioned]bool{}
 	ret := []string{}
 	for _, a := range artifacts {
-		ret = append(ret, allDeps(f.Pom(&a), indent, buildRules, done)...)
+		ret = append(ret, allDeps(f.Pom(&a), indent, buildRules, done, graph)...)
 	}
 	return ret
 }
 
-func allDeps(pom *PomXML, indent, buildRules bool, done map[unversioned]bool) []string {
+func allDeps(pom *PomXML, indent, buildRules bool, done map[unversioned]bool, graph *Graph) []string {
 	if buildRules {
-		tmpl := template.Must(template.New("maven_jar").Parse(mavenJarTemplate))
+		tmpl := template.Must(template.New("maven_jar").Func(template.FuncMap{
+			"Dep":    graph.Dep,
+			"Needed": graph.NeedDep,
+		}).Parse(mavenJarTemplate))
 		return allDependencies(pom, "", "", tmpl, done)
 	}
 
