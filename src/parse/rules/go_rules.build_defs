@@ -179,9 +179,8 @@ def cgo_library(name:str, srcs:list, go_srcs:list=[], c_srcs:list=[], hdrs:list=
             'rm -f $OUT_DIR/_cgo_.o $OUT_DIR/_cgo_main.c',
             # cgo leaves absolute paths in these files which we must get rid of :(
             'find $OUT_DIR -type f -maxdepth 1 | xargs sed -i -e "s|$TMP_DIR/||g"',
-            'cd $TMP_DIR',
-            f'ls {subdir2}*.c {subdir2}*.go',
         ]),
+        post_cmd = f'ls {subdir2}*.c {subdir2}*.go',
         tools = [CONFIG.GO_TOOL],
         post_build = post_build if file_srcs != srcs else None,
         requires = ['go', 'cc_hdrs'],

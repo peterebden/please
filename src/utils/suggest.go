@@ -26,13 +26,13 @@ func Suggest(needle string, haystack []string, maxSuggestionDistance int) []stri
 
 // PrettyPrintSuggestion implements levenshtein-based suggestions on a sequence of items and
 // produces a single message from them.
-func PrettyPrintSuggestion(needle string, haystack []string, maxSuggestionDistance int) string {
+func PrettyPrintSuggestion(prefix, needle string, haystack []string, maxSuggestionDistance int) string {
 	options := Suggest(needle, haystack, maxSuggestionDistance)
 	if len(options) == 0 {
 		return ""
 	}
 	// Obviously there's now more code to pretty-print the suggestions than to do the calculation...
-	msg := "\nMaybe you meant "
+	msg := prefix
 	for i, o := range options {
 		if i > 0 {
 			if i < len(options)-1 {

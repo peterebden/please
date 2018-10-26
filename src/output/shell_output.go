@@ -494,6 +494,9 @@ func printTempDirs(state *core.BuildState, duration time.Duration) {
 		cmd = build.ReplaceSequences(state, target, cmd)
 		fmt.Printf("  %s: %s\n", label, dir)
 		fmt.Printf("    Command: %s\n", cmd)
+		if target.PostCommand != "" {
+			fmt.Printf("    Post-command: %s\n", target.PostCommand)
+		}
 		if !state.PrepareShell {
 			// This isn't very useful if we're opening a shell (since then the vars will be set anyway)
 			fmt.Printf("   Expanded: %s\n", os.Expand(cmd, env.ReplaceEnvironment))

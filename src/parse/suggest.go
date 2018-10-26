@@ -19,7 +19,7 @@ func suggestTargets(pkg *core.Package, label, dependor core.BuildLabel) string {
 	for _, t := range pkg.AllTargets() {
 		haystack = append(haystack, fmt.Sprintf("//%s:%s", pkg.Name, t.Label.Name))
 	}
-	msg := utils.PrettyPrintSuggestion(label.String(), haystack, maxSuggestionDistance)
+	msg := utils.PrettyPrintSuggestion("\nMaybe you meant ", label.String(), haystack, maxSuggestionDistance)
 	if pkg.Name != dependor.PackageName {
 		return msg
 	}

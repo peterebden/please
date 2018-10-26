@@ -228,6 +228,7 @@ func ruleHash(state *core.BuildState, target *core.BuildTarget, runtime bool) []
 	// Note that we only hash the current command here; whatever's set in commands that we're not going
 	// to run is uninteresting to us.
 	h.Write([]byte(target.GetCommand(state)))
+	h.Write([]byte(target.PostCommand))
 
 	if runtime {
 		// Similarly, we only hash the current command here again.

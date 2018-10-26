@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strings"
 	"syscall"
 
 	"gopkg.in/op/go-logging.v1"
@@ -112,4 +113,13 @@ func WriteFile(fromFile io.Reader, to string, mode os.FileMode) error {
 	}
 	// And move it to its final destination.
 	return os.Rename(tempFile.Name(), to)
+}
+
+// First returns the first component of a path, for example "src/fs/fs.go" -> "src".
+func First(in string) string {
+	in = strings.TrimLeft(in, "/") // Handle absolute paths
+	if idx := strings.IndexRune(in, '/'); idx != -1 {
+		return in[:idx]
+	}
+	return in // didn't have a slash in it
 }

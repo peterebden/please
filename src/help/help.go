@@ -91,7 +91,7 @@ func loadData(filename string) (string, map[string]string) {
 
 // suggest looks through all known help topics and tries to make a suggestion about what the user might have meant.
 func suggest(topic string) string {
-	return utils.PrettyPrintSuggestion(topic, allTopics(), maxSuggestionDistance)
+	return utils.PrettyPrintSuggestion("\nMaybe you meant ", topic, allTopics(), maxSuggestionDistance)
 }
 
 // allTopics returns all the possible topics to get help on.

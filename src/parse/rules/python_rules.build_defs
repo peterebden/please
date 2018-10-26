@@ -312,7 +312,6 @@ def pip_library(name:str, version:str, hashes:list=None, package_name:str=None, 
     package_name = f'{package_name}=={version}'
     outs = outs or [name]
     post_install_commands = post_install_commands or []
-    post_build = None
     use_pypi = CONFIG.USE_PYPI if use_pypi is None else use_pypi
     index_flag = '' if use_pypi else '--no-index'
     pip_flags = pip_flags or CONFIG.PIP_FLAGS
@@ -345,8 +344,9 @@ def pip_library(name:str, version:str, hashes:list=None, package_name:str=None, 
     if strip:
         cmd += ' && find . %s | xargs rm -rf' % ' -or '.join(['-name "%s"' % s for s in strip])
 
+    post_cmd = None
     if not licences:
-        cmd += ' && find . -name METADATA -or -name PKG-INFO | grep -v "^./build/" | xargs grep -E "License ?:" | grep -v UNKNOWN | cat'
+        post_cmd = 'find . -name METADATA -or -name PKG-INFO | grep -v "^./build/" | xargs grep -E "License ?:" | grep -v UNKNOWN | cat'
 
     if install_subdirectory:
         cmd += f' && touch {target}/__init__.py && rm -rf {target}/*.egg-info {target}/*.dist-info'
@@ -372,6 +372,7 @@ def pip_library(name:str, version:str, hashes:list=None, package_name:str=None, 
         name = name,
         tag = 'wheel',
         cmd = cmd,
+        post_cmd = post_cmd,
         outs = [name + '.whl'],
         srcs = patches if patch else [],
         deps = deps,
@@ -477,9 +478,9 @@ def python_wheel(name:str, version:str, hashes:list=None, package_name:str=None,
 
     if strip:
         cmd += ['find . %s | xargs rm -rf' % ' -or '.join(['-name "%s"' % s for s in strip])]
+    post_cmd = None
     if not licences:
-        cmd.append('find . -name METADATA -or -name PKG-INFO | grep -v "^./build/" | '
-                   'xargs grep -E "License ?:" | grep -v UNKNOWN | cat')
+        post_cmd = 'find . -name METADATA -or -name PKG-INFO | grep -v "^./build/" | xargs grep -E "License ?:" | grep -v UNKNOWN | cat'
     if patch:
         patches = [patch] if isinstance(patch, str) else patch
         cmd += [f'patch -p0 --no-backup-if-mismatch < $(location {p})' for p in patches]
@@ -492,6 +493,7 @@ def python_wheel(name:str, version:str, hashes:list=None, package_name:str=None,
         name = name,
         tag = 'wheel',
         cmd = ' && '.join(cmd),
+        post_cmd = post_cmd,
         outs = [name + '.pex.zip'],
         srcs = {
             "SRC": [file_rule],

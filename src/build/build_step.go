@@ -7,12 +7,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/shlex"
@@ -22,6 +22,7 @@ import (
 	"core"
 	"fs"
 	"metrics"
+	"utils"
 	"worker"
 )
 
@@ -30,16 +31,11 @@ var log = logging.MustGetLogger("build")
 // Type that indicates that we're stopping the build of a target in a nonfatal way.
 var errStop = fmt.Errorf("stopping build")
 
-// goDirOnce is used to check old versions of plz-out/go.
-// This will be removed again soon.
-var goDirOnce sync.Once
-
 // httpClient is the shared http client that we use for fetching remote files.
 var httpClient http.Client
 
 // Build implements the core logic for building a single target.
 func Build(tid int, state *core.BuildState, label core.BuildLabel) {
-	goDirOnce.Do(cleanupPlzOutGo)
 	start := time.Now()
 	target := state.Graph.TargetOrDie(label)
 	state = state.ForTarget(target)
@@ -219,6 +215,15 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 	out, err := buildMaybeRemotely(state, target, cacheKey)
 	if err != nil {
 		return err
+	}
+	if err := checkOutputsExist(state, target); err != nil {
+		return err
+	}
+	if target.PostCommand != "" {
+		out, err = runBuildCommand(state, target, target.PostCommand, cacheKey)
+		if err != nil {
+			return err
+		}
 	}
 	if target.PostBuildFunction != nil {
 		out = bytes.TrimSpace(out)
@@ -682,17 +687,6 @@ func (r *progressReader) Read(b []byte) (int, error) {
 	return n, err
 }
 
-func cleanupPlzOutGo() {
-	removeIfSymlink("plz-out/go/src")
-	removeIfSymlink("plz-out/go/pkg/" + core.OsArch)
-}
-
-func removeIfSymlink(name string) {
-	if fi, err := os.Lstat(name); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		os.Remove(name)
-	}
-}
-
 // buildMaybeRemotely builds a target, either sending it to a remote worker if needed,
 // or locally if not.
 func buildMaybeRemotely(state *core.BuildState, target *core.BuildTarget, inputHash []byte) ([]byte, error) {
@@ -727,4 +721,40 @@ func buildMaybeRemotely(state *core.BuildState, target *core.BuildTarget, inputH
 		return append([]byte(out+"\n"), out2...), err
 	}
 	return []byte(out), nil
+}
+
+// checkOutputsExist verifies that a target has created all its expected outputs.
+func checkOutputsExist(state *core.BuildState, target *core.BuildTarget) error {
+	tmpDir := target.TmpDir()
+	var missing []string
+	outputs := target.Outputs()
+	for _, output := range outputs {
+		output = target.GetTmpOutput(output)
+		if !fs.PathExists(path.Join(tmpDir, output)) {
+			missing = append(missing, output)
+		}
+	}
+	if missing == nil {
+		return nil
+	}
+	// If we get here we're missing some outputs. Try to be helpful about what they might be.
+	msg := fmt.Sprintf("%s failed to create some outputs:\n", target.Label)
+	sources := map[string]bool{}
+	for _, src := range target.AllSourcePaths(state.Graph) {
+		sources[fs.First(src)] = true
+	}
+	files := []string{}
+	dir, _ := ioutil.ReadDir(tmpDir)
+	for _, file := range dir {
+		if !sources[file.Name()] {
+			files = append(files, file.Name())
+		}
+	}
+	for _, miss := range missing {
+		msg += "  " + miss
+		if suggestion := utils.PrettyPrintSuggestion(", similar files: ", miss, files, 5); suggestion != "" {
+			msg += suggestion
+		}
+	}
+	return fmt.Errorf("%s\nMaybe something's gone wrong with the rule, or you might need to adjust 'outs' to match", msg)
 }

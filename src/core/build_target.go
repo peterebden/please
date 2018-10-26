@@ -65,6 +65,10 @@ type BuildTarget struct {
 	Labels []string
 	// Shell command to run.
 	Command string `name:"cmd" hide:"filegroup"`
+	// A shell command that is run after the previous one, and after the required outputs are
+	// expected to be created. It cannot use a worker and if present, its output is what is
+	// passed to the post-build rule instead of the output of Command.
+	PostCommand string `name:"post_cmd" hide:"filegroup"`
 	// Per-configuration shell commands to run.
 	Commands map[string]string `name:"cmd" hide:"filegroup"`
 	// Shell command to run for test targets.

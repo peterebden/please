@@ -26,3 +26,11 @@ func TestEnsureDir(t *testing.T) {
 	err = EnsureDir("ensure_dir/filename")
 	assert.NoError(t, err)
 }
+
+func TestFirst(t *testing.T) {
+	assert.Equal(t, "src", First("src/fs/fs.go"))
+	assert.Equal(t, "src", First("/src/fs/fs.go"))
+	assert.Equal(t, "src", First("/src"))
+	assert.Equal(t, "src", First("src"))
+	assert.Equal(t, "", First(""))
+}

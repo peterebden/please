@@ -72,12 +72,13 @@ def proto_library(name:str, srcs:list, deps:list=[], visibility:list=None, label
     # Figure out which languages we need to detect output files for.
     # This always happens for Java, and will be needed for any other language where the inputs aren't plain files.
     post_build = None
+    post_cmd = None
     search_extensions = [(lang, exts) for plugin in plugins
                          for lang, exts in sorted(plugin['extensions'].items())
                          if need_post_build or not plugin['use_file_names']]
     if search_extensions:
         all_exts = [ext for _, exts in search_extensions for ext in exts]
-        cmds.append('find . %s | sort' % ' -or '.join(['-name "*%s"' % ext for ext in all_exts]))
+        post_cmd = 'find . %s | sort' % ' -or '.join(['-name "*%s"' % ext for ext in all_exts])
         post_build = _annotate_outs(search_extensions)
 
     # Plugins can declare their own pre-build functions. If there are any, we need to apply them all in sequence.
@@ -90,6 +91,7 @@ def proto_library(name:str, srcs:list, deps:list=[], visibility:list=None, label
         srcs = srcs,
         outs = outs,
         cmd = ' && '.join(cmds),
+        post_cmd = post_cmd,
         deps = deps,
         tools = tools,
         requires = ['proto'],

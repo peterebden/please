@@ -10,6 +10,7 @@ go_library(
         "//src/core",
         "//src/fs",
         "//src/metrics",
+        "//src/utils",
         "//src/worker",
         "//third_party/go:go-multierror",
         "//third_party/go:logging",

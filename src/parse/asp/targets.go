@@ -54,6 +54,7 @@ func createTarget(s *scope, args []pyObject) *core.BuildTarget {
 	target.TestOnly = test || isTruthy(15)
 	target.ShowProgress = isTruthy(36)
 	target.IsRemoteFile = isTruthy(37)
+	target.PostCommand = string(args[38].(pyString))
 	if timeout := args[24]; timeout != nil {
 		target.BuildTimeout = time.Duration(timeout.(pyInt)) * time.Second
 	}
