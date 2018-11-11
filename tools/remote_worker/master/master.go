@@ -1,132 +1,170 @@
 package master
 
 import (
-	"context"
 	"io"
+	"net"
 	"sync"
+	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"gopkg.in/op/go-logging.v1"
 
 	"grpcutil"
-	pb "remote/proto/remote"
+	pb "src/remote/proto/remote"
+	wpb "tools/remote_worker/proto/worker"
 )
 
 var log = logging.MustGetLogger("master")
 
 type worker struct {
 	Name   string
-	Server pb.RemoteWorker_RemoteTaskServer
+	stream wpb.RemoteMaster_WorkServer
+}
+
+func (w *worker) Send(req *pb.RemoteTaskRequest) error {
+	return w.stream.Send(&wpb.WorkResponse{Request: req})
+}
+
+func (w *worker) Recv() (*pb.RemoteTaskResponse, error) {
+	resp, err := w.stream.Recv()
+	if err != nil {
+		return nil, err
+	}
+	return resp.Response, nil
 }
 
 type master struct {
-	workers []*worker
-	busy    map[string]*worker
-	mutex   sync.Mutex
+	workers  []*worker
+	mutex    sync.Mutex
+	shutdown chan error
+	retries  int
+	pause    time.Duration
 }
 
-func (m *master) GetTestWorker(ctx context.Context, req *pb.TestWorkerRequest) (*pb.TestWorkerResponse, error) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	if len(m.workers) == 0 {
-		return &pb.TestWorkerResponse{
-			Error: "No workers available",
-		}, nil
+// StopAll releases all currently waiting server goroutines.
+func (m *master) StopAll() {
+	// *Theoretically* at this point all workers should be available, because all
+	// RPCs should have been terminated before the server shut down.
+	for i := 0; i < len(m.workers); i++ {
+		m.shutdown <- status.Errorf(codes.OK, "Server shutting down")
 	}
-	idx := len(m.workers) - 1
-	w := m.workers[idx]
-	m.workers = m.workers[0:idx]
-	m.busy[w.Name] = w
-	return &pb.TestWorkerResponse{
-		Success: true,
-		Url:     w.URL,
-		Name:    w.Name,
-	}, nil
 }
 
-func (m *master) ConnectWorker(srv pb.RemoteTestMaster_ConnectWorkerServer) error {
-	msg, err := srv.Recv()
+// Work implements the internal RPC for communication between us and the worker instances.
+func (m *master) Work(stream wpb.RemoteMaster_WorkServer) error {
+	// First message registers the worker
+	req, err := stream.Recv()
 	if err != nil {
 		return err
-	} else if msg.Url == "" {
-		if err := srv.Send(&pb.ConnectWorkerResponse{Error: "Must provide a URL"}); err != nil {
-			return err
+	}
+	w := &worker{
+		Name:   req.Name,
+		stream: stream,
+	}
+	m.mutex.Lock()
+	m.workers = append(m.workers, w)
+	m.mutex.Unlock()
+	log.Notice("Registered worker %s", w.Name)
+
+	// Now wait until the master is shutting down. All further communication
+	// happens through the RemoteTask RPC.
+	return <-m.shutdown
+}
+
+// RemoteTask implements the external RPC, for handling requests from clients.
+func (m *master) RemoteTask(stream pb.RemoteWorker_RemoteTaskServer) error {
+	// Receive the build request
+	req, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+	// Grab a worker
+	w, err := m.acquireWorker()
+	if err != nil {
+		return err
+	}
+	defer m.releaseWorker(w)
+	// Send it the task
+	log.Notice("Assigning worker %s to build %s", w.Name, req.Target)
+	if err := w.Send(req); err != nil {
+		return err
+	}
+	// Stream any further messages from the client up to it.
+	// This doesn't happen on most tasks but can on some (e.g. if there's a post-build function)
+	go func() {
+		for {
+			if req, err := stream.Recv(); err == io.EOF {
+				break
+			} else if err != nil {
+				log.Error("Error receiving message from client: %s", err)
+				break
+			} else if err := w.Send(req); err != nil {
+				log.Error("Error forwarding client message to worker: %s", err)
+				stream.Send(&pb.RemoteTaskResponse{
+					Complete: true,
+					Msg:      err.Error(),
+				})
+			}
 		}
-		return io.EOF
-	}
-	// Name isn't compulsory.
-	name := msg.Name
-	if name == "" {
-		name = msg.Url
-	}
-	m.register(msg)
-	defer m.deregister(name)
+	}()
+	// Forward all the messages from the worker back down to the client.
 	for {
-		msg, err := srv.Recv()
-		if err == io.EOF {
-			return nil
+		if resp, err := w.Recv(); err == io.EOF {
+			break
 		} else if err != nil {
+			log.Error("Error receiving response from worker %s: %s", w.Name, err)
 			return err
-		} else if msg.BuildComplete {
-			m.free(name)
+		} else if err := stream.Send(resp); err != nil {
+			log.Error("Error sending response to client: %s", err)
+			break
 		}
 	}
+	return nil // Done!
 }
 
-// register registers a newly joining worker.
-func (m *master) register(msg *pb.ConnectWorkerRequest) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.workers = append(m.workers, &worker{
-		Name: msg.Name,
-		URL:  msg.Url,
-	})
-	log.Notice("Registered worker %s", msg.Name)
-}
-
-// deregister disconnects a previously registered worker.
-func (m *master) deregister(name string) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	// This guy might be busy; he shouldn't really be but it's possible.
-	if _, present := m.busy[name]; present {
-		delete(m.busy, name)
-		return
-	}
-	// If not, find and remove it from the list.
-	for i, w := range m.workers {
-		if w.Name == name {
-			m.workers = append(m.workers[:i], m.workers[i+1:]...)
-			log.Notice("Deregistered worker %s", name)
-			return
+func (m *master) acquireWorker() (*worker, error) {
+	// If everything is busy, retry a number of times
+	for i := 0; i < m.retries; i++ {
+		m.mutex.Lock()
+		if len(m.workers) > 0 {
+			w := m.workers[len(m.workers)-1]
+			m.workers = m.workers[:len(m.workers)-1]
+			m.mutex.Unlock()
+			return w, nil
 		}
+		m.mutex.Unlock()
+		log.Warning("No workers available to service incoming request [attempt %d]", i+1)
+		time.Sleep(m.pause)
 	}
-	log.Warning("Failed to deregister %s", name)
+	log.Warning("No workers available to service request after %d tries, giving up", m.retries)
+	return nil, status.Errorf(codes.ResourceExhausted, "No workers available")
 }
 
-// free frees a worker once it has completed a build.
-func (m *master) free(name string) {
+func (m *master) releaseWorker(w *worker) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	if w, present := m.busy[name]; present {
-		delete(m.busy, name)
-		m.workers = append(m.workers, w)
-	} else {
-		log.Warning("Worker %s isn't in busy list", name)
-	}
+	m.workers = append(m.workers, w)
 }
 
 // Start starts serving the master gRPC server on the given port.
-func Start(port int) {
-	grpcutil.StartServer(createServer(), port)
+func Start(port int, retries int, pause time.Duration) {
+	s, m, lis := createServer(port, retries, pause)
+	s.Serve(lis)
+	// Probably doesn't do much good, but this signals all the client goroutines to stop sleeping.
+	m.StopAll()
 }
 
 // createServer breaks out some of the functionality of Start for testing.
-func createServer() *grpc.Server {
+func createServer(port int, retries int, pause time.Duration) (*grpc.Server, *master, net.Listener) {
 	s := grpc.NewServer()
 	m := &master{
-		busy: map[string]*worker{},
+		shutdown: make(chan error),
+		retries:  retries,
+		pause:    pause,
 	}
-	pb.RegisterRemoteTestMasterServer(s, m)
-	return s
+	pb.RegisterRemoteWorkerServer(s, m)
+	wpb.RegisterRemoteMasterServer(s, m)
+	return s, m, grpcutil.SetupServer(s, port)
 }

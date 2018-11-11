@@ -18,13 +18,20 @@ var log = logging.MustGetLogger("grpcutil")
 // It runs forever until terminated.
 // Signals will be automatically handled using HandleSignals.
 func StartServer(s *grpc.Server, port int) {
+	s.Serve(SetupServer(s, port))
+}
+
+// SetupServer creates a server & opens the given port for listening, but does not start running
+// it. Call s.Serve on the returned listener to set it going.
+// This is often useful for testing where we want to know the port is open before continuing.
+func SetupServer(s *grpc.Server, port int) net.Listener {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
 	go HandleSignals(s)
 	log.Notice("Serving on port %d", port)
-	s.Serve(lis)
+	return lis
 }
 
 // HandleSignals received SIGTERM / SIGINT etc to gracefully shut down a gRPC server.

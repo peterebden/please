@@ -4,9 +4,10 @@ go_library(
     visibility = ["//tools/remote_server:all"],
     deps = [
         "//src/grpcutil",
-        "//src/test/proto:remote",
+        "//src/remote/proto:remote",
         "//third_party/go:grpc",
         "//third_party/go:logging",
+        "//tools/remote_worker/proto:worker",
     ],
 )
 
@@ -17,7 +18,7 @@ go_test(
     deps = [
         ":master",
         "//src/grpcutil",
-        "//src/test/proto:remote",
+        "//src/remote/proto:remote",
         "//third_party/go:grpc-middleware",
         "//third_party/go:testify",
     ],
