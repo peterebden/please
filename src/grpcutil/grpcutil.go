@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	"google.golang.org/grpc"
@@ -59,7 +60,7 @@ func WithStreamRetry() grpc.DialOption {
 
 // Dial wraps grpc.Dial with some default options.
 // Errors are not returned; in practice they basically never happen since we don't pass WithBlock().
-func Dial(url string) *grpc.Connection {
+func Dial(url string) *grpc.ClientConn {
 	conn, err := grpc.Dial(url, grpc.WithInsecure(), grpc.WithTimeout(5*time.Second), WithStreamRetry())
 	if err != nil {
 		log.Fatalf("Failed to dial remote server: %s", err)

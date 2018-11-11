@@ -3,7 +3,6 @@ go_library(
     srcs = ["worker.go"],
     visibility = ["//tools/mettle/..."],
     deps = [
-        "//src/build",
         "//src/cli",
         "//src/core",
         "//src/fs",

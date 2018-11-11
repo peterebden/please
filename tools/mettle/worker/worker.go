@@ -15,7 +15,6 @@ import (
 	"google.golang.org/grpc"
 	"gopkg.in/op/go-logging.v1"
 
-	"build"
 	"cli"
 	"core"
 	"fs"

@@ -4,7 +4,7 @@ go_binary(
     visibility = ["PUBLIC"],
     deps = [
         "//src/cli",
-        "//src/test/proto:remote",
+        "//src/remote/proto:remote",
         "//third_party/go:logging",
         "//tools/mettle/master",
         "//tools/mettle/worker",
