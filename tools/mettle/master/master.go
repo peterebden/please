@@ -122,6 +122,7 @@ func (m *master) RemoteTask(stream pb.RemoteWorker_RemoteTaskServer) error {
 			break
 		}
 	}
+	log.Notice("Finishing remote task %s and freeing %s", req.Target, w.Name)
 	return nil // Done!
 }
 

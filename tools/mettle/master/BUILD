@@ -20,5 +20,6 @@ go_test(
         "//src/grpcutil",
         "//src/remote/proto:remote",
         "//third_party/go:testify",
+        "//tools/mettle/proto:worker",
     ],
 )

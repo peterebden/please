@@ -4,7 +4,6 @@ go_library(
     visibility = ["PUBLIC"],
     deps = [
         "//third_party/go:grpc",
-        "//third_party/go:grpc-middleware",
         "//third_party/go:logging",
     ],
 )

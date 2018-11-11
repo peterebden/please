@@ -54,6 +54,11 @@ func Connect(url, name string, dir string) {
 	}
 	go w.Run()
 
+	// Send one response to the server, telling it that we're alive.
+	if err := stream.Send(&pb.WorkRequest{Name: name}); err != nil {
+		log.Fatalf("Failed to send registration message: %s", err)
+	}
+
 	// Now read responses until the server terminates.
 	for {
 		resp, err := stream.Recv()
