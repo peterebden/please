@@ -9,14 +9,14 @@ import (
 	"gopkg.in/op/go-logging.v1"
 
 	"grpcutil"
-	pb "test/proto/remote"
+	pb "remote/proto/remote"
 )
 
 var log = logging.MustGetLogger("master")
 
 type worker struct {
-	Name string
-	URL  string
+	Name   string
+	Server pb.RemoteWorker_RemoteTaskServer
 }
 
 type master struct {

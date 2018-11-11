@@ -5,6 +5,8 @@
 
 syntax = "proto3";
 
+package remote;
+
 service RemoteWorker {
   // Dispatches a task to a remote worker. Responses are streamed back as updates happen.
   // Note that the client can also stream updates
