@@ -44,7 +44,15 @@ func TestWithWorker(t *testing.T) {
 	require.NoError(t, err)
 	err = stream.Send(&pb.RemoteTaskRequest{Target: "test", Command: "true"})
 	assert.NoError(t, err)
+
+	// The first message we get back should just tell us that it's building.
 	resp, err := stream.Recv()
+	assert.NoError(t, err)
+	assert.False(t, resp.Complete)
+	assert.True(t, resp.Success)
+
+	// The next one should be the actual result
+	resp, err = stream.Recv()
 	assert.NoError(t, err)
 	assert.True(t, resp.Complete)
 	assert.True(t, resp.Success)
