@@ -2,47 +2,32 @@ package master
 
 import (
 	"context"
-	"fmt"
 	"testing"
+	"time"
 
-	"github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 
 	"grpcutil"
-	pb "test/proto/remote"
+	pb "remote/proto/remote"
 )
 
 const port = 9922
+const url = "127.0.0.1:9922"
 
-func TestRegisterAndDeregister(t *testing.T) {
-	s := createServer()
+func TestNoWorkers(t *testing.T) {
+	s, _, lis := createServer(port, 0, time.Nanosecond)
 	defer s.Stop()
-	go grpcutil.StartServer(s, port)
+	go s.Serve(lis)
 
-	client := createClient(t)
-	stream, err := client.ConnectWorker(context.Background())
+	client := pb.NewRemoteWorkerClient(grpcutil.Dial(url))
+	stream, err := client.RemoteTask(context.Background())
 	require.NoError(t, err)
-	err = stream.Send(&pb.ConnectWorkerRequest{
-		Name: "bob",
-		Url:  "localhost:9923",
-	})
-	require.NoError(t, err)
-
-	resp, err := client.GetTestWorker(context.Background(), &pb.TestWorkerRequest{
-		Rule: "//tools/remote_server/master:master_test",
-	})
-	require.NoError(t, err)
-	assert.True(t, resp.Success)
-	assert.Equal(t, "bob", resp.Name)
-	assert.Equal(t, "localhost:9923", resp.Url)
-	assert.Equal(t, "", resp.Error)
-}
-
-func createClient(t *testing.T) pb.RemoteTestMasterClient {
-	conn, err := grpc.Dial(fmt.Sprintf("127.0.0.1:%d", port), grpc.WithInsecure(),
-		grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(grpc_retry.WithMax(3))))
-	require.NoError(t, err)
-	return pb.NewRemoteTestMasterClient(conn)
+	err = stream.Send(&pb.RemoteTaskRequest{Target: "test"})
+	assert.NoError(t, err)
+	_, err = stream.Recv()
+	assert.Error(t, err)
+	assert.Equal(t, codes.ResourceExhausted, grpc.Code(err))
 }

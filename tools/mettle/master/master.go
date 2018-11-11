@@ -136,8 +136,10 @@ func (m *master) acquireWorker() (*worker, error) {
 			return w, nil
 		}
 		m.mutex.Unlock()
-		log.Warning("No workers available to service incoming request [attempt %d]", i+1)
-		time.Sleep(m.pause)
+		if i < m.retries-1 {
+			log.Warning("No workers available to service incoming request [attempt %d]", i+1)
+			time.Sleep(m.pause)
+		}
 	}
 	log.Warning("No workers available to service request after %d tries, giving up", m.retries)
 	return nil, status.Errorf(codes.ResourceExhausted, "No workers available")

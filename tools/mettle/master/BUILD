@@ -19,7 +19,6 @@ go_test(
         ":master",
         "//src/grpcutil",
         "//src/remote/proto:remote",
-        "//third_party/go:grpc-middleware",
         "//third_party/go:testify",
     ],
 )

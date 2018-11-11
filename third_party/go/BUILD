@@ -317,7 +317,7 @@ go_get(
         "util/metautils",
         "util/backoffutils",
     ],
-    revision = "fa8fef87dcecac0bda02d36abb3c790ab9e0030b",
+    revision = "v1.0.0",
     deps = [
         ":grpc",
         ":net",
