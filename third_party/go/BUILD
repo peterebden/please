@@ -123,11 +123,10 @@ go_get(
         "encoding",
         "encoding/gzip",
         "encoding/proto",
-        "grpclb/grpc_lb_v1/messages",
         "grpclog",
         "health",
         "health/grpc_health_v1",
-        "internal",
+        "internal/...",
         "keepalive",
         "metadata",
         "naming",
@@ -138,13 +137,13 @@ go_get(
         "stats",
         "status",
         "tap",
-        "transport",
     ],
     repo = "github.com/grpc/grpc-go",
-    revision = "v1.10.0",
+    revision = "v1.16.0",
     deps = [
         ":protobuf",
         ":rpcstatus",
+        ":unix",
     ],
 )
 
@@ -159,7 +158,7 @@ go_get(
 go_get(
     name = "protobuf",
     get = "github.com/golang/protobuf/...",
-    revision = "v1.1.0",
+    revision = "v1.2.0",
     strip = [
         "proto/proto3_proto",
         "conformance",
