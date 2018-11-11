@@ -3,8 +3,10 @@ go_library(
     srcs = ["remote.go"],
     visibility = ["PUBLIC"],
     deps = [
-        "//third_party/go:go-grpc-middleware",
+        "//src/core",
+        "//src/remote/proto:remote",
         "//third_party/go:grpc",
+        "//third_party/go:grpc-middleware",
         "//third_party/go:logging",
     ],
 )

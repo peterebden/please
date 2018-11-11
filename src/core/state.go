@@ -686,6 +686,7 @@ const (
 	TargetBuilding
 	TargetBuildStopped
 	TargetBuilt
+	TargetBuiltRemotely
 	TargetCached
 	TargetBuildFailed
 	TargetTesting

@@ -52,10 +52,9 @@ func buildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 // BuildEnvironment creates the shell env vars to be passed into the exec.Command calls made by plz.
 // Note that we lie about the location of HOME in order to keep some tools happy.
 // We read this as being slightly more POSIX-compliant than not having it set at all...
-func BuildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
+func BuildEnvironment(state *BuildState, target *BuildTarget, tmpDir string) BuildEnv {
 	env := buildEnvironment(state, target)
 	sources := target.AllSourcePaths(state.Graph)
-	tmpDir := path.Join(RepoRoot, target.TmpDir())
 	outEnv := target.GetTmpOutputAll(target.Outputs())
 
 	env = append(env,
@@ -70,7 +69,7 @@ func BuildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 	)
 	// The OUT variable is only available on rules that have a single output.
 	if len(outEnv) == 1 {
-		env = append(env, "OUT="+path.Join(RepoRoot, target.TmpDir(), outEnv[0]))
+		env = append(env, "OUT="+path.Join(RepoRoot, tmpDir, outEnv[0]))
 	}
 	// The SRC variable is only available on rules that have a single source file.
 	if len(sources) == 1 {
@@ -148,8 +147,8 @@ func TestEnvironment(state *BuildState, target *BuildTarget, testDir string) Bui
 
 // StampedBuildEnvironment returns the shell env vars to be passed into exec.Command.
 // Optionally includes a stamp if the target is marked as such.
-func StampedBuildEnvironment(state *BuildState, target *BuildTarget, stamp []byte) BuildEnv {
-	env := BuildEnvironment(state, target)
+func StampedBuildEnvironment(state *BuildState, target *BuildTarget, stamp []byte, tmpDir string) BuildEnv {
+	env := BuildEnvironment(state, target, tmpDir)
 	if target.Stamp {
 		return append(env, "STAMP="+base64.RawURLEncoding.EncodeToString(stamp))
 	}
