@@ -7,7 +7,7 @@ go_library(
         "//src/remote/proto:remote",
         "//third_party/go:grpc",
         "//third_party/go:logging",
-        "//tools/remote_worker/proto:worker",
+        "//tools/mettle/proto:worker",
     ],
 )
 

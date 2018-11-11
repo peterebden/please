@@ -1,7 +1,7 @@
 go_library(
     name = "worker",
     srcs = ["worker.go"],
-    visibility = ["//tools/remote_worker/..."],
+    visibility = ["//tools/mettle/..."],
     deps = [
         "//src/build",
         "//src/cli",

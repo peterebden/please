@@ -5,11 +5,11 @@ import (
 	"gopkg.in/op/go-logging.v1"
 
 	"cli"
-	"tools/remote_worker/master"
-	"tools/remote_worker/worker"
+	"tools/mettle/master"
+	"tools/mettle/worker"
 )
 
-var log = logging.MustGetLogger("remote_worker")
+var log = logging.MustGetLogger("mettle")
 
 var opts = struct {
 	Usage     string
@@ -26,7 +26,7 @@ var opts = struct {
 	} `command:"worker" description:"Starts this server as a worker"`
 }{
 	Usage: `
-remote_worker implements a remote test worker for Please.
+mettle implements a remote test worker for Please.
 
 It can be started in one of two modes; either as the master or as the worker. Typically
 one has a pool of workers and a single master; the workers connect to the master as they
@@ -35,7 +35,7 @@ start up and register themselves, the master then hands them out to clients on r
 }
 
 func main() {
-	command := cli.ParseFlagsOrDie("remote_worker", "13.2.0", &opts)
+	command := cli.ParseFlagsOrDie("mettle", "13.2.0", &opts)
 	cli.InitLogging(opts.Verbosity)
 	if command == "master" {
 		log.Notice("Starting as a master")
