@@ -12,11 +12,11 @@ import (
 	"sync"
 	"time"
 
-	retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	"google.golang.org/grpc"
 	"gopkg.in/op/go-logging.v1"
 
 	"core"
+	"grpcutil"
 	pb "remote/proto/remote"
 )
 
@@ -92,19 +92,7 @@ func Build(tid int, state *core.BuildState, target *core.BuildTarget, hash []byt
 // initClient sets up the remote client
 func initClient(state *core.BuildState) {
 	// TODO(peterebden): TLS, as usual...
-	conn, err := grpc.Dial(
-		state.Config.Build.RemoteURL.String(),
-		grpc.WithTimeout(5*time.Second),
-		grpc.WithInsecure(),
-		grpc.WithStreamInterceptor(
-			retry.StreamClientInterceptor(
-				retry.WithMax(3),
-				retry.WithBackoff(retry.BackoffLinear(2*time.Second)))))
-	if err != nil {
-		// It's not very nice to die here, but in practice this very rarely happens since we
-		// didn't pass WithBlock(), so most errors are picked up by the actual RPC call.
-		log.Fatalf("Failed to dial remote server: %s", err)
-	}
+	conn := grpcutil.Dial(state.Config.Build.RemoteURL.String())
 	remoteClient = pb.NewRemoteWorkerClient(conn)
 }
 

@@ -4,6 +4,7 @@ go_library(
     visibility = ["PUBLIC"],
     deps = [
         "//src/core",
+        "//src/grpcutil",
         "//src/remote/proto:remote",
         "//third_party/go:grpc",
         "//third_party/go:grpc-middleware",

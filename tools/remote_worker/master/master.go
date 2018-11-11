@@ -88,6 +88,7 @@ func (m *master) RemoteTask(stream pb.RemoteWorker_RemoteTaskServer) error {
 	defer m.releaseWorker(w)
 	// Send it the task
 	log.Notice("Assigning worker %s to build %s", w.Name, req.Target)
+	stream.Send(&pb.RemoteTaskResponse{Msg: "Building remotely..."})
 	if err := w.Send(req); err != nil {
 		return err
 	}
