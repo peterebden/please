@@ -3,7 +3,7 @@ package worker
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
 	"os"
 	"os/exec"
 	"path"
@@ -11,13 +11,9 @@ import (
 	"sync"
 	"time"
 
-	retry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
-	"google.golang.org/grpc"
+	"golang.org/x/sync/errgroup"
 	"gopkg.in/op/go-logging.v1"
 
-	"cli"
-	"core"
-	"fs"
 	"grpcutil"
 	pb "src/remote/proto/remote"
 	wpb "tools/mettle/proto/worker"
@@ -31,11 +27,8 @@ const timeout = 10 * time.Minute
 
 // Connect connects to the master and receives messages.
 // It continues forever until the server disconnects.
-func Connect(url, name string, dir string) {
-	conn, err := grpcutil.Dial(url)
-	if err != nil {
-		log.Fatalf("Failed to dial server: %s", err)
-	}
+func Connect(url, name, dir string, fileClient FileClient) {
+	conn := grpcutil.Dial(url)
 	client := pb.NewRemoteMasterClient(conn)
 	ctx, cancel := context.WithTimeout(timeout)
 	defer cancel()
@@ -48,6 +41,7 @@ func Connect(url, name string, dir string) {
 
 	// Start the worker
 	w := &worker{
+		Client:    fileClient,
 		Dir:       path.Join(dir, "work"),
 		Requests:  make(chan *pb.RemoteTaskRequest),
 		Responses: make(chan *pb.RemoteTaskResponse),
@@ -81,6 +75,7 @@ func Connect(url, name string, dir string) {
 }
 
 type worker struct {
+	Client    FileClient
 	Dir       string
 	Context   context.Context
 	Requests  chan *pb.RemoteTaskRequest
@@ -147,6 +142,32 @@ func (w *worker) replaceEnv(env []string) []string {
 	return env
 }
 
+// setupFiles sets up required files in the build directory.
+func (w *worker) setupFiles(files []*pb.Fileset) error {
+	// TODO(peterebden): We will need to limit parallelism here at some point.
+	var g errgroup.Group
+	for _, file := range files {
+		rs, err := w.Client.Get(file.Filenames, file.Hash)
+		if err != nil {
+			return err
+		}
+		wg.Add(len(rs))
+		for i, r := range rs {
+			r := r
+			filename := file.Filenames[i]
+			g.Go(func() error {
+				f, err := os.Create(path.Join(w.Dir, filename))
+				if err != nil {
+					return err
+				}
+				defer f.Close()
+				return io.Copy(f, r)
+			})
+		}
+	}
+	return g.Wait()
+}
+
 // safeBuffer is cloned from core.
 // TODO(peterebden): find somewhere sensible to put this.
 type safeBuffer struct {
@@ -162,4 +183,16 @@ func (sb *safeBuffer) Write(b []byte) (int, error) {
 
 func (sb *safeBuffer) Bytes() []byte {
 	return sb.buf.Bytes()
+}
+
+// FileClient is a temporary interface for fetching / sending files to some futuristic
+// storage system that doesn't exist yet.
+type FileClient interface {
+	// Get requests a set of files from the remote.
+	// It returns a parallel list of readers for them, which are always of the same length
+	// as the requested filenames (as long as there is no error). The caller should close them
+	// all when done.
+	Get(filenames []string, hash []byte) ([]io.ReadCloser, error)
+	// Put dispatches a file to the remote
+	Put(filename string, content io.Reader, hash []byte) error
 }
