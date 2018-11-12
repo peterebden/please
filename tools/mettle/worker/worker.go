@@ -29,8 +29,8 @@ const timeout = 10 * time.Minute
 // It continues forever until the server disconnects.
 func Connect(url, name, dir string, fileClient FileClient) {
 	conn := grpcutil.Dial(url)
-	client := pb.NewRemoteMasterClient(conn)
-	ctx, cancel := context.WithTimeout(timeout)
+	client := wpb.NewRemoteMasterClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	stream, err := client.Work(ctx)
 	if err != nil {
@@ -49,7 +49,7 @@ func Connect(url, name, dir string, fileClient FileClient) {
 	go w.Run()
 
 	// Send one response to the server, telling it that we're alive.
-	if err := stream.Send(&pb.WorkRequest{Name: name}); err != nil {
+	if err := stream.Send(&wpb.WorkRequest{Name: name}); err != nil {
 		log.Fatalf("Failed to send registration message: %s", err)
 	}
 
@@ -64,8 +64,8 @@ func Connect(url, name, dir string, fileClient FileClient) {
 		}
 		w.Context = stream.Context()
 		w.Requests <- resp.Request
-		if err := stream.Send(&pb.WorkRequest{
-			Response: <-resp.Responses,
+		if err := stream.Send(&wpb.WorkRequest{
+			Response: <-w.Responses,
 		}); err != nil {
 			log.Error("Error sending response: %s", err)
 		}
@@ -94,9 +94,9 @@ func (w *worker) Run() {
 			// We've built successfully, but the client needs to be prompted, so
 			// we get an extra request / response pair
 			w.Responses <- resp
-			req <- w.Requests
+			req := <-w.Requests
 		}
-		w.CollectOutputs(req, resp)
+		w.collectOutputs(req, resp)
 		w.Responses <- resp
 	}
 }
@@ -166,6 +166,11 @@ func (w *worker) setupFiles(files []*pb.Fileset) error {
 		}
 	}
 	return g.Wait()
+}
+
+// collectOutputs collects all the output files from the build directory.
+func (w *worker) collectOutputs(req *pb.RemoteTaskRequest, resp *pb.RemoteTaskResponse) {
+
 }
 
 // safeBuffer is cloned from core.
