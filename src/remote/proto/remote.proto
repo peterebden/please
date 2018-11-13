@@ -1,15 +1,15 @@
 // Defines messages relating to remote execution of tasks.
 //
-// This only defines messages as Please uses as a client; other messages for internal
-// server / worker communication exist elsewhere.
+// This only defines messages as Please uses as a client; other messages for
+// internal server / worker communication exist elsewhere.
 
 syntax = "proto3";
 
 package remote;
 
 service RemoteWorker {
-  // Dispatches a task to a remote worker. Responses are streamed back as updates happen.
-  // Note that the client can also stream updates
+  // Dispatches a task to a remote worker. Responses are streamed back as
+  // updates happen. Note that the client can also stream updates
   rpc RemoteTask(stream RemoteTaskRequest) returns (stream RemoteTaskResponse);
 }
 
@@ -19,8 +19,8 @@ message RemoteTaskRequest {
   // Files that are needed to build it
   repeated Fileset files = 2;
   // Environment variables, in the form VAR=x
-  // These can contain the special value ${TMP_DIR} which will get replaced with the
-  // directory it's being built in when done.
+  // These can contain the special value ${TMP_DIR} which will get replaced with
+  // the directory it's being built in when done.
   repeated string env = 3;
   // The command to run
   string command = 4;
@@ -28,20 +28,22 @@ message RemoteTaskRequest {
   bytes hash = 5;
   // Output files that it is required to create
   repeated string outputs = 6;
-  // True if the client wants to be prompted for updates when the build completes.
-  // This causes the server to pause when it sends the first 'complete' message awaiting
-  // an update from the client, which can alter the 'hash' and 'outputs' fields.
+  // True if the client wants to be prompted for updates when the build
+  // completes. This causes the server to pause when it sends the first
+  // 'complete' message awaiting an update from the client, which can alter the
+  // 'hash' and 'outputs' fields.
   bool prompt = 7;
 }
 
 message RemoteTaskResponse {
   // True once the build is complete, either success or failure.
-  // There will be no more messages after this unless the client set prompt=true in its request,
-  // in which case it will wait for another request & then send more responses (which may
-  // differ in any way, e.g. they may become unsuccessful).
+  // There will be no more messages after this unless the client set prompt=true
+  // in its request, in which case it will wait for another request & then send
+  // more responses (which may differ in any way, e.g. they may become
+  // unsuccessful).
   bool complete = 1;
-  // True if this message represents a successful state (not necessarily complete).
-  // If false then msg will contain the error.
+  // True if this message represents a successful state (not necessarily
+  // complete). If false then msg will contain the error.
   bool success = 2;
   // An update message, either status or an error message.
   string msg = 3;

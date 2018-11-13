@@ -4,3 +4,10 @@ grpc_library(
     languages = ["go"],
     visibility = ["PUBLIC"],
 )
+
+grpc_library(
+    name = "fs",
+    srcs = ["fs.proto"],
+    languages = ["go"],
+    visibility = ["PUBLIC"],
+)

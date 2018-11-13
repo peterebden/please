@@ -1,0 +1,73 @@
+// Defines messages for communicating with the remote filesystem storage.
+
+syntax = "proto3";
+
+package fs;
+
+service FSClient {
+    // N.B. All requests can be directed to any node of the cluster - but information exposed
+    //      by Info is intended to be used to enable "fat" clients that know
+    //      where best to route to in order to improve efficiency.
+
+    // Retrieves information about the topology of the cluster.
+    rpc Info(InfoRequest) returns (InfoResponse);
+
+    // Retrieves a file from the server.
+    // Content is streamed back in chunks for efficiency.
+    rpc Get(GetRequest) returns (stream GetResponse);
+
+    // Submits a new file to the server.
+    // Content is streamed up in chunks.
+    rpc Put(stream PutRequest) returns (PutResponse);
+}
+
+message InfoRequest {
+}
+
+message InfoResponse {
+    repeated Node nodes = 1;
+}
+
+message Node {
+    // Describes a single node in the cluster.
+
+    // Public-facing address (i.e. IP or URL)
+    string address = 1;
+    // Friendly name of the server (has no particular significance)
+    string name = 2;
+    // Lowest hash that this shard stores (inclusive)
+    fixed64 lowest = 3;
+    // Highest hash that this shard stores (exclusive)
+    fixed64 highest = 4;
+}
+
+message GetRequest {
+    // Hash of the file.
+    // The server applies no particular meaning to this, hence the hash strategy is
+    // decided by the client (and they must therefore take care about changing it).
+    fixed64 hash = 1;
+    // Name of the file to retrieve.
+    // There may be multiple stored against each hash.
+    string name = 2;
+    // Size of chunks to send response in.
+    uint32 chunk_size = 3;
+}
+
+message GetResponse {
+    // Chunks of file content.
+    bytes chunk = 1;
+}
+
+message PutRequest {
+    // Hash of the file.
+    // Only needs to be passed in the first message.
+    fixed64 hash = 1;
+    // Name of the file.
+    // Only needs to be passed in the first message.
+    string name = 2;
+    // Chunk of data. Any size is accepted.
+    bytes chunk = 3;
+}
+
+message PutResponse {
+}
