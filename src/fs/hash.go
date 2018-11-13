@@ -60,6 +60,11 @@ func (hasher *PathHasher) MustHash(path string) []byte {
 	return hash
 }
 
+// UncachedHash returns a hash, with no memoisation.
+func (hasher *PathHasher) UncachedHash(path string) ([]byte, error) {
+	return hasher.hash(hasher.ensureRelative(path))
+}
+
 // MoveHash is used when we move files from tmp to out and there was one there before; that's
 // the only case in which the hash of a filepath could change.
 func (hasher *PathHasher) MoveHash(oldPath, newPath string, copy bool) {

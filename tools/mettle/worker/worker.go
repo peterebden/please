@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/op/go-logging.v1"
 
+	"fs"
 	"grpcutil"
 	pb "src/remote/proto/remote"
 	wpb "tools/mettle/proto/worker"
@@ -40,11 +41,13 @@ func Connect(url, name, dir string, fileClient FileClient) {
 	}
 
 	// Start the worker
+	root := path.Join(dir, "work")
 	w := &worker{
 		Client:    fileClient,
-		Dir:       path.Join(dir, "work"),
+		Dir:       root,
 		Requests:  make(chan *pb.RemoteTaskRequest),
 		Responses: make(chan *pb.RemoteTaskResponse),
+		hasher:    fs.NewPathHasher(root),
 	}
 	go w.Run()
 
@@ -80,6 +83,7 @@ type worker struct {
 	Context   context.Context
 	Requests  chan *pb.RemoteTaskRequest
 	Responses chan *pb.RemoteTaskResponse
+	hasher    *fs.PathHasher
 }
 
 // Run runs builds until its channel is exhausted.
@@ -94,7 +98,7 @@ func (w *worker) Run() {
 			// We've built successfully, but the client needs to be prompted, so
 			// we get an extra request / response pair
 			w.Responses <- resp
-			req := <-w.Requests
+			req = <-w.Requests
 		}
 		w.collectOutputs(req, resp)
 		w.Responses <- resp
@@ -103,20 +107,21 @@ func (w *worker) Run() {
 
 // Build runs a single build command.
 func (w *worker) Build(req *pb.RemoteTaskRequest) *pb.RemoteTaskResponse {
-	if out, err := w.build(req); err != nil {
+	out, err := w.build(req)
+	if err != nil {
 		return &pb.RemoteTaskResponse{Msg: err.Error(), Output: out}
 	}
 	return &pb.RemoteTaskResponse{Success: true, Output: out}
 }
 
 // build runs the actual build command.
-func (w *worker) build(req *pb.RemoteTestRequest) ([]byte, error) {
+func (w *worker) build(req *pb.RemoteTaskRequest) ([]byte, error) {
 	if err := os.RemoveAll(w.Dir); err != nil {
-		return err
+		return nil, err
 	} else if err := os.MkdirAll(w.Dir, os.ModeDir|0755); err != nil {
-		return err
+		return nil, err
 	} else if err := w.setupFiles(req.Files); err != nil {
-		return err
+		return nil, err
 	}
 	// TODO(peterebden): Add support for the progress reporting pseudo-protocol.
 	cmd := exec.CommandContext(w.Context, "bash", "-u", "-o", "pipefail", "-c", req.Command)
@@ -151,7 +156,6 @@ func (w *worker) setupFiles(files []*pb.Fileset) error {
 		if err != nil {
 			return err
 		}
-		wg.Add(len(rs))
 		for i, r := range rs {
 			r := r
 			filename := file.Filenames[i]
@@ -161,7 +165,8 @@ func (w *worker) setupFiles(files []*pb.Fileset) error {
 					return err
 				}
 				defer f.Close()
-				return io.Copy(f, r)
+				_, err = io.Copy(f, r)
+				return err
 			})
 		}
 	}
@@ -170,7 +175,32 @@ func (w *worker) setupFiles(files []*pb.Fileset) error {
 
 // collectOutputs collects all the output files from the build directory.
 func (w *worker) collectOutputs(req *pb.RemoteTaskRequest, resp *pb.RemoteTaskResponse) {
-
+	files := make([]*pb.Fileset, len(req.Outputs))
+	var g errgroup.Group
+	for i, out := range req.Outputs {
+		out := out
+		file := &pb.Fileset{Filenames: []string{out}}
+		files[i] = file
+		g.Go(func() error {
+			filename := path.Join(w.Dir, out)
+			hash, err := w.hasher.UncachedHash(filename)
+			if err != nil {
+				return err
+			}
+			f, err := os.Open(filename)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			return w.Client.Put(out, f, hash)
+		})
+	}
+	if err := g.Wait(); err != nil {
+		resp.Success = false
+		resp.Msg = err.Error()
+	} else {
+		resp.Files = files
+	}
 }
 
 // safeBuffer is cloned from core.

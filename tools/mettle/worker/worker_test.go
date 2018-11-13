@@ -1,7 +1,7 @@
 package worker
 
 import (
-	"fmt"
+	"io"
 	"net"
 	"sync"
 	"testing"
@@ -32,9 +32,9 @@ func TestWorker(t *testing.T) {
 		Target:  "//test",
 		Command: "true",
 	}}
-	req <- m.requests
-	assert.True(req.Success)
-	assert.True(req.Complete)
+	req := <-m.requests
+	assert.True(t, req.Response.Success)
+	assert.True(t, req.Response.Complete)
 
 	// Now shut the server down
 	m.responses <- &pb.WorkResponse{Shutdown: true}

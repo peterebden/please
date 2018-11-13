@@ -21,6 +21,7 @@ go_test(
     srcs = ["worker_test.go"],
     deps = [
         ":worker",
+        "//src/fs",
         "//src/remote/proto:remote",
         "//third_party/go:grpc",
         "//third_party/go:testify",
