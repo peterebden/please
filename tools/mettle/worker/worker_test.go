@@ -58,7 +58,12 @@ type master struct {
 
 func (m *master) Work(stream pb.RemoteMaster_WorkServer) error {
 	// Worker registration, do nothing
-	stream.Recv()
+	resp, err := stream.Recv()
+	if err != nil {
+		log.Fatalf("Failed to receive registration message: %s", err)
+	} else if resp.Name != "test" {
+		log.Fatalf("Unexpected name for registration: %s", resp.Name)
+	}
 	// Blast all the messages off to it
 	go func() {
 		for {

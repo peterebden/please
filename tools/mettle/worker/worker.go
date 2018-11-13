@@ -36,8 +36,6 @@ func Connect(url, name, dir string, fileClient FileClient) {
 	stream, err := client.Work(ctx)
 	if err != nil {
 		log.Fatalf("Failed to connect: %s", err)
-	} else if err := stream.Send(&wpb.WorkRequest{Name: name}); err != nil {
-		log.Fatalf("Failed to connect: %s", err)
 	}
 
 	// Start the worker
@@ -109,9 +107,9 @@ func (w *worker) Run() {
 func (w *worker) Build(req *pb.RemoteTaskRequest) *pb.RemoteTaskResponse {
 	out, err := w.build(req)
 	if err != nil {
-		return &pb.RemoteTaskResponse{Msg: err.Error(), Output: out}
+		return &pb.RemoteTaskResponse{Msg: err.Error(), Output: out, Complete: true}
 	}
-	return &pb.RemoteTaskResponse{Success: true, Output: out}
+	return &pb.RemoteTaskResponse{Success: true, Output: out, Complete: true}
 }
 
 // build runs the actual build command.
@@ -132,8 +130,9 @@ func (w *worker) build(req *pb.RemoteTaskRequest) ([]byte, error) {
 	var outerr safeBuffer
 	cmd.Stdout = io.MultiWriter(&out, &outerr)
 	cmd.Stderr = &outerr
-	log.Notice("Running command %s\nENVIRONMENT:\n%s\n%s", req.Command, strings.Join(cmd.Env, "\n"), cmd)
+	log.Debug("Running command %s\nENVIRONMENT:\n%s", req.Command, strings.Join(cmd.Env, "\n"))
 	if err := cmd.Run(); err != nil {
+		log.Debug("Command failed: %s", err)
 		return outerr.Bytes(), err
 	}
 	return out.Bytes(), nil
@@ -196,6 +195,7 @@ func (w *worker) collectOutputs(req *pb.RemoteTaskRequest, resp *pb.RemoteTaskRe
 		})
 	}
 	if err := g.Wait(); err != nil {
+		log.Debug("Failed to collect output files: %s", err)
 		resp.Success = false
 		resp.Msg = err.Error()
 	} else {

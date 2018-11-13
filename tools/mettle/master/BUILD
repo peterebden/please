@@ -1,7 +1,7 @@
 go_library(
     name = "master",
     srcs = ["master.go"],
-    visibility = ["//tools/remote_server:all"],
+    visibility = ["//tools/mettle:all"],
     deps = [
         "//src/grpcutil",
         "//src/remote/proto:remote",
@@ -14,7 +14,6 @@ go_library(
 go_test(
     name = "master_test",
     srcs = ["master_test.go"],
-    labels = ["manual"],  # Race conditions abound.
     deps = [
         ":master",
         "//src/grpcutil",
