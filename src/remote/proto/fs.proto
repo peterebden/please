@@ -4,7 +4,7 @@ syntax = "proto3";
 
 package fs;
 
-service FSClient {
+service RemoteFS {
     // N.B. All requests can be directed to any node of the cluster - but information exposed
     //      by Info is intended to be used to enable "fat" clients that know
     //      where best to route to in order to improve efficiency.
@@ -25,7 +25,11 @@ message InfoRequest {
 }
 
 message InfoResponse {
+    // Describes all the nodes in the cluster
     repeated Node nodes = 1;
+    // Describes the node that is replying to this request.
+    // This will therefore duplicate one of the entries in nodes.
+    Node this_node = 2;
 }
 
 message Node {

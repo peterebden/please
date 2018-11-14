@@ -5,5 +5,6 @@ go_library(
     deps = [
         "//src/grpcutil",
         "//third_party/go:grpc",
+        "//third_party/go:multierror",
     ],
 )
