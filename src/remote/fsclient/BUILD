@@ -4,7 +4,9 @@ go_library(
     visibility = ["PUBLIC"],
     deps = [
         "//src/grpcutil",
+        "//third_party/go:errgroup",
         "//third_party/go:grpc",
+        "//third_party/go:logging",
         "//third_party/go:multierror",
     ],
 )

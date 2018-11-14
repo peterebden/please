@@ -25,24 +25,29 @@ message InfoRequest {
 }
 
 message InfoResponse {
-    // Describes all the nodes in the cluster
-    repeated Node nodes = 1;
+    // Describes all the hash ranges in the cluster
+    repeated Range ranges = 1;
     // Describes the node that is replying to this request.
-    // This will therefore duplicate one of the entries in nodes.
+    // This will therefore duplicate one of the nodes in the ranges above.
     Node this_node = 2;
 }
 
 message Node {
-    // Describes a single node in the cluster.
-
     // Public-facing address (i.e. IP or URL)
     string address = 1;
     // Friendly name of the server (has no particular significance)
     string name = 2;
-    // Lowest hash that this shard stores (inclusive)
-    fixed64 lowest = 3;
-    // Highest hash that this shard stores (exclusive)
-    fixed64 highest = 4;
+}
+
+message Range {
+    // Describes a hash range and the associated nodes that store it.
+
+    // Lowest hash that this range stores (inclusive)
+    fixed64 start = 1;
+    // Highest hash that this range stores (exclusive)
+    fixed64 end = 2;
+    // Nodes that are responsible for storing this range.
+    repeated Node nodes = 3;
 }
 
 message GetRequest {
