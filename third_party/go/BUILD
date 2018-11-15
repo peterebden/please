@@ -624,3 +624,9 @@ go_get(
     patch = "ar_octal.diff",
     revision = "8bd4349a67f2533b078dbc524689d15dba0f4659",
 )
+
+go_get(
+    name = "xxhash",
+    get = "github.com/cespare/xxhash",
+    revision = "v1.1.0",
+)
