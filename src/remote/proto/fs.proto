@@ -25,10 +25,10 @@ message InfoRequest {
 }
 
 message InfoResponse {
-    // Describes all the hash ranges in the cluster
-    repeated Range ranges = 1;
+    // Describes all the nodes in the cluster
+    repeated Node node = 1;
     // Describes the node that is replying to this request.
-    // This will therefore duplicate one of the nodes in the ranges above.
+    // This will therefore duplicate one of the nodes above.
     Node this_node = 2;
 }
 
@@ -37,23 +37,21 @@ message Node {
     string address = 1;
     // Friendly name of the server (has no particular significance)
     string name = 2;
+    // Describes the hashes this node is responsible for.
+    repeated Range ranges = 3;
 }
 
 message Range {
-    // Describes a hash range and the associated nodes that store it.
-
     // Lowest hash that this range stores (inclusive)
     fixed64 start = 1;
-    // Highest hash that this range stores (exclusive)
+    // Highest hash that this range stores (inclusive)
     fixed64 end = 2;
-    // Nodes that are responsible for storing this range.
-    repeated Node nodes = 3;
 }
 
 message GetRequest {
     // Hash of the file.
-    // The server applies no particular meaning to this, hence the hash strategy is
-    // decided by the client (and they must therefore take care about changing it).
+    // The hash strategy is decided by the client (and they must therefore take care about
+    // changing it); the server just maps them into the appropriate ranges.
     fixed64 hash = 1;
     // Name of the file to retrieve.
     // There may be multiple stored against each hash.
