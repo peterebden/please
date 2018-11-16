@@ -3,6 +3,7 @@ go_library(
     srcs = ["cluster.go"],
     visibility = ["//tools/elan/..."],
     deps = [
+        "//third_party/go:logging",
         "//third_party/go:memberlist",
     ],
 )
