@@ -1,0 +1,28 @@
+// Defines messages for internal cluster communication.
+
+syntax = "proto3";
+
+package cluster;
+
+service Elan {
+    // Registers the current node on the cluster.
+    rpc Register(RegisterRequest) returns (RegisterResponse);
+}
+
+message RegisterRequest {
+    // Name of the joining server.
+    // This is used to identify it to the rest of the cluster.
+    string name = 1;
+    // The set of tokens this node thinks it owns.
+    repeated fixed64 tokens = 2;
+}
+
+message RegisterResponse {
+    // True if the request to join has been accepted and the caller is now part of the cluster.
+    // The caller must accept the returned set of tokens.
+    bool accepted = 1;
+    // Any message pertaining to acceptance / rejection.
+    string msg = 2;
+    // The set of ranges this node is now responsible for.
+    repeated Range ranges = 3;
+}
