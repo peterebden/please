@@ -22,8 +22,8 @@ type Cluster interface {
 	Join(urls []string) error
 	// Shutdown shuts down this cluster node.
 	Shutdown()
-	// Nodes returns the RPC URLs of nodes currently known in the cluster.
-	Nodes() []string
+	// Nodes returns a channel of the RPC URLs of nodes currently known in the cluster.
+	Nodes() chan string
 }
 
 // Start starts the cluster server. It does not join the cluster - call Join
