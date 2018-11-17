@@ -2,6 +2,8 @@
 
 syntax = "proto3";
 
+import "src/remote/proto/fs.proto";
+
 package cluster;
 
 service Elan {
@@ -25,4 +27,6 @@ message RegisterResponse {
     string msg = 2;
     // The set of ranges this node is now responsible for.
     repeated Range ranges = 3;
+    // The new state of the cluster, as returned to clients.
+    fs.InfoResponse info = 4;
 }

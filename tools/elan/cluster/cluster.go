@@ -22,8 +22,8 @@ type Cluster interface {
 	Join(urls []string) error
 	// Shutdown shuts down this cluster node.
 	Shutdown()
-	// Nodes returns the RPC URLs of nodes currently known in the cluster.
-	Nodes() []string
+	// Nodes returns a mapping of the names and RPC URLs of nodes currently known in the cluster.
+	Nodes() map[string]string
 }
 
 // Start starts the cluster server. It does not join the cluster - call Join
@@ -75,13 +75,13 @@ func (c *cluster) Shutdown() {
 	}
 }
 
-func (c *cluster) Nodes() []string {
+func (c *cluster) Nodes() map[string]string {
 	nodes := c.list.Members()
-	ret := make([]string, len(nodes))
-	for i, n := range nodes {
-		ret[i] = string(n.Meta)
+	m := make(map[string]string, len(nodes))
+	for _, n := range nodes {
+		m[n.Name] = string(n.Meta)
 	}
-	return ret
+	return m
 }
 
 // A delegate is our implementation of memberlist's Delegate interface.
