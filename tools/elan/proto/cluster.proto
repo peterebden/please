@@ -12,21 +12,27 @@ service Elan {
 }
 
 message RegisterRequest {
-    // Name of the joining server.
-    // This is used to identify it to the rest of the cluster.
-    string name = 1;
-    // The set of tokens this node thinks it owns.
-    repeated fixed64 tokens = 2;
+    // Configuration that the joining server claims.
+    fs.Node node = 1;
 }
 
 message RegisterResponse {
     // True if the request to join has been accepted and the caller is now part of the cluster.
-    // The caller must accept the returned set of tokens.
+    // The caller must accept the returned configuration as truth.
     bool accepted = 1;
     // Any message pertaining to acceptance / rejection.
     string msg = 2;
-    // The set of ranges this node is now responsible for.
-    repeated Range ranges = 3;
-    // The new state of the cluster, as returned to clients.
-    fs.InfoResponse info = 4;
+    // The state of all the nodes in the cluster, including the caller.
+    repeated fs.Node nodes = 3;
+}
+
+message Config {
+    // Configuration that each node serialises in order to restore itself after startup.
+
+    // Details of this node
+    fs.Node this_node = 1;
+    // All known other nodes
+    repeated fs.Node nodes = 2;
+    // True if this node has previously completed initialisation
+    bool initialised = 3;
 }

@@ -11,90 +11,104 @@ import (
 
 	"grpcutil"
 	pb "remote/proto/fs"
-	cpb "tools/elan/proto/replication"
+	cpb "tools/elan/proto/cluster"
 	"tools/elan/storage"
 )
 
+var log = logging.MustGetLogger("grpc")
+
 // Start starts the gRPC server on the given port.
-func Start(port int, storage storage.Storage, cluster Cluster) Server {
-	s, srv, lis := start(port, storage, nodeFinder)
+// It uses the given set of URLs for initial discovery of another node to bootstrap from.
+// If seed is true then it is allowed to seed a new cluster if it fails to contact any
+// other nodes; otherwise failure to contact them will be fatal.
+func Start(port int, storage storage.Storage, urls []string, name string) Server {
+	s, srv, lis := start(port, storage, urls, name)
 	go s.Serve(lis)
 	return srv
 }
 
-func start(port int, storage storage.Storage, cluster Cluster) (*grpc.Server, *server, net.Listener) {
+func start(port int, storage storage.Storage, urls []string, name string) (*grpc.Server, *server, net.Listener) {
 	s := grpc.NewServer()
 	fs := &server{
-		cluster: cluster,
+		name:    name,
 		storage: storage,
+		config:  storage.LoadConfig(),
+		ring:    NewRing(),
 	}
 	pb.RegisterFSClientServer(s, fs)
+	s.Init(urls)
 	return s, fs, grpcutil.SetupServer(s, port)
 }
 
 // A Server allows some maintenance operations on the gRPC server.
 type Server interface {
 	// Init should be called once the cluster has initialised.
-	// It initialises the server & storage.
-	Init(name string) error
-}
-
-// A Cluster is a minimal interface of what we require from the cluster.
-type Cluster interface {
-	// Nodes returns the RPC URLs of nodes currently known in the cluster.
-	Nodes() []string
+	// It initialises the server & storage by connecting to the given URLs.
+	Init(urls []string) error
 }
 
 type server struct {
-	cluster     Cluster
-	storage     storage.Storage
-	clusterInfo *pb.InfoResponse
-	nodes       []node
+	name    string
+	storage storage.Storage
+	config  *cpb.Config
+	info    *pb.InfoRequest
+	ring    Ring
 }
 
-func (s *server) Init(name string) error {
-	nodes := s.cluster.Nodes()
-	s.nodes = make([]node, 0, len(nodes))
-	initialised := false
-	for nodeName, url := range nodes {
-		if nodeName == name {
-			// don't open a gRPC channel to ourselves
-			s.nodes = append(s.nodes, node{Name: nodeName})
+func (s *server) Init(urls []string) error {
+	// Load the current config from storage in case we've been initialised before.
+	for _, url := range urls {
+		client := rpb.NewElanClient(grpcutil.Dial(url))
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		resp, err := client.Register(ctx, &rpb.RegisterRequest{Node: s.config.ThisNode})
+		if err != nil {
+			// Not fatal, might have failed to contact server
+			log.Warning("Failed to initialise off %s: %s", url, err)
+		} else if !resp.Accepted {
+			// This is fatal, we've been told our config is unacceptable.
+			return fmt.Errorf("Request to join cluster rejected: %s", resp.Msg)
 		} else {
-			s.nodes = append(s.nodes, node{
-				Name:   nodeName,
-				Client: rpb.NewElanClient(grpcutil.Dial(url)),
-			})
+			return s.init(resp.Nodes, false)
 		}
 	}
-	// We try to avoid consensus problems via this shitty method of treating the
-	// lowest-named node as the master. Obviously that is pretty dodgy but it's
-	// enough for now - later we'll add Raft or smthn to do it better.
-	sort.Slice(s.nodes, func(i, j int) bool { return i.Name < j.Name })
-	// Handle the case where we are the master.
-	idx := 0
-	if s.nodes[idx].Name == name {
-		if len(nodes) == 1 {
-		}
-		// Initialise off the second node.
-		// TODO(peterebden): this indicates we can't tolerate both going down.
-		idx = 1
+	log.Error("Failed to contact any initial nodes")
+	if s.config.Initialised {
+		log.Warning("Config already initialised, proceeding with last known settings")
+		return s.init(s.config.Nodes, false)
 	}
+	log.Warning("Seeding new cluster")
+	return s.init(s.config.Nodes, true)
+}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	resp, err := s.nodes[0].Client.Register(ctx, &pb.RegisterRequest{
-		Name:   name,
-		Tokens: storage.Tokens(),
-	})
-	if err != nil {
-		log.Error("Failed to contact peer %s: %s", s.nodes[0].Name, err)
+// init sets up the server & establishes connections to the rest of the cluster.
+func (s *server) init(nodes []*pb.Node, seeding bool) error {
+	s.config.Nodes = nodes
+	for _, node := range nodes {
+		if node.Name == s.name {
+			s.config.ThisNode = node
+			break
+		}
+	}
+	if s.config.ThisNode == nil {
+		return fmt.Errorf("this node (%s) not included in cluster info", s.name)
+	}
+	s.info = &pb.InfoRequest{
+		Node:     s.config.Node,
+		ThisNode: s.config.ThisNode,
+	}
+	if err := s.ring.Update(nodes); err != nil {
 		return err
 	}
+	if seeding {
+		// We're seeding a new cluster, so issue a new set of tokens.
+		return s.Add(s.config.ThisNode.Name, s.config.ThisNode.Address)
+	}
+	return nil
 }
 
 func (s *server) Info(ctx context.Context, req *pb.InfoRequest) (*pb.InfoResponse, error) {
-	return s.clusterInfo, nil
+	return s.info, nil
 }
 
 func (s *server) Get(req *GetRequest, stream pb.RemoteFS_GetServer) error {

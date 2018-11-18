@@ -1,10 +1,26 @@
 go_library(
     name = "grpc",
-    srcs = ["grpc.go"],
+    srcs = [
+        "grpc.go",
+        "ring.go",
+    ],
     deps = [
         "//src/grpcutil",
+        "//src/remote/proto:fs",
         "//third_party/go:grpc",
         "//third_party/go:logging",
+        "//tools/elan/proto:cluster",
         "//tools/elan/storage",
+    ],
+)
+
+go_test(
+    name = "ring_test",
+    srcs = ["ring_test.go"],
+    deps = [
+        ":grpc",
+        "//src/remote/proto:fs",
+        "//third_party/go:testify",
+        "//tools/elan/proto:cluster",
     ],
 )
