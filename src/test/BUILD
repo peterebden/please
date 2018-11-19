@@ -14,7 +14,7 @@ go_library(
         "//src/core",
         "//src/fs",
         "//src/metrics",
-        "//src/test/proto:remote",
+        "//src/remote/proto:remote",
         "//src/utils",
         "//src/worker",
         "//third_party/go:docker",
