@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"sort"
 	"sync"
 
 	"grpcutil"
-	pb "remote/proto/fs"
+	pb "src/remote/proto/fs"
 	cpb "tools/elan/proto/cluster"
 )
 
@@ -39,7 +40,7 @@ func (r *Ring) Update(nodes []*pb.Node) error {
 	defer r.mutex.Unlock()
 	m1 := map[string]cpb.ElanClient{}
 	m2 := map[uint64]string{}
-	for _, seg := range segments {
+	for _, seg := range r.segments {
 		m1[seg.Name] = seg.Client
 		m2[seg.Start] = seg.Name
 	}
@@ -64,13 +65,12 @@ func (r *Ring) Update(nodes []*pb.Node) error {
 		}
 	}
 	r.segments = segs
-	r.addrs = addrs
+	r.addresses = addrs
 	return nil
 }
 
 // Adds a new entry to the ring.
-func (r *Ring) Add(name, address string) error {
-	client := cpb.NewElanClient(grpcutil.Dial(address))
+func (r *Ring) Add(name, address string, client cpb.ElanClient) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	if _, present := r.addresses[name]; present {
@@ -78,22 +78,23 @@ func (r *Ring) Add(name, address string) error {
 	}
 	// Generate a set of tokens
 	for i := 0; i < numTokens; i++ {
-		if err := r.genToken(name, client); err != nil {
+		if err := r.genToken(uint64(i), name, client); err != nil {
 			return err
 		}
 	}
+	r.addresses[name] = address
 	return nil
 }
 
-func (r *Ring) genToken(name string, client cpb.ElanClient) error {
+func (r *Ring) genToken(tokenIndex uint64, name string, client cpb.ElanClient) error {
 	s := segment{
 		Name:   name,
 		Client: client,
 	}
-	for j := 0; j < numAttempts; j++ {
-		token := rand.Int63(tokenRange) + i*tokenRange
+	for i := 0; i < numAttempts; i++ {
+		token := uint64(rand.Int63n(tokenRange)) + tokenIndex*tokenRange
 		s.Start = token
-		idx := sort.Search(len*r.segments, func(i int) bool { return r.segments[i].Start >= token })
+		idx := sort.Search(len(r.segments), func(i int) bool { return r.segments[i].Start >= token })
 		if idx >= len(r.segments) {
 			if len(r.segments) == 0 {
 				// We've just initialised with the first segment. It starts at the beginning.
@@ -135,7 +136,8 @@ func (r *Ring) Export() []*pb.Node {
 
 // Find returns the node that holds the given hash.
 func (r *Ring) Find(hash uint64) (string, cpb.ElanClient) {
-	return r.segments[r.find(hash)]
+	seg := r.segments[r.find(hash)]
+	return seg.Name, seg.Client
 }
 
 // FindN returns the sequence of n nodes that hold the given hash,
@@ -148,6 +150,11 @@ func (r *Ring) FindN(hash uint64, n int) []cpb.ElanClient {
 		idx = (idx + 1) % len(r.segments)
 	}
 	return ret
+}
+
+// find returns the index of the segment that holds the given hash.
+func (r *Ring) find(hash uint64) int {
+	return sort.Search(len(r.segments), func(i int) bool { return r.segments[i].Start >= hash })
 }
 
 // A segment represents a segment of the circle that one node is responsible for.
