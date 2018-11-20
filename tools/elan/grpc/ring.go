@@ -22,18 +22,34 @@ const (
 	ringMax     uint64 = math.MaxUint64
 )
 
+type clientFactory func(string) cpb.ElanClient
+
 // A Ring is a consistently hashed ring of values that we use to manage the
 // servers in a cluster.
 type Ring struct {
-	segments  []segment
-	addresses map[string]string
+	segments      []segment
+	addresses     map[string]string
+	clientFactory clientFactory
 	// Used to guard mutating operations on the ring.
 	mutex sync.Mutex
 }
 
 // NewRing creates a new ring.
 func NewRing() *Ring {
-	return &Ring{addresses: map[string]string{}}
+	return newRing(createClient)
+}
+
+// newRing creates a new ring, and allows specifying a function to construct new clients.
+func newRing(f clientFactory) *Ring {
+	return &Ring{
+		addresses:     map[string]string{},
+		clientFactory: f,
+	}
+}
+
+// createClient is the default client creation function.
+func createClient(address string) cpb.ElanClient {
+	return cpb.NewElanClient(grpcutil.Dial(address))
 }
 
 // Updates this ring to match the given proto description.
@@ -50,18 +66,18 @@ func (r *Ring) Update(nodes []*pb.Node) error {
 	segs := []segment{}
 	addrs := map[string]string{}
 	for _, node := range nodes {
-		for _, r := range node.Ranges {
-			if name, present := m2[r.Start]; present && name != node.Name {
-				return fmt.Errorf("Incompatible ranges; we record %x as being owned by %s, but now %s claims it", r.Start, name, node.Name)
+		for _, rng := range node.Ranges {
+			if name, present := m2[rng.Start]; present && name != node.Name {
+				return fmt.Errorf("Incompatible ranges; we record %x as being owned by %s, but now %s claims it", rng.Start, name, node.Name)
 			}
 			s := segment{
-				Start:  r.Start,
-				End:    r.End,
+				Start:  rng.Start,
+				End:    rng.End,
 				Name:   node.Name,
 				Client: m1[node.Name],
 			}
 			if s.Client == nil {
-				s.Client = cpb.NewElanClient(grpcutil.Dial(node.Address))
+				s.Client = r.clientFactory(node.Address)
 			}
 			segs = append(segs, s)
 			addrs[node.Name] = node.Address
@@ -160,7 +176,11 @@ func (r *Ring) FindN(hash uint64, n int) []cpb.ElanClient {
 
 // find returns the index of the segment that holds the given hash.
 func (r *Ring) find(hash uint64) int {
-	return sort.Search(len(r.segments), func(i int) bool { return r.segments[i].Start >= hash })
+	idx := sort.Search(len(r.segments), func(i int) bool { return r.segments[i].Start >= hash })
+	if idx == 0 {
+		return 0
+	}
+	return idx - 1
 }
 
 // Verify checks the current state of the ring and returns an error if there are any issues.

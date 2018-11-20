@@ -5,13 +5,19 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	pb "src/remote/proto/fs"
-	//cpb "tools/elan/proto/cluster"
+	cpb "tools/elan/proto/cluster"
 )
 
 const address = "localhost:9928"
 
+// testClientFactory creates clients with no backing channel for testing.
+// We need them to be unique for some tests, but we never use the channel.
+func testClientFactory(address string) cpb.ElanClient {
+	return cpb.NewElanClient(nil)
+}
+
 func TestRingInit(t *testing.T) {
-	r := NewRing()
+	r := newRing(testClientFactory)
 	err := r.Add("test1", address, nil)
 	assert.NoError(t, err)
 	nodes := r.Export()
@@ -24,7 +30,7 @@ func TestRingInit(t *testing.T) {
 }
 
 func TestCannotReAddSameNode(t *testing.T) {
-	r := NewRing()
+	r := newRing(testClientFactory)
 	err := r.Add("test1", address, nil)
 	assert.NoError(t, err)
 	nodes := r.Export()
@@ -46,7 +52,7 @@ func TestUpdateRejectsHashChanges(t *testing.T) {
 			},
 		},
 	}
-	r := NewRing()
+	r := newRing(testClientFactory)
 	assert.NoError(t, r.Update(nodes))
 	assert.Equal(t, nodes, r.Export())
 
@@ -72,7 +78,7 @@ func TestUpdateAddingNewNodes(t *testing.T) {
 			},
 		},
 	}
-	r := NewRing()
+	r := newRing(testClientFactory)
 	assert.NoError(t, r.Update(nodes))
 	assert.Equal(t, nodes, r.Export())
 
@@ -114,7 +120,7 @@ func TestVerify(t *testing.T) {
 			},
 		},
 	}
-	r := NewRing()
+	r := newRing(testClientFactory)
 	assert.NoError(t, r.Update(nodes))
 	assert.NoError(t, r.Verify())
 }
@@ -141,7 +147,7 @@ func TestVerify2(t *testing.T) {
 			},
 		},
 	}
-	r := NewRing()
+	r := newRing(testClientFactory)
 	assert.NoError(t, r.Update(nodes))
 	assert.NoError(t, r.Verify())
 }
@@ -168,7 +174,7 @@ func TestVerifyGap(t *testing.T) {
 			},
 		},
 	}
-	r := NewRing()
+	r := newRing(testClientFactory)
 	assert.NoError(t, r.Update(nodes))
 	assert.Error(t, r.Verify())
 }
@@ -195,7 +201,94 @@ func TestVerifyOverlap(t *testing.T) {
 			},
 		},
 	}
-	r := NewRing()
+	r := newRing(testClientFactory)
 	assert.NoError(t, r.Update(nodes))
 	assert.Error(t, r.Verify())
+}
+
+func TestVerifyDoesNotStartAtZero(t *testing.T) {
+	nodes := []*pb.Node{
+		{
+			Address: address,
+			Name:    "node-1",
+			Ranges: []*pb.Range{
+				{Start: 2, End: 4611686018427387904},
+				{Start: 4611686018427387905, End: 9223372036854775808},
+				{Start: 9223372036854775809, End: 13835058055282163712},
+				{Start: 13835058055282163713, End: 18446744073709551615},
+			},
+		},
+	}
+	r := newRing(testClientFactory)
+	assert.NoError(t, r.Update(nodes))
+	assert.Error(t, r.Verify())
+}
+
+func TestVerifyDoesNotEndAtMax(t *testing.T) {
+	nodes := []*pb.Node{
+		{
+			Address: address,
+			Name:    "node-1",
+			Ranges: []*pb.Range{
+				{Start: 0, End: 4611686018427387904},
+				{Start: 4611686018427387905, End: 9223372036854775808},
+				{Start: 9223372036854775809, End: 13835058055282163712},
+				{Start: 13835058055282163713, End: 18446744073709551613},
+			},
+		},
+	}
+	r := newRing(testClientFactory)
+	assert.NoError(t, r.Update(nodes))
+	assert.Error(t, r.Verify())
+}
+
+func TestVerifyEmptyRing(t *testing.T) {
+	r := newRing(testClientFactory)
+	assert.Error(t, r.Verify())
+}
+
+func TestFind(t *testing.T) {
+	nodes := []*pb.Node{
+		{
+			Address: address,
+			Name:    "node-1",
+			Ranges: []*pb.Range{
+				{Start: 0, End: 2305843009213693951},
+				{Start: 4611686018427387905, End: 6917529027641081857},
+				{Start: 9223372036854775809, End: 11529215046068469760},
+				{Start: 13835058055282163713, End: 16140901064495857664},
+			},
+		}, {
+			Address: address,
+			Name:    "node-2",
+			Ranges: []*pb.Range{
+				{Start: 2305843009213693952, End: 4611686018427387904},
+				{Start: 6917529027641081856, End: 9223372036854775808},
+				{Start: 11529215046068469761, End: 13835058055282163712},
+				{Start: 16140901064495857665, End: 18446744073709551615},
+			},
+		},
+	}
+	r := newRing(testClientFactory)
+	assert.NoError(t, r.Update(nodes))
+
+	name, client1 := r.Find(0)
+	assert.Equal(t, "node-1", name)
+
+	name, client2 := r.Find(6917529027841081856)
+	assert.Equal(t, "node-2", name)
+
+	name, client3 := r.Find(ringMax)
+	assert.Equal(t, "node-2", name)
+	assert.Equal(t, client1, client3)
+
+	clients := r.FindN(0, 3)
+	assert.EqualValues(t, []cpb.ElanClient{client1, client2, client1}, clients)
+
+	clients = r.FindN(6917529027841081856, 3)
+	assert.EqualValues(t, []cpb.ElanClient{client2, client1, client2}, clients)
+
+	clients = r.FindN(ringMax, 3)
+	assert.EqualValues(t, []cpb.ElanClient{client2, client1, client2}, clients)
+
 }
