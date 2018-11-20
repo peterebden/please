@@ -7,6 +7,8 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/hashicorp/go-multierror"
+
 	"grpcutil"
 	pb "src/remote/proto/fs"
 	cpb "tools/elan/proto/cluster"
@@ -14,9 +16,10 @@ import (
 
 const (
 	// numTokens is the number of tokens we generate for a new entry joining the ring.
-	numTokens   = 12
-	tokenRange  = math.MaxUint64 / numTokens
-	numAttempts = 10
+	numTokens          = 12
+	tokenRange         = math.MaxUint64 / numTokens
+	numAttempts        = 10
+	ringMax     uint64 = math.MaxUint64
 )
 
 // A Ring is a consistently hashed ring of values that we use to manage the
@@ -64,6 +67,7 @@ func (r *Ring) Update(nodes []*pb.Node) error {
 			addrs[node.Name] = node.Address
 		}
 	}
+	sort.Slice(segs, func(i, j int) bool { return segs[i].Start < segs[j].Start })
 	r.segments = segs
 	r.addresses = addrs
 	return nil
@@ -101,7 +105,7 @@ func (r *Ring) genToken(tokenIndex uint64, name string, client cpb.ElanClient) e
 				s.Start = 0
 			}
 			// avoid falling off the end of the array
-			s.End = math.MaxUint64
+			s.End = ringMax
 			r.segments = append(r.segments, s)
 			return nil
 		} else if r.segments[idx].Start == token {
@@ -157,6 +161,30 @@ func (r *Ring) FindN(hash uint64, n int) []cpb.ElanClient {
 // find returns the index of the segment that holds the given hash.
 func (r *Ring) find(hash uint64) int {
 	return sort.Search(len(r.segments), func(i int) bool { return r.segments[i].Start >= hash })
+}
+
+// Verify checks the current state of the ring and returns an error if there are any issues.
+func (r *Ring) Verify() error {
+	var err error
+	if len(r.segments) == 0 {
+		return fmt.Errorf("empty ring")
+	}
+	last := r.segments[0]
+	if last.Start != 0 {
+		err = multierror.Append(err, fmt.Errorf("does not start at zero"))
+	}
+	for _, segment := range r.segments[1:] {
+		if segment.Start < last.End+1 {
+			err = multierror.Append(err, fmt.Errorf("overlap %d-%d", last.End, segment.Start))
+		} else if segment.Start > last.End+1 {
+			err = multierror.Append(err, fmt.Errorf("gap from %d-%d", last.End, segment.Start))
+		}
+		last = segment
+	}
+	if last.End != ringMax {
+		err = multierror.Append(err, fmt.Errorf("does not finish at %d", ringMax))
+	}
+	return err
 }
 
 // A segment represents a segment of the circle that one node is responsible for.

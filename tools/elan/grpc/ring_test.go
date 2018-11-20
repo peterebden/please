@@ -100,3 +100,102 @@ func TestUpdateAddingNewNodes(t *testing.T) {
 	assert.NoError(t, r.Update(nodes))
 	assert.Equal(t, nodes, r.Export())
 }
+
+func TestVerify(t *testing.T) {
+	nodes := []*pb.Node{
+		{
+			Address: address,
+			Name:    "node-1",
+			Ranges: []*pb.Range{
+				{Start: 0, End: 4611686018427387904},
+				{Start: 4611686018427387905, End: 9223372036854775808},
+				{Start: 9223372036854775809, End: 13835058055282163712},
+				{Start: 13835058055282163713, End: 18446744073709551615},
+			},
+		},
+	}
+	r := NewRing()
+	assert.NoError(t, r.Update(nodes))
+	assert.NoError(t, r.Verify())
+}
+
+func TestVerify2(t *testing.T) {
+	nodes := []*pb.Node{
+		{
+			Address: address,
+			Name:    "node-1",
+			Ranges: []*pb.Range{
+				{Start: 0, End: 2305843009213693951},
+				{Start: 4611686018427387905, End: 6917529027641081855},
+				{Start: 9223372036854775809, End: 11529215046068469760},
+				{Start: 13835058055282163713, End: 16140901064495857664},
+			},
+		}, {
+			Address: address,
+			Name:    "node-2",
+			Ranges: []*pb.Range{
+				{Start: 2305843009213693952, End: 4611686018427387904},
+				{Start: 6917529027641081856, End: 9223372036854775808},
+				{Start: 11529215046068469761, End: 13835058055282163712},
+				{Start: 16140901064495857665, End: 18446744073709551615},
+			},
+		},
+	}
+	r := NewRing()
+	assert.NoError(t, r.Update(nodes))
+	assert.NoError(t, r.Verify())
+}
+
+func TestVerifyGap(t *testing.T) {
+	nodes := []*pb.Node{
+		{
+			Address: address,
+			Name:    "node-1",
+			Ranges: []*pb.Range{
+				{Start: 0, End: 2305843009213693951},
+				{Start: 4611686018427387905, End: 6917529027641081853},
+				{Start: 9223372036854775809, End: 11529215046068469760},
+				{Start: 13835058055282163713, End: 16140901064495857664},
+			},
+		}, {
+			Address: address,
+			Name:    "node-2",
+			Ranges: []*pb.Range{
+				{Start: 2305843009213693952, End: 4611686018427387904},
+				{Start: 6917529027641081856, End: 9223372036854775808},
+				{Start: 11529215046068469761, End: 13835058055282163712},
+				{Start: 16140901064495857665, End: 18446744073709551615},
+			},
+		},
+	}
+	r := NewRing()
+	assert.NoError(t, r.Update(nodes))
+	assert.Error(t, r.Verify())
+}
+
+func TestVerifyOverlap(t *testing.T) {
+	nodes := []*pb.Node{
+		{
+			Address: address,
+			Name:    "node-1",
+			Ranges: []*pb.Range{
+				{Start: 0, End: 2305843009213693951},
+				{Start: 4611686018427387905, End: 6917529027641081857},
+				{Start: 9223372036854775809, End: 11529215046068469760},
+				{Start: 13835058055282163713, End: 16140901064495857664},
+			},
+		}, {
+			Address: address,
+			Name:    "node-2",
+			Ranges: []*pb.Range{
+				{Start: 2305843009213693952, End: 4611686018427387904},
+				{Start: 6917529027641081856, End: 9223372036854775808},
+				{Start: 11529215046068469761, End: 13835058055282163712},
+				{Start: 16140901064495857665, End: 18446744073709551615},
+			},
+		},
+	}
+	r := NewRing()
+	assert.NoError(t, r.Update(nodes))
+	assert.Error(t, r.Verify())
+}

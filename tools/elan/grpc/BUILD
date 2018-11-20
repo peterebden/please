@@ -7,6 +7,7 @@ go_library(
     deps = [
         "//src/grpcutil",
         "//src/remote/proto:fs",
+        "//third_party/go:go-multierror",
         "//third_party/go:grpc",
         "//third_party/go:logging",
         "//tools/elan/proto:cluster",
