@@ -5,7 +5,8 @@ import (
 	"gopkg.in/op/go-logging.v1"
 
 	"cli"
-	"tools/elan/cluster"
+	"tools/elan/grpc"
+	"tools/elan/http"
 	"tools/elan/storage"
 )
 
@@ -16,10 +17,10 @@ var opts = struct {
 	Verbosity cli.Verbosity `short:"v" long:"verbosity" default:"notice" description:"Verbosity of output (higher number = more output)"`
 
 	Network struct {
-		DiscoveryPort int      `long:"discovery_port" default:"9944" description:"Port to communicate on for gossip & discovery"`
-		Port          int      `short:"p" long:"port" default:"9945" description:"Port to communicate on for data exchange"`
-		Peers         []string `long:"peer" required:"true" description:"URLs to discover peers on"`
-		Addr          string   `long:"addr" description:"Address to advertise on"`
+		DiagnosticPort int      `long:"diagnostic_port" default:"9946" description:"Port to serve HTTP diagnostics on"`
+		Port           int      `short:"p" long:"port" default:"9945" description:"Port to communicate on"`
+		Peers          []string `long:"peer" required:"true" description:"URLs to discover peers on"`
+		Addr           string   `long:"addr" description:"Address to advertise on"`
 	} `group:"Options controlling networking & communication"`
 
 	Replication struct {
@@ -41,20 +42,12 @@ Please uses it for storing remote files & communicating them to mettle, its remo
 }
 
 func main() {
-	command := cli.ParseFlagsOrDie("elan", "13.2.5", &opts)
+	cli.ParseFlagsOrDie("elan", "13.2.5", &opts)
 	cli.InitLogging(opts.Verbosity)
-	s, err := storage.Init(opts.Replication.Replicas, opts.Replication.Tokens, opts.Storage.Dir, uint64(opts.Storage.MaxSize))
+	s, err := storage.Init(opts.Storage.Dir, uint64(opts.Storage.MaxSize))
 	if err != nil {
 		log.Fatalf("Failed to initialise storage backend: %s", err)
 	}
-
-	c, err := cluster.Connect(opts.Network.DiscoveryPort, opts.Network.Port, opts.Replication.Name, opts.Network.Addr)
-	if err != nil {
-		log.Fatalf("Failed to initialise cluster: %s", err)
-	}
-
-	if err := c.Join(opts.Network.URLs); err != nil {
-		log.Fatalf("Failed to join cluster: %s", err)
-	}
-
+	srv := grpc.Start(opts.Network.Port, opts.Network.Peers, s, opts.Replication.Name, opts.Network.Addr)
+	http.ServeForever(opts.Network.DiagnosticPort, srv)
 }

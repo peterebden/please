@@ -6,6 +6,8 @@ go_binary(
         "//src/cli",
         "//src/remote/proto:remote",
         "//third_party/go:logging",
-        "//tools/elan/elan",
+        "//tools/elan/grpc",
+        "//tools/elan/http",
+        "//tools/elan/storage",
     ],
 )

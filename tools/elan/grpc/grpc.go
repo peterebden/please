@@ -23,13 +23,13 @@ var log = logging.MustGetLogger("grpc")
 // It uses the given set of URLs for initial discovery of another node to bootstrap from.
 // If seed is true then it is allowed to seed a new cluster if it fails to contact any
 // other nodes; otherwise failure to contact them will be fatal.
-func Start(port int, storage storage.Storage, urls []string, name string) Server {
-	s, srv, lis := start(port, storage, urls, name)
+func Start(port int, urls []string, storage storage.Storage, name, addr string) Server {
+	s, srv, lis := start(port, urls, storage, name, addr)
 	go s.Serve(lis)
 	return srv
 }
 
-func start(port int, storage storage.Storage, urls []string, name string) (*grpc.Server, *server, net.Listener) {
+func start(port int, urls []string, storage storage.Storage, name, addr string) (*grpc.Server, *server, net.Listener) {
 	s := grpc.NewServer()
 	c, err := storage.LoadConfig()
 	if err != nil {
@@ -42,15 +42,18 @@ func start(port int, storage storage.Storage, urls []string, name string) (*grpc
 		ring:    NewRing(),
 	}
 	pb.RegisterRemoteFSServer(s, fs)
-	fs.Init(urls)
+	if err := fs.Init(urls, addr); err != nil {
+		log.Fatalf("Failed to initialise: %s", err)
+	}
 	return s, fs, grpcutil.SetupServer(s, port)
 }
 
 // A Server allows some maintenance operations on the gRPC server.
 type Server interface {
-	// Init should be called once the cluster has initialised.
-	// It initialises the server & storage by connecting to the given URLs.
-	Init(urls []string) error
+	// Init initialises the server & storage by connecting to the given URLs.
+	Init(urls []string, addr string) error
+	// GetClusterInfo returns diagnostic information about the cluster.
+	GetClusterInfo() *cpb.ClusterInfoResponse
 }
 
 type server struct {
@@ -61,7 +64,7 @@ type server struct {
 	ring    *Ring
 }
 
-func (s *server) Init(urls []string) error {
+func (s *server) Init(urls []string, addr string) error {
 	// Load the current config from storage in case we've been initialised before.
 	for _, url := range urls {
 		client := cpb.NewElanClient(grpcutil.Dial(url))
@@ -84,7 +87,14 @@ func (s *server) Init(urls []string) error {
 		return s.init(s.config.Nodes)
 	}
 	log.Warning("Seeding new cluster")
-	return s.init(s.config.Nodes)
+	if err := s.ring.Add(s.name, addr, nil); err != nil {
+		return err
+	}
+	if err := s.init(s.ring.Export()); err != nil {
+		return err
+	}
+	s.config.Initialised = true
+	return s.storage.SaveConfig(s.config)
 }
 
 // init sets up the server & establishes connections to the rest of the cluster.
@@ -103,21 +113,7 @@ func (s *server) init(nodes []*pb.Node) error {
 		Node:     s.config.Nodes,
 		ThisNode: s.config.ThisNode,
 	}
-	if err := s.ring.Update(nodes); err != nil {
-		return err
-	}
-	if !s.config.Initialised {
-		// We're seeding a new cluster, so issue a new set of tokens.
-		if err := s.ring.Add(s.config.ThisNode.Name, s.config.ThisNode.Address, nil); err != nil {
-			return err
-		}
-		s.config.Nodes = s.ring.Export()
-		s.config.Initialised = true
-		if err := s.storage.SaveConfig(s.config); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.ring.Update(nodes)
 }
 
 func (s *server) Info(ctx context.Context, req *pb.InfoRequest) (*pb.InfoResponse, error) {
@@ -130,4 +126,22 @@ func (s *server) Get(req *pb.GetRequest, stream pb.RemoteFS_GetServer) error {
 
 func (s *server) Put(stream pb.RemoteFS_PutServer) error {
 	return nil
+}
+
+func (s *server) ClusterInfo(ctx context.Context, req *cpb.ClusterInfoRequest) (*cpb.ClusterInfoResponse, error) {
+	if err := s.ring.Verify(); err != nil {
+		return &cpb.ClusterInfoResponse{
+			Msg:   err.Error(),
+			Nodes: s.info.Node,
+		}, nil
+	}
+	return &cpb.ClusterInfoResponse{
+		Healthy: true,
+		Nodes:   s.info.Node,
+	}, nil
+}
+
+func (s *server) GetClusterInfo() *cpb.ClusterInfoResponse {
+	resp, _ := s.ClusterInfo(context.Background(), nil)
+	return resp
 }

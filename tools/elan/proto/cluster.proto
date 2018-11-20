@@ -9,6 +9,8 @@ package cluster;
 service Elan {
     // Registers the current node on the cluster.
     rpc Register(RegisterRequest) returns (RegisterResponse);
+    // Returns information about the current state of the cluster.
+    rpc ClusterInfo(ClusterInfoRequest) returns (ClusterInfoResponse);
 }
 
 message RegisterRequest {
@@ -35,4 +37,16 @@ message Config {
     repeated fs.Node nodes = 2;
     // True if this node has previously completed initialisation
     bool initialised = 3;
+}
+
+message ClusterInfoRequest {
+}
+
+message ClusterInfoResponse {
+    // True if the cluster doesn't have any configuration-level problems
+    bool healthy = 1;
+    // Any messages about the state of things
+    string msg = 2;
+    // The current set of nodes
+    repeated fs.Node nodes = 3;
 }

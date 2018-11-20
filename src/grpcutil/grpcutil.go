@@ -15,6 +15,9 @@ import (
 
 var log = logging.MustGetLogger("grpcutil")
 
+// cleanups are a set of cleanup functions set by AddCleanup
+var cleanups []func()
+
 // StartServer starts a server on the given port.
 // It runs forever until terminated.
 // Signals will be automatically handled using HandleSignals.
@@ -44,6 +47,9 @@ func HandleSignals(s *grpc.Server) {
 	sig := <-c
 	log.Warning("Received signal %s, gracefully shutting down gRPC server", sig)
 	go s.GracefulStop()
+	for _, f := range cleanups {
+		go f()
+	}
 	sig = <-c
 	log.Warning("Received signal %s, non-gracefully shutting down gRPC server", sig)
 	go s.Stop()
@@ -59,4 +65,9 @@ func Dial(url string) *grpc.ClientConn {
 		log.Fatalf("Failed to dial remote server: %s", err)
 	}
 	return conn
+}
+
+// AddCleanup adds a cleanup function to be called when a terminating signal is received.
+func AddCleanup(f func()) {
+	cleanups = append(cleanups, f)
 }

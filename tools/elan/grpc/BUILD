@@ -4,6 +4,7 @@ go_library(
         "grpc.go",
         "ring.go",
     ],
+    visibility = ["//tools/elan/..."],
     deps = [
         "//src/grpcutil",
         "//src/remote/proto:fs",
