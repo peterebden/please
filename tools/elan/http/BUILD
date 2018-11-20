@@ -19,3 +19,12 @@ go_library(
         "//tools/elan/proto:cluster",
     ],
 )
+
+go_test(
+    name = "http_test",
+    srcs = ["http_test.go"],
+    deps = [
+        ":http",
+        "//third_party/go:testify",
+    ],
+)

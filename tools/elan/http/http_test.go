@@ -1,0 +1,13 @@
+package http
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestSVGPath(t *testing.T) {
+	const expected = "M400,300 L400,0 A400,400 1 0,1 800.00000,400.0 z"
+	actual := svgPath(0, 4611686018427387904)
+	assert.Equal(t, expected, actual)
+}

@@ -143,5 +143,6 @@ func (s *server) ClusterInfo(ctx context.Context, req *cpb.ClusterInfoRequest) (
 
 func (s *server) GetClusterInfo() *cpb.ClusterInfoResponse {
 	resp, _ := s.ClusterInfo(context.Background(), nil)
+	resp.Segments = s.ring.Segments()
 	return resp
 }

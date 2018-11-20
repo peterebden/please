@@ -156,6 +156,19 @@ func (r *Ring) Export() []*pb.Node {
 	return ret
 }
 
+// Segments returns the current set of segments as a proto.
+func (r *Ring) Segments() []*cpb.Segment {
+	ret := make([]*cpb.Segment, len(r.segments))
+	for i, s := range r.segments {
+		ret[i] = &cpb.Segment{
+			Start: s.Start,
+			End:   s.End,
+			Name:  s.Name,
+		}
+	}
+	return ret
+}
+
 // Find returns the node that holds the given hash.
 func (r *Ring) Find(hash uint64) (string, cpb.ElanClient) {
 	seg := r.segments[r.find(hash)]

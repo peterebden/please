@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"math"
 	"net/http"
+	"strconv"
+	"sync"
 	"time"
 
 	"gopkg.in/op/go-logging.v1"
@@ -17,6 +20,9 @@ import (
 )
 
 var log = logging.MustGetLogger("http")
+
+// maxNodeClasses is the maximum number of node classes that we support.
+const maxNodeClasses = 16
 
 // A Cluster is a minimal interface that provides the information we need about the cluster.
 type Cluster interface {
@@ -28,14 +34,20 @@ func ServeForever(port int, cluster Cluster) {
 	log.Notice("Serving diagnostics on http://127.0.0.1:%d", port)
 	h := &handler{
 		cluster: cluster,
-		tmpl:    template.Must(template.New("html").Parse(MustAssetString("index.html"))),
+		nodes:   map[string]string{},
 	}
+	h.tmpl = template.Must(template.New("html").Funcs(template.FuncMap{
+		"className":    h.className,
+		"svgPath":      svgPath,
+		"svgTransform": svgTransform,
+	}).Parse(MustAssetString("index.html")))
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/styles.css", h.Static)
 	mux.HandleFunc("/ping", h.Ping)
 	mux.HandleFunc("/", h.Serve)
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
+		Addr:    ":" + strconv.Itoa(port),
 		Handler: mux,
 	}
 	// Add a cleanup hook if the gRPC server gets shut down.
@@ -54,6 +66,8 @@ func ServeForever(port int, cluster Cluster) {
 type handler struct {
 	cluster Cluster
 	tmpl    *template.Template
+	nodes   map[string]string
+	mutex   sync.Mutex
 }
 
 func (h *handler) Ping(w http.ResponseWriter, r *http.Request) {
@@ -61,17 +75,53 @@ func (h *handler) Ping(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) Serve(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
 	if err := h.tmpl.Execute(w, h.cluster.GetClusterInfo()); err != nil {
 		log.Error("%s", err)
 	}
 }
 
 func (h *handler) Static(w http.ResponseWriter, r *http.Request) {
-	log.Debug("received request to %s", r.URL.Path)
 	data, err := Asset(r.URL.Path[1:])
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
+	if r.URL.Path == "/styles.css" {
+		w.Header().Set("Content-Type", "text/css")
+	}
 	io.Copy(w, bytes.NewReader(data))
+}
+
+// className returns the SVG class name for a node.
+func (h *handler) className(node string) string {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+	if cls, present := h.nodes[node]; present {
+		return cls
+	}
+	cls := "node" + strconv.Itoa(len(h.nodes)%maxNodeClasses)
+	h.nodes[node] = cls
+	return cls
+}
+
+// svgPath returns an svg path string for the given hash coordinates.
+func svgPath(start, end uint64) string {
+	// N.B. This slice is always vertical, we rotate it using a transform.
+	const r = 400
+	const w = 100
+	deg := toDegrees(end - start)
+	x := r + r*math.Sin(deg)
+	y := r * math.Cos(deg)
+	return fmt.Sprintf("M%d,%d L%d,%d A%d,%d 1 0,1 %0.5f,%0.5f z", r, r-w, r, 0, r, r, x, y)
+}
+
+// svgTransform returns an svg transform for the given hash coordinates.
+func svgTransform(start, end uint64) string {
+	return fmt.Sprintf("rotate(%0.5f, 400, 400)", toDegrees(start))
+}
+
+// toDegrees converts hash coordinates into degrees.
+func toDegrees(x uint64) float64 {
+	return float64(x) * (360.0 / float64(math.MaxUint64))
 }

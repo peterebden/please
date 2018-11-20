@@ -49,4 +49,15 @@ message ClusterInfoResponse {
     string msg = 2;
     // The current set of nodes
     repeated fs.Node nodes = 3;
+    // The current set of segments
+    repeated Segment segments = 4;
+}
+
+message Segment {
+    // Start of the hash range (inclusive)
+    fixed64 Start = 1;
+    // End of the hash range (inclusive)
+    fixed64 End = 2;
+    // Name of the node that occupies it
+    string name = 3;
 }
