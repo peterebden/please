@@ -35,6 +35,9 @@ func start(port int, urls []string, storage storage.Storage, name, addr string) 
 	if err != nil {
 		log.Fatalf("Failed to load config: %s", err)
 	}
+	if !c.Initialised {
+		c.ThisNode = &pb.Node{Name: name, Address: addr}
+	}
 	fs := &server{
 		name:    name,
 		storage: storage,
@@ -42,6 +45,7 @@ func start(port int, urls []string, storage storage.Storage, name, addr string) 
 		ring:    NewRing(),
 	}
 	pb.RegisterRemoteFSServer(s, fs)
+	cpb.RegisterElanServer(s, fs)
 	if err := fs.Init(urls, addr); err != nil {
 		log.Fatalf("Failed to initialise: %s", err)
 	}
@@ -65,7 +69,6 @@ type server struct {
 }
 
 func (s *server) Init(urls []string, addr string) error {
-	// Load the current config from storage in case we've been initialised before.
 	for _, url := range urls {
 		client := cpb.NewElanClient(grpcutil.Dial(url))
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -126,6 +129,26 @@ func (s *server) Get(req *pb.GetRequest, stream pb.RemoteFS_GetServer) error {
 
 func (s *server) Put(stream pb.RemoteFS_PutServer) error {
 	return nil
+}
+
+func (s *server) Register(ctx context.Context, req *cpb.RegisterRequest) (*cpb.RegisterResponse, error) {
+	if req.Node == nil {
+		return &cpb.RegisterResponse{Msg: "bad request, missing node field"}, nil
+	} else if len(req.Node.Ranges) == 0 {
+		log.Notice("Register request from %s", req.Node.Name)
+		// Joining server doesn't have any knowledge of the cluster. Easy.
+		client := cpb.NewElanClient(grpcutil.Dial(req.Node.Address))
+		if err := s.ring.Add(req.Node.Name, req.Node.Address, client); err != nil {
+			return &cpb.RegisterResponse{Msg: err.Error()}, nil
+		}
+		s.config.Nodes = s.ring.Export()
+		if err := s.storage.SaveConfig(s.config); err != nil {
+			return &cpb.RegisterResponse{Msg: err.Error()}, nil
+		}
+		return &cpb.RegisterResponse{Accepted: true, Nodes: s.ring.Export()}, nil
+	}
+	// TODO(peterebden): implement this.
+	return &cpb.RegisterResponse{Accepted: false, Msg: "rejoining not implemented"}, nil
 }
 
 func (s *server) ClusterInfo(ctx context.Context, req *cpb.ClusterInfoRequest) (*cpb.ClusterInfoResponse, error) {

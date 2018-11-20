@@ -116,12 +116,14 @@ func (r *Ring) genToken(tokenIndex uint64, name string, client cpb.ElanClient) e
 		s.Start = token
 		idx := sort.Search(len(r.segments), func(i int) bool { return r.segments[i].Start >= token })
 		if idx >= len(r.segments) {
+			// avoid falling off the end of the array
+			s.End = ringMax
 			if len(r.segments) == 0 {
 				// We've just initialised with the first segment. It starts at the beginning.
 				s.Start = 0
+			} else {
+				r.segments[idx-1].End = token - 1
 			}
-			// avoid falling off the end of the array
-			s.End = ringMax
 			r.segments = append(r.segments, s)
 			return nil
 		} else if r.segments[idx].Start == token {

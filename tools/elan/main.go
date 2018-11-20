@@ -2,6 +2,8 @@
 package main
 
 import (
+	"os"
+
 	"gopkg.in/op/go-logging.v1"
 
 	"cli"
@@ -41,9 +43,17 @@ Please uses it for storing remote files & communicating them to mettle, its remo
 `,
 }
 
+func defaultToHostname(s *string) {
+	if *s == "" {
+		*s, _ = os.Hostname()
+	}
+}
+
 func main() {
 	cli.ParseFlagsOrDie("elan", "13.2.5", &opts)
 	cli.InitLogging(opts.Verbosity)
+	defaultToHostname(&opts.Network.Addr)
+	defaultToHostname(&opts.Replication.Name)
 	s, err := storage.Init(opts.Storage.Dir, uint64(opts.Storage.MaxSize))
 	if err != nil {
 		log.Fatalf("Failed to initialise storage backend: %s", err)

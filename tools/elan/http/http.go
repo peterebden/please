@@ -22,7 +22,7 @@ import (
 var log = logging.MustGetLogger("http")
 
 // maxNodeClasses is the maximum number of node classes that we support.
-const maxNodeClasses = 16
+const maxNodeClasses = 22
 
 // A Cluster is a minimal interface that provides the information we need about the cluster.
 type Cluster interface {
@@ -100,7 +100,7 @@ func (h *handler) className(node string) string {
 	if cls, present := h.nodes[node]; present {
 		return cls
 	}
-	cls := "node" + strconv.Itoa(len(h.nodes)%maxNodeClasses)
+	cls := "node-" + strconv.Itoa(len(h.nodes)%maxNodeClasses)
 	h.nodes[node] = cls
 	return cls
 }
@@ -110,18 +110,20 @@ func svgPath(start, end uint64) string {
 	// N.B. This slice is always vertical, we rotate it using a transform.
 	const r = 400
 	const w = 100
-	deg := toDegrees(end - start)
-	x := r + r*math.Sin(deg)
-	y := r * math.Cos(deg)
-	return fmt.Sprintf("M%d,%d L%d,%d A%d,%d 1 0,1 %0.5f,%0.5f z", r, r-w, r, 0, r, r, x, y)
+	const r2 = r - w
+	rad := float64(end-start) * (2 * math.Pi / float64(math.MaxUint64))
+	s := math.Sin(rad)
+	c := math.Cos(rad)
+	x1 := r + r*s
+	y1 := r - r*c
+	x2 := r + r2*s
+	y2 := r - r2*c
+	return fmt.Sprintf("M%d,%d L%d,%d A%d,%d 1 0,1 %0.5f,%0.5f L%0.5f,%0.5f A%d,%d 1 0,0 %d,%d",
+		r, w, r, 0, r, r, x1, y1, x2, y2, r, r, r, w)
 }
 
 // svgTransform returns an svg transform for the given hash coordinates.
 func svgTransform(start, end uint64) string {
-	return fmt.Sprintf("rotate(%0.5f, 400, 400)", toDegrees(start))
-}
-
-// toDegrees converts hash coordinates into degrees.
-func toDegrees(x uint64) float64 {
-	return float64(x) * (360.0 / float64(math.MaxUint64))
+	deg := float64(start) * (360.0 / float64(math.MaxUint64))
+	return fmt.Sprintf("rotate(%0.5f, 400, 400)", deg)
 }
