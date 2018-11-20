@@ -131,6 +131,8 @@ func (r *Ring) Export() []*pb.Node {
 		n := m[s.Name]
 		n.Ranges = append(n.Ranges, &pb.Range{Start: s.Start, End: s.End})
 	}
+	// Order nodes by their name; it is arbitrary but means this function comes out consistently.
+	sort.Slice(ret, func(i, j int) bool { return ret[i].Name < ret[j].Name })
 	return ret
 }
 
