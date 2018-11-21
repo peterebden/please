@@ -290,5 +290,51 @@ func TestFind(t *testing.T) {
 
 	clients = r.FindN(ringMax, 3)
 	assert.EqualValues(t, []cpb.ElanClient{client2, client1, client2}, clients)
+}
 
+func TestMerge(t *testing.T) {
+	nodes := []*pb.Node{
+		{
+			Address: address,
+			Name:    "node-1",
+			Ranges: []*pb.Range{
+				{Start: 0, End: 2305843009213693951},
+				{Start: 4611686018427387905, End: 6917529027641081857},
+				{Start: 9223372036854775809, End: 11529215046068469760},
+				{Start: 13835058055282163713, End: 16140901064495857664},
+			},
+		}, {
+			Address: address,
+			Name:    "node-2",
+			Ranges: []*pb.Range{
+				{Start: 2305843009213693952, End: 4611686018427387904},
+				{Start: 6917529027641081856, End: 9223372036854775808},
+				{Start: 11529215046068469761, End: 13835058055282163712},
+				{Start: 16140901064495857665, End: 18446744073709551615},
+			},
+		},
+	}
+	r := newRing(testClientFactory)
+	assert.NoError(t, r.Update(nodes))
+
+	// Merging existing nodes should have no effect
+	assert.NoError(t, r.Merge(nodes[0].Name, nodes[0].Address, nodes[0].Ranges))
+	assert.NoError(t, r.Merge(nodes[1].Name, nodes[1].Address, nodes[1].Ranges))
+	assert.Equal(t, nodes, r.Export())
+
+	// Merge a new node. This simulates a node coming back up that we don't know about;
+	// it shouldn't really happen very often but might if the ring was rebuilding itself.
+	nodes = append(nodes, &pb.Node{
+		Address: address,
+		Name:    "node-3",
+		Ranges: []*pb.Range{
+			{Start: 3005843009213693952, End: 4611686018427387904},
+			{Start: 7017529027641081856, End: 9223372036854775808},
+		},
+	})
+	assert.NoError(t, r.Merge(nodes[2].Name, nodes[2].Address, nodes[2].Ranges))
+	// The existing ranges should have updated correctly.
+	nodes[1].Ranges[0].End = 3005843009213693951
+	nodes[1].Ranges[1].End = 7017529027641081855
+	assert.Equal(t, nodes, r.Export())
 }

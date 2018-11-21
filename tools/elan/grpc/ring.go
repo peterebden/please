@@ -83,7 +83,7 @@ func (r *Ring) Update(nodes []*pb.Node) error {
 			addrs[node.Name] = node.Address
 		}
 	}
-	sort.Slice(segs, func(i, j int) bool { return segs[i].Start < segs[j].Start })
+	r.segments = r.sort(segs)
 	r.segments = segs
 	r.addresses = addrs
 	return nil
@@ -102,6 +102,39 @@ func (r *Ring) Add(name, address string, client cpb.ElanClient) error {
 			return err
 		}
 	}
+	r.addresses[name] = address
+	return nil
+}
+
+// Merge adds the given node into the ring, either because it's already there or it is
+// joining with a set of previously allocated tokens.
+func (r *Ring) Merge(name, address string, ranges []*pb.Range) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	if _, present := r.addresses[name]; present {
+		// node exists, verify it has the same set of tokens
+		tokens := r.tokens(name)
+		if len(tokens) != len(ranges) {
+			return fmt.Errorf("Mismatching ranges (already registered for %d, new request has %d)", len(tokens), len(ranges))
+		}
+		for i, tok := range tokens {
+			if ranges[i].Start != tok {
+				return fmt.Errorf("Mismatching token: %d / %d", tok, ranges[i].Start)
+			}
+		}
+		return nil
+	}
+	// node does not exist, add it.
+	// This should be relatively rare; it implies the ring is rebuilding itself.
+	client := r.clientFactory(address)
+	segs := r.segments[:]
+	for _, rng := range ranges {
+		if seg := r.segments[r.hash[rng.Start]]; seg.Start == rng.Start {
+			return fmt.Errorf("Token %d is already claimed (by %s)", rng.start, seg.Name)
+		}
+		segs = append(segs, segment{Start: rng.Start, End: rng.End, Name: name, Client: client})
+	}
+	r.segments = r.sort(segs)
 	r.addresses[name] = address
 	return nil
 }
@@ -138,6 +171,26 @@ func (r *Ring) genToken(tokenIndex uint64, name string, client cpb.ElanClient) e
 		}
 	}
 	return fmt.Errorf("Couldn't generate a new token after %d tries", numAttempts)
+}
+
+// tokens returns the set of tokens for a given node.
+func (r *Ring) tokens(node string) []uint64 {
+	ret := []uint64{}
+	for _, seg := range r.segments {
+		if seg.Name == node {
+			ret = append(ret, seg.Start)
+		}
+	}
+	return ret
+}
+
+// sort sorts the given set of segments & matches up their start / end points.
+func (r *Ring) sort(segs []segment) []segment {
+	sort.Slice(segs, func(i, j int) bool { return segs[i].Start < segs[j].Start })
+	for i, seg := range segs[:len(segs)-1] {
+		segs[i].End = segs[i+1].Start - 1
+	}
+	return segs
 }
 
 // Export exports the current state of the ring as a proto.
