@@ -129,8 +129,8 @@ func (r *Ring) Merge(name, address string, ranges []*pb.Range) error {
 	client := r.clientFactory(address)
 	segs := r.segments[:]
 	for _, rng := range ranges {
-		if seg := r.segments[r.hash[rng.Start]]; seg.Start == rng.Start {
-			return fmt.Errorf("Token %d is already claimed (by %s)", rng.start, seg.Name)
+		if seg := r.segments[r.find(rng.Start)]; seg.Start == rng.Start {
+			return fmt.Errorf("Token %d is already claimed (by %s)", rng.Start, seg.Name)
 		}
 		segs = append(segs, segment{Start: rng.Start, End: rng.End, Name: name, Client: client})
 	}
@@ -187,7 +187,7 @@ func (r *Ring) tokens(node string) []uint64 {
 // sort sorts the given set of segments & matches up their start / end points.
 func (r *Ring) sort(segs []segment) []segment {
 	sort.Slice(segs, func(i, j int) bool { return segs[i].Start < segs[j].Start })
-	for i, seg := range segs[:len(segs)-1] {
+	for i := range segs[:len(segs)-1] {
 		segs[i].End = segs[i+1].Start - 1
 	}
 	return segs
