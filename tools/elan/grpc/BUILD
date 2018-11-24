@@ -26,3 +26,15 @@ go_test(
         "//tools/elan/proto:cluster",
     ],
 )
+
+go_test(
+    name = "grpc_test",
+    srcs = ["grpc_test.go"],
+    deps = [
+        ":grpc",
+        "//src/remote/proto:fs",
+        "//third_party/go:testify",
+        "//tools/elan/storage",
+        "//tools/elan/proto:cluster",
+    ],
+)

@@ -102,13 +102,16 @@ func (s *server) Init(urls []string, addr string) error {
 
 // init sets up the server & establishes connections to the rest of the cluster.
 func (s *server) init(nodes []*pb.Node) error {
-	s.config.Nodes = nodes
-	for _, node := range nodes {
-		if node.Name == s.name {
-			s.config.ThisNode = node
-			break
-		}
+	if err := s.update(nodes); err != nil {
+		return err
 	}
+	return s.ring.Update(nodes)
+}
+
+// update updates the server with a set of nodes.
+func (s *server) update(nodes []*pb.Node) error {
+	s.config.Nodes = nodes
+	s.config.ThisNode = s.node(s.name)
 	if s.config.ThisNode == nil {
 		return fmt.Errorf("this node (%s) not included in cluster info", s.name)
 	}
@@ -116,7 +119,17 @@ func (s *server) init(nodes []*pb.Node) error {
 		Node:     s.config.Nodes,
 		ThisNode: s.config.ThisNode,
 	}
-	return s.ring.Update(nodes)
+	return nil
+}
+
+// node returns the node with a given name, or nil if it is not known.
+func (s *server) node(name string) *pb.Node {
+	for _, node := range s.config.Nodes {
+		if node.Name == s.name {
+			return node
+		}
+	}
+	return nil
 }
 
 func (s *server) Info(ctx context.Context, req *pb.InfoRequest) (*pb.InfoResponse, error) {
@@ -134,21 +147,25 @@ func (s *server) Put(stream pb.RemoteFS_PutServer) error {
 func (s *server) Register(ctx context.Context, req *cpb.RegisterRequest) (*cpb.RegisterResponse, error) {
 	if req.Node == nil {
 		return &cpb.RegisterResponse{Msg: "bad request, missing node field"}, nil
-	} else if len(req.Node.Ranges) == 0 {
+	} else if len(req.Node.Ranges) == 0 && s.node(req.Node.Name) == nil {
 		log.Notice("Register request from %s", req.Node.Name)
-		// Joining server doesn't have any knowledge of the cluster. Easy.
+		// Joining server doesn't have any knowledge of the cluster. Easy.resp.Nodes[1],
 		client := cpb.NewElanClient(grpcutil.Dial(req.Node.Address))
 		if err := s.ring.Add(req.Node.Name, req.Node.Address, client); err != nil {
 			return &cpb.RegisterResponse{Msg: err.Error()}, nil
 		}
-		s.config.Nodes = s.ring.Export()
+		s.update(s.ring.Export())
 		if err := s.storage.SaveConfig(s.config); err != nil {
 			return &cpb.RegisterResponse{Msg: err.Error()}, nil
 		}
-		return &cpb.RegisterResponse{Accepted: true, Nodes: s.ring.Export()}, nil
+		log.Notice("Node %s added to cluster", req.Node.Name)
+		return &cpb.RegisterResponse{Accepted: true, Nodes: s.config.Nodes}, nil
+	} else if err := s.ring.Merge(req.Node.Name, req.Node.Address, req.Node.Ranges); err != nil {
+		return &cpb.RegisterResponse{Msg: err.Error()}, nil
 	}
-	// TODO(peterebden): implement this.
-	return &cpb.RegisterResponse{Accepted: false, Msg: "rejoining not implemented"}, nil
+	log.Notice("Re-accepted node %s into cluster", req.Node.Name)
+	s.update(s.ring.Export())
+	return &cpb.RegisterResponse{Accepted: true, Nodes: s.config.Nodes}, nil
 }
 
 func (s *server) ClusterInfo(ctx context.Context, req *cpb.ClusterInfoRequest) (*cpb.ClusterInfoResponse, error) {

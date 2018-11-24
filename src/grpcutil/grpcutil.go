@@ -34,7 +34,7 @@ func SetupServer(s *grpc.Server, port int) net.Listener {
 		log.Fatalf("%s", err)
 	}
 	go HandleSignals(s)
-	log.Notice("Serving on port %d", port)
+	log.Notice("Serving on %s", lis.Addr().String())
 	return lis
 }
 
