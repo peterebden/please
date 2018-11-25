@@ -66,9 +66,10 @@ type file struct {
 }
 
 type fileInfo struct {
-	Path  string
-	Size  int64
-	Atime int64
+	Path    string
+	Size    int64
+	Atime   int64
+	Writing chan struct{}
 }
 
 // UpdateAtime sets the atime on the structure, and on the file (which we use an xattr
@@ -150,6 +151,8 @@ func (s *storage) Save(hash uint64, name string, r io.ReadCloser) error {
 		return err
 	}
 	info.Size = size
+	close(info.Writing)
+	info.Writing = nil
 	return info.UpdateAtime()
 }
 
@@ -161,10 +164,16 @@ func (s *storage) fileInfo(hash uint64, name string, insert bool) *fileInfo {
 	file := s.files[key]
 	if file == nil {
 		if !insert {
-			return file
+			return nil
 		}
-		file = &fileInfo{Path: path.Join(s.Dir, name, fmt.Sprintf("%016x", hash))}
+		file = &fileInfo{
+			Path:    path.Join(s.Dir, name, fmt.Sprintf("%016x", hash)),
+			Writing: make(chan struct{}),
+		}
 		s.files[key] = file
+	} else if file.Writing != nil {
+		// Currently being written, wait until it is done.
+		<-file.Writing
 	}
 	return file
 }
