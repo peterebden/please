@@ -230,16 +230,32 @@ func (r *Ring) Find(hash uint64) (string, cpb.ElanClient) {
 	return seg.Name, seg.Client
 }
 
-// FindN returns the sequence of n nodes that hold the given hash,
-// i.e. the one that holds it and the n-1 immediately following.
-func (r *Ring) FindN(hash uint64, n int) []cpb.ElanClient {
-	ret := make([]cpb.ElanClient, 0, n)
-	idx := r.find(hash)
-	for i := 0; i < n; i++ {
-		ret = append(ret, r.segments[idx].Client)
-		idx = (idx + 1) % len(r.segments)
+// FindReplicas returns the sequence of n nodes that should hold the given hash
+// excluding the given one. If not enough replicas are known then it will return
+// as many as possible.
+func (r *Ring) FindReplicas(hash uint64, n int, current string) ([]string, []cpb.ElanClient) {
+	if n >= len(r.addresses) {
+		log.Warning("Insufficient replicas available (%d requested, %d nodes known (excluding this one)", n, len(r.addresses)-1)
+		n = len(r.addresses) - 1
 	}
-	return ret
+	names := make([]string, 0, n)
+	clients := make([]cpb.ElanClient, 0, n)
+	for idx := r.find(hash); len(names) < n; idx = (idx + 1) % len(r.segments) {
+		if name := r.segments[idx].Name; name != current && !contains(names, name) {
+			names = append(names, name)
+			clients = append(clients, r.segments[idx].Client)
+		}
+	}
+	return names, clients
+}
+
+func contains(haystack []string, needle string) bool {
+	for _, straw := range haystack {
+		if straw == needle {
+			return true
+		}
+	}
+	return false
 }
 
 // find returns the index of the segment that holds the given hash.

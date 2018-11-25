@@ -148,11 +148,11 @@ func (s *storage) Save(hash uint64, name string) (io.WriteCloser, error) {
 	if s.files[key] != nil {
 		return nil, os.ErrExist
 	}
-	file := &fileInfo{
+	info := &fileInfo{
 		Path:    path.Join(s.Dir, name, fmt.Sprintf("%016x", hash)),
 		Writing: make(chan struct{}),
 	}
-	s.files[key] = file
+	s.files[key] = info
 	s.mutex.Unlock()
 	if err := os.MkdirAll(path.Dir(info.Path), 0755); err != nil {
 		return nil, err

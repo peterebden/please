@@ -228,14 +228,17 @@ func TestFind(t *testing.T) {
 	assert.Equal(t, "node-2", name)
 	assert.Equal(t, client1, client3)
 
-	clients := r.FindN(0, 3)
-	assert.EqualValues(t, []cpb.ElanClient{client1, client2, client1}, clients)
+	names, clients := r.FindReplicas(0, 1, "node-1")
+	assert.EqualValues(t, []string{"node-2"}, names)
+	assert.EqualValues(t, []cpb.ElanClient{client2}, clients)
 
-	clients = r.FindN(6917529027841081856, 3)
-	assert.EqualValues(t, []cpb.ElanClient{client2, client1, client2}, clients)
+	names, clients = r.FindReplicas(0, 1, "node-2")
+	assert.EqualValues(t, []string{"node-1"}, names)
+	assert.EqualValues(t, []cpb.ElanClient{client1}, clients)
 
-	clients = r.FindN(ringMax, 3)
-	assert.EqualValues(t, []cpb.ElanClient{client2, client1, client2}, clients)
+	names, clients = r.FindReplicas(2305843009213693952, 1, "node-1")
+	assert.EqualValues(t, []string{"node-2"}, names)
+	assert.EqualValues(t, []cpb.ElanClient{client2}, clients)
 }
 
 func TestMerge(t *testing.T) {

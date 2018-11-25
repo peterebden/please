@@ -58,6 +58,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialise storage backend: %s", err)
 	}
-	srv := grpc.Start(opts.Network.Port, opts.Network.Peers, s, opts.Replication.Name, opts.Network.Addr)
+	srv := grpc.Start(opts.Network.Port, opts.Network.Peers, s, opts.Replication.Name, opts.Network.Addr, opts.Replication.Replicas)
 	http.ServeForever(opts.Network.DiagnosticPort, srv)
 }
