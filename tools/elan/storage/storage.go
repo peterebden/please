@@ -1,7 +1,7 @@
 // Package storage provides the storage backend for elan.
 //
 // TODO: - Track total size & clean when appropriate
-//       - Concurrent reading & writing
+//       - Better concurrent reading & writing (i.e. ability to read partially written data)
 package storage
 
 import (
@@ -57,7 +57,7 @@ type Storage interface {
 	// Load loads a single file.
 	Load(hash uint64, name string) (io.ReadCloser, error)
 	// Save saves a single file.
-	Save(hash uint64, name string, r io.ReadCloser) error
+	Save(hash uint64, name string) (io.WriteCloser, error)
 }
 
 type file struct {
@@ -128,54 +128,40 @@ func (s *storage) Shutdown() {
 }
 
 func (s *storage) Load(hash uint64, name string) (io.ReadCloser, error) {
-	info := s.fileInfo(hash, name, false)
+	s.mutex.Lock()
+	info := s.files[file{Hash: hash, Name: name}]
+	s.mutex.Unlock()
 	if info == nil {
 		return nil, os.ErrNotExist
+	} else if info.Writing != nil {
+		// TODO(peterebden): We don't have any way of detecting error conditions on the
+		//                   write here. Really that should get propagated somehow.
+		<-info.Writing
 	}
 	info.UpdateAtime()
 	return os.Open(info.Path)
 }
 
-func (s *storage) Save(hash uint64, name string, r io.ReadCloser) error {
-	info := s.fileInfo(hash, name, true)
+func (s *storage) Save(hash uint64, name string) (io.WriteCloser, error) {
+	key := file{Hash: hash, Name: name}
+	s.mutex.Lock()
+	if s.files[key] != nil {
+		return nil, os.ErrExist
+	}
+	file := &fileInfo{
+		Path:    path.Join(s.Dir, name, fmt.Sprintf("%016x", hash)),
+		Writing: make(chan struct{}),
+	}
+	s.files[key] = file
+	s.mutex.Unlock()
 	if err := os.MkdirAll(path.Dir(info.Path), 0755); err != nil {
-		return err
+		return nil, err
 	}
 	f, err := os.Create(info.Path)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer f.Close()
-	size, err := io.Copy(f, r)
-	if err != nil {
-		return err
-	}
-	info.Size = size
-	close(info.Writing)
-	info.Writing = nil
-	return info.UpdateAtime()
-}
-
-// fileInfo returns the info object for a file.
-func (s *storage) fileInfo(hash uint64, name string, insert bool) *fileInfo {
-	key := file{Hash: hash, Name: name}
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	file := s.files[key]
-	if file == nil {
-		if !insert {
-			return nil
-		}
-		file = &fileInfo{
-			Path:    path.Join(s.Dir, name, fmt.Sprintf("%016x", hash)),
-			Writing: make(chan struct{}),
-		}
-		s.files[key] = file
-	} else if file.Writing != nil {
-		// Currently being written, wait until it is done.
-		<-file.Writing
-	}
-	return file
+	return &writeCloser{f: f, info: info}, nil
 }
 
 // walk is a function appropriate for fs.Walk for visiting a file.
@@ -200,4 +186,23 @@ func (s *storage) walk(name string, isDir bool) error {
 		s.files[k] = v
 	}
 	return nil
+}
+
+// A writeCloser wraps up a file with some extra closing logic.
+type writeCloser struct {
+	f    *os.File
+	info *fileInfo
+}
+
+func (w *writeCloser) Write(b []byte) (int, error) {
+	n, err := w.f.Write(b)
+	w.info.Size += int64(n)
+	return n, err
+}
+
+func (w *writeCloser) Close() error {
+	close(w.info.Writing)
+	w.info.Writing = nil
+	w.info.UpdateAtime()
+	return w.f.Close()
 }

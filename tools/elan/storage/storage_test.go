@@ -5,7 +5,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"sync"
 	"testing"
 	"time"
 
@@ -37,7 +36,12 @@ func TestFileStorage(t *testing.T) {
 	assert.Error(t, err)
 	assert.True(t, os.IsNotExist(err))
 
-	err = s.Save(hash, name, ioutil.NopCloser(bytes.NewReader(content)))
+	w, err := s.Save(hash, name)
+	assert.NoError(t, err)
+	n, err := io.Copy(w, bytes.NewReader(content))
+	assert.NoError(t, err)
+	assert.EqualValues(t, len(content), n)
+	err = w.Close()
 	assert.NoError(t, err)
 
 	r, err := s.Load(hash, name)
@@ -63,23 +67,28 @@ func TestConcurrentSaveAndLoad(t *testing.T) {
 	assert.NoError(t, err)
 	defer s.Shutdown()
 
-	// This is a little clunky; this needs to be big enough for io.Copy to make > 1
-	// call for the test to work properly, but obviously we don't want to link too
-	// directly to what that actually is. We just "guess" that this is enough.
-	content := bytes.Repeat([]byte{1}, 1024*1024)
-	tr := &testReader{r: bytes.NewReader(content)}
-	tr.Mutex.Lock()
-
 	const hash = 12345
 	const name = "test_file"
-	go func() {
-		err := s.Save(hash, name, tr)
-		assert.NoError(t, err)
-		log.Notice("Saved file %s", name)
-	}()
+	content := bytes.Repeat([]byte{1}, 1024*1024)
 
-	// This makes sure it's been called once, so we won't get an ErrNotExist next.
-	tr.Mutex.Lock()
+	// Open writer and write a bit so the file is stored
+	w, err := s.Save(hash, name)
+	assert.NoError(t, err)
+	n, err := w.Write(content[:1024])
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1024, n)
+
+	// Now kick off concurrent writing
+	go func() {
+		// Sleep a little to let the reader (probably) get ahead, otherwise we surprisingly
+		// often seem to complete before it does.
+		time.Sleep(50 * time.Millisecond)
+		n, err := io.Copy(w, bytes.NewReader(content[1024:]))
+		assert.NoError(t, err)
+		assert.EqualValues(t, len(content)-1024, n)
+		err = w.Close()
+		assert.NoError(t, err)
+	}()
 
 	// Now once we read it back, we should get the whole thing.
 	r, err := s.Load(hash, name)
@@ -87,25 +96,4 @@ func TestConcurrentSaveAndLoad(t *testing.T) {
 	b, err := ioutil.ReadAll(r)
 	assert.NoError(t, err)
 	assert.EqualValues(t, len(content), len(b))
-}
-
-type testReader struct {
-	Mutex sync.Mutex
-	count int
-	r     io.Reader
-}
-
-func (t *testReader) Read(b []byte) (int, error) {
-	if t.count == 0 {
-		defer t.Mutex.Unlock()
-	} else if t.count == 1 {
-		// Sleep a bit to give the reader a chance to get ahead
-		time.Sleep(100 * time.Millisecond)
-	}
-	t.count++
-	return t.r.Read(b)
-}
-
-func (t *testReader) Close() error {
-	return nil
 }

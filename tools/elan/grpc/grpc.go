@@ -6,9 +6,12 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"gopkg.in/op/go-logging.v1"
 
 	"grpcutil"
@@ -18,6 +21,10 @@ import (
 )
 
 var log = logging.MustGetLogger("grpc")
+
+// defaultChunkSize is the default chunk size for the server.
+// According to https://github.com/grpc/grpc.github.io/issues/371 it might be 16-64KB.
+const defaultChunkSize = 32 * 1024
 
 // Start starts the gRPC server on the given port.
 // It uses the given set of URLs for initial discovery of another node to bootstrap from.
@@ -137,11 +144,56 @@ func (s *server) Info(ctx context.Context, req *pb.InfoRequest) (*pb.InfoRespons
 }
 
 func (s *server) Get(req *pb.GetRequest, stream pb.RemoteFS_GetServer) error {
+	r, err := s.storage.Load(req.Hash, req.Name)
+	if os.IsNotExist(err) {
+		// ensure we send back the correct gRPC error so clients can identify it.
+		return status.Error(codes.NotFound, "not found")
+	}
+	defer r.Close()
+
+	if req.ChunkSize < 1024 { // Small chunk size would be unwise.
+		req.ChunkSize = defaultChunkSize
+	}
+	buf := make([]byte, req.ChunkSize)
+	for {
+		if _, err := r.Read(buf); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		} else if err := stream.Send(&pb.GetResponse{Chunk: buf}); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 func (s *server) Put(stream pb.RemoteFS_PutServer) error {
-	return nil
+	// Read one message to get the metadata
+	req, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+	w, err := s.storage.Save(req.Hash, req.Name)
+	if err != nil {
+		return err
+	}
+	defer w.Close()
+	if _, err := w.Write(req.Chunk); err != nil {
+		return err
+	}
+	// Now read & return the rest of the message.
+	for {
+		if req, err := stream.Recv(); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		} else if _, err := w.Write(req.Chunk); err != nil {
+			return err
+		}
+	}
+	return stream.SendAndClose(&pb.PutResponse{})
 }
 
 func (s *server) Register(ctx context.Context, req *cpb.RegisterRequest) (*cpb.RegisterResponse, error) {

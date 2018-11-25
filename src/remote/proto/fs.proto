@@ -1,4 +1,5 @@
 // Defines messages for communicating with the remote filesystem storage.
+// N.B. Errors are typically returned as gRPC error codes, not in the proto message.
 
 syntax = "proto3";
 
@@ -57,6 +58,7 @@ message GetRequest {
     // There may be multiple stored against each hash.
     string name = 2;
     // Size of chunks to send response in.
+    // The server will try to honour this but might override it if it chooses.
     uint32 chunk_size = 3;
 }
 
@@ -72,13 +74,9 @@ message PutRequest {
     // Name of the file.
     // Only needs to be passed in the first message.
     string name = 2;
-    // Chunk of data. Any size is accepted.
+    // Chunk of data. Any size is accepted but the client is encouraged to use something sensible.
     bytes chunk = 3;
 }
 
 message PutResponse {
-    // True if the put was successful
-    bool success = 1;
-    // Any error message on failure.
-    string msg = 2;
 }
