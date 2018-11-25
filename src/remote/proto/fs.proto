@@ -77,4 +77,8 @@ message PutRequest {
 }
 
 message PutResponse {
+    // True if the put was successful
+    bool success = 1;
+    // Any error message on failure.
+    string msg = 2;
 }

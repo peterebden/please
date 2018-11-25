@@ -5,6 +5,8 @@ go_library(
     deps = [
         "//third_party/go:logging",
         "//third_party/go:protobuf",
+        "//third_party/go:xattr",
+        "//src/fs",
         "//tools/elan/proto:cluster",
     ],
 )

@@ -11,6 +11,8 @@ service Elan {
     rpc Register(RegisterRequest) returns (RegisterResponse);
     // Returns information about the current state of the cluster.
     rpc ClusterInfo(ClusterInfoRequest) returns (ClusterInfoResponse);
+    // Replicate is just like Put except that it does not trigger further replication.
+    rpc Replicate(stream fs.PutRequest) returns (fs.PutResponse);
 }
 
 message RegisterRequest {
