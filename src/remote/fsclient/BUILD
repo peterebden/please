@@ -7,6 +7,8 @@ go_library(
         "//third_party/go:errgroup",
         "//third_party/go:grpc",
         "//third_party/go:logging",
-        "//third_party/go:multierror",
+        "//third_party/go:go-multierror",
+        "//third_party/go:xxhash",
+        "//src/remote/proto:fs",
     ],
 )

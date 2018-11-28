@@ -47,6 +47,13 @@ func Init(dir string, maxSize uint64) (Storage, error) {
 	return s, fs.Walk(dir, s.walk)
 }
 
+// A WriteCloseCanceler is like an io.WriteCloser but adds an additional Cancel function that
+// is distinct from a normal Close() call in that it signals a failure state.
+type WriteCloseCanceler interface {
+	io.WriteCloser
+	Cancel()
+}
+
 type Storage interface {
 	// LoadConfig loads the current configuration for this server.
 	LoadConfig() (*cpb.Config, error)
@@ -57,7 +64,7 @@ type Storage interface {
 	// Load loads a single file.
 	Load(hash uint64, name string) (io.ReadCloser, error)
 	// Save saves a single file.
-	Save(hash uint64, name string) (io.WriteCloser, error)
+	Save(hash uint64, name string) (WriteCloseCanceler, error)
 }
 
 type file struct {
@@ -134,15 +141,17 @@ func (s *storage) Load(hash uint64, name string) (io.ReadCloser, error) {
 	if info == nil {
 		return nil, os.ErrNotExist
 	} else if info.Writing != nil {
-		// TODO(peterebden): We don't have any way of detecting error conditions on the
-		//                   write here. Really that should get propagated somehow.
 		<-info.Writing
+		// We use this as a sentinel that indicates failure.
+		if info.Atime == 0 {
+			return nil, fmt.Errorf("Upload cancelled")
+		}
 	}
 	info.UpdateAtime()
 	return os.Open(info.Path)
 }
 
-func (s *storage) Save(hash uint64, name string) (io.WriteCloser, error) {
+func (s *storage) Save(hash uint64, name string) (WriteCloseCanceler, error) {
 	key := file{Hash: hash, Name: name}
 	s.mutex.Lock()
 	if s.files[key] != nil {
@@ -161,7 +170,7 @@ func (s *storage) Save(hash uint64, name string) (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &writeCloser{f: f, info: info}, nil
+	return &writeCloseCanceler{f: f, info: info}, nil
 }
 
 // walk is a function appropriate for fs.Walk for visiting a file.
@@ -188,21 +197,27 @@ func (s *storage) walk(name string, isDir bool) error {
 	return nil
 }
 
-// A writeCloser wraps up a file with some extra closing logic.
-type writeCloser struct {
+// A writeCloseCanceler wraps up a file with some extra closing logic.
+type writeCloseCanceler struct {
 	f    *os.File
 	info *fileInfo
 }
 
-func (w *writeCloser) Write(b []byte) (int, error) {
+func (w *writeCloseCanceler) Write(b []byte) (int, error) {
 	n, err := w.f.Write(b)
 	w.info.Size += int64(n)
 	return n, err
 }
 
-func (w *writeCloser) Close() error {
+func (w *writeCloseCanceler) Close() error {
+	w.info.UpdateAtime()
 	close(w.info.Writing)
 	w.info.Writing = nil
-	w.info.UpdateAtime()
 	return w.f.Close()
+}
+
+func (w *writeCloseCanceler) Cancel() {
+	close(w.info.Writing)
+	w.info.Writing = nil
+	w.f.Close()
 }

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
@@ -24,8 +25,12 @@ import (
 var log = logging.MustGetLogger("grpc")
 
 // defaultChunkSize is the default chunk size for the server.
-// According to https://github.com/grpc/grpc.github.io/issues/371 it might be 16-64KB.
+// According to https://github.com/grpc/grpc.github.io/issues/371 a good size might be 16-64KB.
 const defaultChunkSize = 32 * 1024
+
+// bufferSize is the number of messages we buffer to send to the replicas.
+// Increasing this reduces the replication lag clients see, but also increases our memory requirements.
+const bufferSize = 1000
 
 const timeout = 5 * time.Second
 
@@ -183,6 +188,8 @@ func (s *server) Replicate(stream cpb.Elan_ReplicateServer) error {
 
 // put implements storing a single file, optionally with replication.
 func (s *server) put(stream pb.RemoteFS_PutServer, replicate bool) error {
+	var channels []chan *pb.PutRequest
+
 	// Read one message to get the metadata
 	req, err := stream.Recv()
 	if err != nil {
@@ -192,54 +199,67 @@ func (s *server) put(stream pb.RemoteFS_PutServer, replicate bool) error {
 	if err != nil {
 		return err
 	}
-	if replicate {
-		// TODO(peterebden): Need to communicate failures to this when unsuccessful.
-		w = s.replicate(w, req.Hash, req.Name)
-	}
 	defer w.Close()
 	if _, err := w.Write(req.Chunk); err != nil {
 		return err
 	}
+	if replicate {
+		names, clients := s.ring.FindReplicas(req.Hash, s.replicas-1, req.Name)
+		log.Info("Replicating artifact %x to nodes %s", req.Hash, strings.Join(names, ", "))
+		channels := make([]chan *pb.PutRequest, len(clients))
+		for i, client := range clients {
+			channels[i] = make(chan *pb.PutRequest, 1000)
+			go s.forwardMessages(channels[i], client, names[i])
+			channels[i] <- req
+		}
+	}
 	// Now read & return the rest of the message.
 	for {
-		if req, err := stream.Recv(); err != nil {
+		req, err := stream.Recv()
+		if err != nil {
 			if err == io.EOF {
 				break
 			}
 			return err
+		} else if req.Cancel {
+			log.Warning("Client cancelled request to store %s", req.Name)
+			w.Cancel()
+			return status.Errorf(codes.Canceled, "client cancelled")
 		} else if _, err := w.Write(req.Chunk); err != nil {
 			return err
 		}
+		for _, ch := range channels {
+			ch <- req
+		}
+	}
+	for _, ch := range channels {
+		close(ch)
 	}
 	return stream.SendAndClose(&pb.PutResponse{})
 }
 
-// replicate replicates all writes on the given writer to the appropriate nodes.
-func (s *server) replicate(w io.WriteCloser, hash uint64, name string) io.WriteCloser {
-	names, clients := s.ring.FindReplicas(hash, name, s.replicas-1)
-	log.Info("Replicating artifact %x to nodes %s", hash, strings.Join(names, ", "))
-	channels := make([]chan *pb.PutRequest, len(clients))
-	for i, client := range clients {
-		// Buffering so the client doesn't have to see latency if there are slow replicas,
-		// but it does mean we have to suck up memory use for them.
-		channels[i] = make(chan *pb.PutRequest, 1000)
-		go s.forwardMessages(channels[i], clients[i], hash, name, names[i])
-	}
-	return &replicaWriter{w: w, channels: channels}
-}
-
 // forwardMessages forwards writes for replication from a channel to a gRPC client.
-func (s *server) forwardMessages(ch <-chan *pb.PutRequest, client cpb.ElanClient, hash uint64, filename, name string) {
+func (s *server) forwardMessages(ch <-chan *pb.PutRequest, client cpb.ElanClient, name string) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	stream, err := client.Replicate(ctx)
 	if err != nil {
 		log.Error("Error replicating to %s", name)
-		s.discard(ch)
+		// Discard everything else in the channel.
+		for range ch {
+		}
 		return
 	}
 	for req := range ch {
-		if err := stream.Send(
+		if err := stream.Send(req); err != nil {
+			log.Error("Error replicating to %s", name)
+			for range ch {
+			}
+			return
+		}
+	}
+	if _, err := stream.CloseAndRecv(); err != nil {
+		log.Error("Error receiving replication response: %s", err)
 	}
 }
 
