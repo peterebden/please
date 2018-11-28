@@ -76,6 +76,8 @@ message PutRequest {
     string name = 2;
     // Chunk of data. Any size is accepted but the client is encouraged to use something sensible.
     bytes chunk = 3;
+    // True if the client wants to cancel this request.
+    bool cancel = 4;
 }
 
 message PutResponse {
