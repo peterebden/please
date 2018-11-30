@@ -142,7 +142,7 @@ func (s *server) update(nodes []*pb.Node) error {
 // node returns the node with a given name, or nil if it is not known.
 func (s *server) node(name string) *pb.Node {
 	for _, node := range s.config.Nodes {
-		if node.Name == s.name {
+		if node.Name == name {
 			return node
 		}
 	}
@@ -166,12 +166,18 @@ func (s *server) Get(req *pb.GetRequest, stream pb.RemoteFS_GetServer) error {
 	}
 	buf := make([]byte, req.ChunkSize)
 	for {
-		if _, err := r.Read(buf); err != nil {
+		n, err := r.Read(buf)
+		if err != nil {
 			if err == io.EOF {
 				break
 			}
 			return err
-		} else if err := stream.Send(&pb.GetResponse{Chunk: buf}); err != nil {
+		}
+		if n != int(req.ChunkSize) {
+			// Probably we have reached the end of the stream. Size the buffer appropriately.
+			buf = buf[:n]
+		}
+		if err := stream.Send(&pb.GetResponse{Chunk: buf}); err != nil {
 			return err
 		}
 	}
@@ -204,9 +210,9 @@ func (s *server) put(stream pb.RemoteFS_PutServer, replicate bool) error {
 		return err
 	}
 	if replicate {
-		names, clients := s.ring.FindReplicas(req.Hash, s.replicas-1, req.Name)
+		names, clients := s.ring.FindReplicas(req.Hash, s.replicas-1, s.name)
 		log.Info("Replicating artifact %x to nodes %s", req.Hash, strings.Join(names, ", "))
-		channels := make([]chan *pb.PutRequest, len(clients))
+		channels = make([]chan *pb.PutRequest, len(clients))
 		for i, client := range clients {
 			channels[i] = make(chan *pb.PutRequest, 1000)
 			go s.forwardMessages(channels[i], client, names[i])

@@ -111,22 +111,33 @@ func (r *Ring) Add(name, address string, client cpb.ElanClient) error {
 func (r *Ring) Merge(name, address string, ranges []*pb.Range) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	if _, present := r.addresses[name]; present {
+	client := r.clientFactory(address)
+	if existingAddress, present := r.addresses[name]; present {
 		// node exists, verify it has the same set of tokens
 		tokens := r.tokens(name)
-		if len(tokens) != len(ranges) {
-			return fmt.Errorf("Mismatching ranges (already registered for %d, new request has %d)", len(tokens), len(ranges))
+		if len(ranges) != 0 {
+			if len(tokens) != len(ranges) {
+				return fmt.Errorf("Mismatching ranges (already registered for %d, new request has %d)", len(tokens), len(ranges))
+			}
+			for i, tok := range tokens {
+				if ranges[i].Start != tok {
+					return fmt.Errorf("Mismatching token: %d / %d", tok, ranges[i].Start)
+				}
+			}
 		}
-		for i, tok := range tokens {
-			if ranges[i].Start != tok {
-				return fmt.Errorf("Mismatching token: %d / %d", tok, ranges[i].Start)
+		// Update its address to whatever it says it is now (it might have changed)
+		if existingAddress != address {
+			r.addresses[name] = address
+			for i, seg := range r.segments {
+				if seg.Name == name {
+					r.segments[i].Client = client
+				}
 			}
 		}
 		return nil
 	}
 	// node does not exist, add it.
 	// This should be relatively rare; it implies the ring is rebuilding itself.
-	client := r.clientFactory(address)
 	segs := r.segments[:]
 	for _, rng := range ranges {
 		if seg := r.segments[r.find(rng.Start)]; seg.Start == rng.Start {
