@@ -154,6 +154,37 @@ func (s *server) Info(ctx context.Context, req *pb.InfoRequest) (*pb.InfoRespons
 }
 
 func (s *server) Get(req *pb.GetRequest, stream pb.RemoteFS_GetServer) error {
+	err := s.Retrieve(req, stream)
+	if err != nil && status.Code(err) == codes.NotFound {
+		// Check the replicas, they might have it instead.
+		// This could happen because we're a replica but don't have the file (although
+		// obvs that is nonideal), but also if we weren't a replica and the client sent
+		// the request to the wrong place (which it shouldn't do ideally either).
+		names, clients := s.ring.FindReplicas(req.Hash, s.replicas, s.name)
+		for i, client := range clients {
+			log.Warning("Failed to retrieve %s / %x, checking %s for it", req.Name, req.Hash, names[i])
+			stream2, err := client.Retrieve(context.Background(), &pb.GetRequest{Hash: req.Hash, Name: req.Name, ChunkSize: req.ChunkSize})
+			if err != nil {
+				log.Warning("Failed to retrieve %s / %x: %s", req.Name, req.Hash, err)
+				continue
+			}
+			// Stream all the responses back
+			for {
+				if resp, err := stream2.Recv(); err != nil {
+					if err == io.EOF {
+						return nil
+					}
+					return err
+				} else if err := stream.Send(resp); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return err
+}
+
+func (s *server) Retrieve(req *pb.GetRequest, stream cpb.Elan_RetrieveServer) error {
 	r, err := s.storage.Load(req.Hash, req.Name)
 	if os.IsNotExist(err) {
 		// ensure we send back the correct gRPC error so clients can identify it.

@@ -75,15 +75,16 @@ func TestServer(t *testing.T) {
 	ps, err := client1.Put(context.Background())
 	require.NoError(t, err)
 
-	const hash = 12345
-	const name = "test.txt"
+	hash := uint64(12345)
+	name := "test.txt"
+	content := []byte("testing testing one two three")
 	err = ps.Send(&pb.PutRequest{
 		Hash:  hash,
 		Name:  name,
-		Chunk: []byte("testing testing "),
+		Chunk: content[:16],
 	})
 	assert.NoError(t, err)
-	err = ps.Send(&pb.PutRequest{Chunk: []byte("one two three")})
+	err = ps.Send(&pb.PutRequest{Chunk: content[16:]})
 	assert.NoError(t, err)
 	_, err = ps.CloseAndRecv()
 	assert.NoError(t, err)
@@ -96,7 +97,7 @@ func TestServer(t *testing.T) {
 	require.NoError(t, err)
 	gr, err := gs.Recv()
 	require.NoError(t, err)
-	assert.EqualValues(t, []byte("testing testing one two three"), gr.Chunk)
+	assert.EqualValues(t, content, gr.Chunk)
 	_, err = gs.Recv()
 	assert.Equal(t, io.EOF, err)
 
@@ -109,7 +110,35 @@ func TestServer(t *testing.T) {
 	require.NoError(t, err)
 	gr, err = gs.Recv()
 	require.NoError(t, err)
-	assert.EqualValues(t, []byte("testing testing one two three"), gr.Chunk)
+	assert.EqualValues(t, content, gr.Chunk)
+	_, err = gs.Recv()
+	assert.Equal(t, io.EOF, err)
+
+	// This tests failed replication & the behaviour when a node doesn't have a
+	// copy of an artifact. It works because we never provide a working address for
+	// node-1 so requests can't be replicated to it, but nodes should still forward
+	// requests that they don't have content for locally.
+	ps, err = client2.Put(context.Background())
+	require.NoError(t, err)
+	hash = 23456
+	name = "test2.txt"
+	err = ps.Send(&pb.PutRequest{
+		Hash:  hash,
+		Name:  name,
+		Chunk: content,
+	})
+	assert.NoError(t, err)
+	_, err = ps.CloseAndRecv()
+	assert.NoError(t, err)
+
+	gs, err = client1.Get(context.Background(), &pb.GetRequest{
+		Hash: hash,
+		Name: name,
+	})
+	require.NoError(t, err)
+	gr, err = gs.Recv()
+	require.NoError(t, err)
+	assert.EqualValues(t, content, gr.Chunk)
 	_, err = gs.Recv()
 	assert.Equal(t, io.EOF, err)
 }

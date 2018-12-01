@@ -155,6 +155,7 @@ func (s *storage) Save(hash uint64, name string) (WriteCloseCanceler, error) {
 	key := file{Hash: hash, Name: name}
 	s.mutex.Lock()
 	if s.files[key] != nil {
+		s.mutex.Unlock()
 		return nil, os.ErrExist
 	}
 	info := &fileInfo{

@@ -37,4 +37,5 @@ go_test(
         "//tools/elan/storage",
         "//tools/elan/proto:cluster",
     ],
+    flaky = True,  # Hard to be 100% confident with everything going on in there.
 )
