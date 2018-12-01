@@ -206,6 +206,12 @@ func (r *Ring) sort(segs []segment) []segment {
 
 // Export exports the current state of the ring as a proto.
 func (r *Ring) Export() []*pb.Node {
+	return r.ExportReplicas(1)
+}
+
+// ExportReplicas exports the current state of the ring with additional ranges for replicas.
+// This obviously means that there will be overlaps when replicas > 1.
+func (r *Ring) ExportReplicas(replicas int) []*pb.Node {
 	ret := make([]*pb.Node, 0, len(r.addresses))
 	m := make(map[string]*pb.Node, len(r.addresses))
 	for name, address := range r.addresses {
@@ -214,8 +220,19 @@ func (r *Ring) Export() []*pb.Node {
 		ret = append(ret, n)
 	}
 	for _, s := range r.segments {
-		n := m[s.Name]
-		n.Ranges = append(n.Ranges, &pb.Range{Start: s.Start, End: s.End})
+		names := []string{s.Name}
+		if replicas > 1 {
+			if replicas >= len(r.addresses) {
+				replicas = len(r.addresses) - 1
+			}
+			// Doing a log(n) find here is a little suboptimal but it's a lot easier just to
+			// reuse the code that exists
+			names, _ = r.FindReplicas(s.Start, replicas, "")
+		}
+		for _, name := range names {
+			n := m[name]
+			n.Ranges = append(n.Ranges, &pb.Range{Start: s.Start, End: s.End})
+		}
 	}
 	// Order nodes by their name; it is arbitrary but means this function comes out consistently.
 	sort.Slice(ret, func(i, j int) bool { return ret[i].Name < ret[j].Name })

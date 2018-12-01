@@ -132,9 +132,10 @@ func (s *server) update(nodes []*pb.Node) error {
 	if s.config.ThisNode == nil {
 		return fmt.Errorf("this node (%s) not included in cluster info", s.name)
 	}
+	// The returned response has overlapping hash ranges that include replicas
 	s.info = &pb.InfoResponse{
-		Node:     s.config.Nodes,
-		ThisNode: s.config.ThisNode,
+		Node:     s.ring.ExportReplicas(s.replicas),
+		ThisNode: s.config.ThisNode, // This isn't quite right really.
 	}
 	return nil
 }

@@ -36,8 +36,11 @@ func TestClient(t *testing.T) {
 				Name:    "node-1",
 				Ranges: []*pb.Range{
 					{Start: 0, End: 999},
+					{Start: 1000, End: 1999},
 					{Start: 2000, End: 2999},
+					{Start: 3000, End: 3999},
 					{Start: 4000, End: 4999},
+					{Start: 5000, End: 5999},
 					{Start: 6000, End: math.MaxUint64},
 				},
 			},
@@ -45,9 +48,13 @@ func TestClient(t *testing.T) {
 				Address: lis2.Addr().String(),
 				Name:    "node-2",
 				Ranges: []*pb.Range{
+					{Start: 0, End: 999},
 					{Start: 1000, End: 1999},
+					{Start: 2000, End: 2999},
 					{Start: 3000, End: 3999},
+					{Start: 4000, End: 4999},
 					{Start: 5000, End: 5999},
+					{Start: 6000, End: math.MaxUint64},
 				},
 			},
 		},
@@ -95,7 +102,11 @@ func (s *server) Get(req *pb.GetRequest, stream pb.RemoteFS_GetServer) error {
 	if !present {
 		return status.Errorf(codes.NotFound, "file not found")
 	}
-	for len(f) > 0 {
+	for {
+		if int(req.ChunkSize) > len(f) {
+			stream.Send(&pb.GetResponse{Chunk: f})
+			break
+		}
 		stream.Send(&pb.GetResponse{Chunk: f[:req.ChunkSize]})
 		f = f[req.ChunkSize:]
 	}
@@ -107,12 +118,15 @@ func (s *server) Put(stream pb.RemoteFS_PutServer) error {
 	k := key{Hash: req.Hash, Name: req.Name}
 	f := req.Chunk
 	var err error
-	for err != nil {
+	for {
 		req, err = stream.Recv()
+		if err != nil {
+			break
+		}
 		f = append(f, req.Chunk...)
 	}
 	s.files[k] = f
-	return nil
+	return stream.SendAndClose(&pb.PutResponse{})
 }
 
 var info *pb.InfoResponse
