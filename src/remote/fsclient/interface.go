@@ -7,9 +7,8 @@ import "io"
 type Client interface {
 	// Get requests a set of files from the remote.
 	// It returns a parallel list of readers for them, which are always of the same length
-	// as the requested filenames (as long as there is no error). The caller should close
-	// them all when done.
-	Get(filenames []string, hash []byte) ([]io.ReadCloser, error)
+	// as the requested filenames (as long as there is no error).
+	Get(filenames []string, hash []byte) ([]io.Reader, error)
 	// Put dispatches a file to the remote
-	Put(filename string, content io.Reader, hash []byte) error
+	Put(filename string, hash []byte, content io.Reader) error
 }

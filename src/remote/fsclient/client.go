@@ -21,8 +21,10 @@ import (
 
 var log = logging.MustGetLogger("fsclient")
 
-// Size to request chunks in (in bytes).
-const chunkSize = 20 * 1024
+// chunkSize is the chunk size we request from the server.
+// According to https://github.com/grpc/grpc.github.io/issues/371 a good size might be 16-64KB.
+// This is important later on for us to size buffers appropriately.
+const chunkSize = 32 * 1024
 
 // NewClient creates and returns a new client based on the given URL touchpoints that it can
 // initialise from.
@@ -76,9 +78,8 @@ func (c *client) Get(filenames []string, hash []byte) ([]io.ReadCloser, error) {
 }
 
 // getFile retrieves a single file from the remote cluster.
-// The returned ReadCloser is always nil if err is not nil (i.e. you do not need to close it
-// yourself in error scenarios, only on success).
-func (c *client) getFile(hash uint64, nodes []*node, filename string) (io.ReadCloser, error) {
+// The returned Reader is always nil if err is not nil.
+func (c *client) getFile(hash uint64, nodes []*node, filename string) (io.Reader, error) {
 	// Try each of the nodes in turn
 	var e error
 	for _, n := range nodes {
@@ -88,12 +89,52 @@ func (c *client) getFile(hash uint64, nodes []*node, filename string) (io.ReadCl
 			e = multierror.Append(err, e)
 			continue
 		}
-
+		return &reader{stream: stream}, nil
 	}
+	return nil, e
 }
 
-func (c *client) Put(filename string, content io.Reader, hash []byte) error {
-
+func (c *client) Put(filename string, hash []byte, content io.Reader) error {
+	h := xxhash.Sum64(hash)
+	nodes, err := c.nodes(h)
+	if err != nil {
+		return nil, err
+	}
+	// Try each of the nodes until we find one that works.
+	var e error
+	for _, node := range nodes {
+		n.Init()
+		stream, err := n.Client.Put(&pb.PutRequest{Hash: h, Name: filename})
+		if err != nil {
+			e = multierror.Append(err, e)
+			continue
+		}
+		buf := make([]byte, chunkSize)
+		for {
+			n, err := content.Read(buf)
+			if n > 0 {
+				if err := stream.Send(&pb.PutRequest{Chunk: buf[:n]}); err != nil {
+					// This is most likely their error rather than ours, so we try another
+					// replica (this makes us robust to one of them going down during transfer)
+					log.Warning("Error sending file to remote storage: %s", err)
+					e = multierror.Append(err, e)
+					continue
+				}
+			}
+			if err != nil {
+				if err == io.EOF {
+					_, err := stream.CloseAndRecv()
+					return err
+				}
+				// Non-EOF error meand the file is incomplete, so we must signal that
+				// (there is no way in the gRPC API to break off the stream unsuccessfully
+				// so the signaling is in-band).
+				stream.Send(&pb.PutRequest{Cancel: true})
+				return err
+			}
+		}
+	}
+	return e
 }
 
 // Init ensures the client is initialised.
@@ -192,4 +233,43 @@ func (n *node) Init() {
 			n.Client = pb.NewRemoteFSClient(grpcutil.Dial(n.Address))
 		}
 	})
+}
+
+// A reader implements an io.Reader on top of a gRPC stream.
+type reader struct {
+	stream pb.RemoteFS_GetClient
+	buf    []byte
+}
+
+// Read implements the io.Reader interface
+func (r *reader) Read(b []byte) (int, error) {
+	// first, dispatch anything we have handy
+	if len(r.buf) > 0 {
+		if len(r.buf) > len(b) {
+			// we have more than enough for this request
+			copy(b, r.buf[:len(b)])
+			r.buf = r.buf[len(b):]
+			return len(b), nil
+		}
+		// Otherwise, the docs suggest that Read conventionally returns what's available,
+		// which is great for us since it's simpler to do.
+		n := len(r.buf)
+		copy(b, r.buf)
+		r.buf = r.buf[:0]
+		return n, nil
+	}
+	// If we get here we have nothing cached and need to read some more.
+	resp, err := r.stream.Recv()
+	if err != nil {
+		return 0, err
+	} else if len(resp.Chunk) <= len(b) {
+		// We haven't read more than they want, so just send it all back now (as above,
+		// it's conventional to send this rather than requesting another chunk).
+		copy(b, resp.Chunk)
+		return len(resp.Chunk), nil
+	}
+	// If we get here we have read more than requested and must store some.
+	copy(b, resp.Chunk[:len(b)])
+	r.buf = resp.Chunk[len(b):]
+	return len(b), nil
 }
