@@ -166,7 +166,7 @@ func (c *client) setupTopology(client pb.RemoteFSClient, info *pb.InfoResponse) 
 		if n.Address == info.ThisNode.Address {
 			c.nodes[i].Client = client
 		}
-		for i, r := range n.Ranges {
+		for _, r := range n.Ranges {
 			c.ranges = append(c.ranges, hashRange{Start: r.Start, End: r.End, Node: c.nodes[i]})
 		}
 	}
@@ -183,7 +183,7 @@ func (c *client) setupTopology(client pb.RemoteFSClient, info *pb.InfoResponse) 
 
 // findNodes returns all the nodes that can handle a particular hash.
 func (c *client) findNodes(h uint64) ([]*node, error) {
-	start := sort.Search(len(c.ranges), func(i int) bool { return c.ranges[i].Start < h })
+	start := sort.Search(len(c.ranges), func(i int) bool { return c.ranges[i].Start > h })
 	ret := []*node{}
 	for _, r := range c.ranges[start:] {
 		if h > r.End {
