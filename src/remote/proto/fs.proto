@@ -11,7 +11,8 @@ service RemoteFS {
     //      where best to route to in order to improve efficiency.
 
     // Retrieves information about the topology of the cluster.
-    rpc Info(InfoRequest) returns (InfoResponse);
+    // The response is a stream in order to receive further updates about the cluster.
+    rpc Info(InfoRequest) returns (stream InfoResponse);
 
     // Retrieves a file from the server.
     // Content is streamed back in chunks for efficiency.

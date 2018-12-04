@@ -2,6 +2,7 @@ go_library(
     name = "grpc",
     srcs = [
         "grpc.go",
+        "fan.go",
         "ring.go",
     ],
     visibility = ["//tools/elan/..."],
@@ -38,4 +39,14 @@ go_test(
         "//tools/elan/proto:cluster",
     ],
     flaky = True,  # Hard to be 100% confident with everything going on in there.
+)
+
+go_test(
+    name = "fan_test",
+    srcs = ["fan_test.go"],
+    deps = [
+        ":grpc",
+        "//src/remote/proto:fs",
+        "//third_party/go:testify",
+    ],
 )

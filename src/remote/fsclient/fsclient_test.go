@@ -2,7 +2,6 @@ package fsclient
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"io/ioutil"
 	"math"
@@ -19,13 +18,13 @@ import (
 
 func TestClient(t *testing.T) {
 	s1 := grpc.NewServer()
-	srv1 := &server{files: map[key][]byte{}}
+	srv1 := NewServer()
 	pb.RegisterRemoteFSServer(s1, srv1)
 	lis1 := grpcutil.SetupServer(s1, 0)
 	go s1.Serve(lis1)
 
 	s2 := grpc.NewServer()
-	srv2 := &server{files: map[key][]byte{}}
+	srv2 := NewServer()
 	pb.RegisterRemoteFSServer(s2, srv2)
 	lis2 := grpcutil.SetupServer(s2, 0)
 	go s2.Serve(lis2)
@@ -86,7 +85,15 @@ func TestClient(t *testing.T) {
 
 // server implements a fake in-memory server for testing.
 type server struct {
-	files map[key][]byte
+	files   map[key][]byte
+	Updates chan *pb.InfoResponse
+}
+
+func NewServer() *server {
+	return &server{
+		files:   map[key][]byte{},
+		Updates: make(chan *pb.InfoResponse),
+	}
 }
 
 type key struct {
@@ -94,8 +101,12 @@ type key struct {
 	Name string
 }
 
-func (s *server) Info(ctx context.Context, req *pb.InfoRequest) (*pb.InfoResponse, error) {
-	return info, nil
+func (s *server) Info(req *pb.InfoRequest, stream pb.RemoteFS_InfoServer) error {
+	stream.Send(info)
+	for msg := range s.Updates {
+		stream.Send(msg)
+	}
+	return nil
 }
 
 func (s *server) Get(req *pb.GetRequest, stream pb.RemoteFS_GetServer) error {

@@ -82,6 +82,7 @@ type server struct {
 	config   *cpb.Config
 	info     *pb.InfoResponse
 	ring     *Ring
+	fan      *Fan
 	replicas int
 }
 
@@ -137,6 +138,7 @@ func (s *server) update(nodes []*pb.Node) error {
 		Node:     s.ring.ExportReplicas(s.replicas),
 		ThisNode: s.config.ThisNode, // This isn't quite right really.
 	}
+	s.fan.Broadcast(s.info)
 	return nil
 }
 
@@ -150,8 +152,21 @@ func (s *server) node(name string) *pb.Node {
 	return nil
 }
 
-func (s *server) Info(ctx context.Context, req *pb.InfoRequest) (*pb.InfoResponse, error) {
-	return s.info, nil
+func (s *server) Info(req *pb.InfoRequest, stream pb.RemoteFS_InfoServer) error {
+	// Always send one message immediately
+	if err := stream.Send(s.info); err != nil {
+		return err
+	}
+	// Now send any updates
+	ch := s.fan.Add()
+	log.Debug("connecting client via %p for updates", ch)
+	for msg := range ch {
+		if err := stream.Send(msg); err != nil {
+			s.fan.Remove(ch)
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *server) Get(req *pb.GetRequest, stream pb.RemoteFS_GetServer) error {

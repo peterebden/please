@@ -162,43 +162,116 @@ func (c *client) init() {
 	// Try the URLs one by one until we find one that works.
 	for _, url := range c.urls {
 		client := pb.NewRemoteFSClient(grpcutil.Dial(url))
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		resp, err := client.Info(ctx, &pb.InfoRequest{})
-		if err != nil {
+		if err := c.initFrom(client); err != nil {
 			multierror.Append(e, err)
-			continue
+		} else {
+			return
 		}
-		c.setupTopology(client, resp)
-		return
 	}
 	log.Fatalf("Failed to connect to remote FS server: %s", e)
 }
 
+// initFrom initialises using the given RPC client.
+func (c *client) initFrom(client pb.RemoteFSClient) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	stream, err := client.Info(ctx, &pb.InfoRequest{})
+	if err != nil {
+		return err
+	}
+	resp, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+	c.nodes, c.ranges = c.setupTopology(client, resp)
+	go c.runUpdates(client, stream)
+	return nil
+}
+
 // setupTopology sets up the definition of the hash ranges of the remote.
-func (c *client) setupTopology(client pb.RemoteFSClient, info *pb.InfoResponse) {
-	c.nodes = make([]*node, len(info.Node))
+func (c *client) setupTopology(client pb.RemoteFSClient, info *pb.InfoResponse) ([]*node, []hashRange) {
+	nodes := make([]*node, len(info.Node))
+	ranges := []hashRange{}
+	clients := make(map[string]pb.RemoteFSClient, len(c.nodes))
+	// Splice in any existing clients
+	for _, node := range c.nodes {
+		clients[node.Name] = node.Client
+	}
 	for i, n := range info.Node {
-		c.nodes[i] = &node{
+		nodes[i] = &node{
 			Address: n.Address,
 			Name:    n.Name,
 		}
 		if n.Address == info.ThisNode.Address {
-			c.nodes[i].Client = client
+			nodes[i].Client = client
+		} else {
+			nodes[i].Client = clients[n.Name]
 		}
 		for _, r := range n.Ranges {
-			c.ranges = append(c.ranges, hashRange{Start: r.Start, End: r.End, Node: c.nodes[i]})
+			ranges = append(ranges, hashRange{Start: r.Start, End: r.End, Node: nodes[i]})
 		}
 	}
 	// Order them all by their ranges
-	sort.Slice(c.ranges, func(i, j int) bool {
-		if c.ranges[i].Start != c.ranges[j].Start {
-			return c.ranges[i].Start < c.ranges[j].Start
-		} else if c.ranges[i].End != c.ranges[j].End {
-			return c.ranges[i].End < c.ranges[j].End
+	sort.Slice(ranges, func(i, j int) bool {
+		if ranges[i].Start != ranges[j].Start {
+			return ranges[i].Start < ranges[j].Start
+		} else if ranges[i].End != ranges[j].End {
+			return ranges[i].End < ranges[j].End
 		}
 		return false
 	})
+	return nodes, ranges
+}
+
+// runUpdates continually reads the given stream for updates to the ring topology.
+func (c *client) runUpdates(client pb.RemoteFSClient, stream pb.RemoteFS_InfoClient) {
+	for {
+		if msg, err := stream.Recv(); err != nil {
+			// Be a bit more gentle if they disconnected us gracefully.
+			if err == io.EOF {
+				log.Warning("Remote FS server disconnected, attempting reconnect...")
+			} else {
+				log.Error("Lost communication with remote FS server: %s", err)
+			}
+			c.findNewClient(client)
+			break
+		} else {
+			log.Debug("Got state update from remotefs")
+			c.nodes, c.ranges = c.setupTopology(client, msg)
+		}
+	}
+}
+
+// findNewClient locates a new client to communicate with the cluster on.
+// The given one is excluded from the search.
+// If successful then updates are streamed in using it.
+func (c *client) findNewClient(client pb.RemoteFSClient) {
+	found := false
+	for _, node := range c.nodes {
+		if node.Client != nil {
+			if node.Client == client {
+				node.Client = nil
+			} else if !found {
+				if err := c.initFrom(node.Client); err != nil {
+					log.Warning("Failed to reconnect to remote FS: %s", err)
+				} else {
+					found = true
+				}
+			}
+		}
+	}
+	// At this point if found is still false we could try to loop again and connect one,
+	// but it's starting to become a bit of a mess in terms of which ones would be worth
+	// trying, and that mostly only solves the case where we get disconnected very early
+	// on (before we've connected many clients). We will settle for some messages.
+	if found {
+		log.Notice("Remote FS server reconnected")
+	} else {
+		// It's probably all stuffed really if we are here, but there isn't much to be
+		// done from here. Most likely something bad has happened to the network or the
+		// cluster and the user is going to find out pretty soon anyway.
+		log.Error("Cannot reconnect any remote FS server")
+	}
 }
 
 // findNodes returns all the nodes that can handle a particular hash.
