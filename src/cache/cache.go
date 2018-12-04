@@ -15,7 +15,7 @@ var log = logging.MustGetLogger("cache")
 // NewCache is the factory function for creating a cache setup from the given config.
 func NewCache(config *core.Configuration) core.Cache {
 	c := newSyncCache(config, false)
-	if config.Cache.Workers > 0 {
+	if config.Cache.Workers > 0 && len(config.Build.RemoteFSURL) == 0 {
 		return newAsyncCache(c, config)
 	}
 	return c
@@ -26,6 +26,11 @@ func newSyncCache(config *core.Configuration, remoteOnly bool) core.Cache {
 	mplex := &cacheMultiplexer{}
 	if config.Cache.Dir != "" && !remoteOnly {
 		mplex.caches = append(mplex.caches, newDirCache(config))
+	}
+	// Not sure if this is best described as a cache - it is really more than that since
+	// it's crucial to remote builds - but this is a nice place to slot it in for now.
+	if len(config.Build.RemoteFSURL) > 0 {
+		mplex.caches = append(mplex.caches, newRemoteFSCache(config.Build.RemoteFSURL.Strings()))
 	}
 	if config.Cache.RPCURL != "" {
 		cache, err := newRPCCache(config)

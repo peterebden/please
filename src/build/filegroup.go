@@ -18,12 +18,16 @@ import (
 
 	"core"
 	"fs"
+	"remote/fsclient"
 )
 
 // Init initialises common resources for the build package.
 func Init(state *core.BuildState) {
 	theFilegroupBuilder = &filegroupBuilder{
 		built: map[string]bool{},
+	}
+	if len(state.Config.Build.RemoteFSURL) > 0 {
+		fsclient.NewClient(state.Config.Build.RemoteFSURL.Strings())
 	}
 }
 

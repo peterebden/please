@@ -178,6 +178,18 @@ func (u *URL) String() string {
 	return string(*u)
 }
 
+// URLs is a convenience type that makes them easier to convert to strings.
+type URLs []URL
+
+// Strings returns this list of URLs as strings.
+func (u URLs) Strings() []string {
+	ret := make([]string, len(u))
+	for i, url := range u {
+		ret[i] = string(url)
+	}
+	return ret
+}
+
 // A Version is an extension to semver.Version extending it with the ability to
 // recognise >= prefixes.
 type Version struct {

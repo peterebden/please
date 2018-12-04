@@ -3,6 +3,7 @@ package fsclient
 import (
 	"bytes"
 	"context"
+	"io"
 	"io/ioutil"
 	"math"
 	"testing"
@@ -61,15 +62,15 @@ func TestClient(t *testing.T) {
 	}
 	info.ThisNode = info.Node[0]
 
-	client := NewClient([]string{lis1.Addr().String()})
+	client := New([]string{lis1.Addr().String()})
 	// Make this big enough so it exercises the chunking code properly.
 	content := bytes.Repeat([]byte("testing"), 100000)
 	hash := []byte("wevs")
 	const name1 = "test1.txt"
 	const name2 = "test2.txt"
-	err := client.Put(name1, hash, bytes.NewReader(content))
+	err := client.Put([]string{name1}, hash, []io.ReadSeeker{bytes.NewReader(content)})
 	assert.NoError(t, err)
-	err = client.Put(name2, hash, bytes.NewReader(content))
+	err = client.Put([]string{name2}, hash, []io.ReadSeeker{bytes.NewReader(content)})
 	assert.NoError(t, err)
 
 	rs, err := client.Get([]string{name1, name2}, hash)

@@ -26,10 +26,10 @@ var log = logging.MustGetLogger("fsclient")
 // This is important later on for us to size buffers appropriately.
 const chunkSize = 32 * 1024
 
-// NewClient creates and returns a new client based on the given URL touchpoints that it can
+// New creates and returns a new client based on the given URL touchpoints that it can
 // initialise from.
 // N.B. Errors are not returned here since the initialisation is done asynchronously.
-func NewClient(urls []string) Client {
+func New(urls []string) Client {
 	c := &client{urls: urls}
 	go c.Init()
 	return c
@@ -87,49 +87,69 @@ func (c *client) getFile(hash uint64, nodes []*node, filename string) (io.Reader
 	return nil, e
 }
 
-func (c *client) Put(filename string, hash []byte, content io.Reader) error {
+func (c *client) Put(filenames []string, hash []byte, contents []io.ReadSeeker) error {
 	c.Init()
 	h := xxhash.Sum64(hash)
 	nodes, err := c.findNodes(h)
 	if err != nil {
 		return err
 	}
+	// Fast path if we get a single file
+	if len(filenames) == 1 {
+		return c.putFile(nodes, filenames[0], h, contents[0])
+	}
+	var g errgroup.Group
+	for i, filename := range filenames {
+		i := i
+		filename := filename
+		g.Go(func() error {
+			return c.putFile(nodes, filename, h, contents[i])
+		})
+	}
+	return g.Wait()
+}
+
+func (c *client) putFile(nodes []*node, filename string, hash uint64, contents io.ReadSeeker) error {
 	// Try each of the nodes until we find one that works.
 	var e error
-nodeloop:
 	for _, node := range nodes {
 		node.Init()
-		stream, err := node.Client.Put(context.Background())
-		if err != nil {
+		if stream, err := node.Client.Put(context.Background()); err != nil {
 			e = multierror.Append(err, e)
-			continue
-		}
-		buf := make([]byte, chunkSize)
-		for {
-			n, err := content.Read(buf)
-			if n > 0 {
-				if err := stream.Send(&pb.PutRequest{Hash: h, Name: filename, Chunk: buf[:n]}); err != nil {
-					// This is most likely their error rather than ours, so we try another
-					// replica (this makes us robust to one of them going down during transfer)
-					log.Warning("Error sending file to remote storage: %s", err)
-					e = multierror.Append(err, e)
-					continue nodeloop
-				}
-			}
-			if err != nil {
-				if err == io.EOF {
-					_, err := stream.CloseAndRecv()
-					return err
-				}
-				// Non-EOF error meand the file is incomplete, so we must signal that
-				// (there is no way in the gRPC API to break off the stream unsuccessfully
-				// so the signaling is in-band).
-				stream.Send(&pb.PutRequest{Cancel: true})
-				return err
-			}
+		} else if err := c.writeFile(stream, filename, hash, contents); err != nil {
+			e = multierror.Append(err, e)
+			contents.Seek(0, io.SeekStart) // reset the reader
+		} else {
+			return nil
 		}
 	}
 	return e
+}
+
+func (c *client) writeFile(stream pb.RemoteFS_PutClient, filename string, hash uint64, content io.ReadSeeker) error {
+	buf := make([]byte, chunkSize)
+	for {
+		n, err := content.Read(buf)
+		if n > 0 {
+			if err := stream.Send(&pb.PutRequest{Hash: hash, Name: filename, Chunk: buf[:n]}); err != nil {
+				// This is most likely their error rather than ours, so we try another
+				// replica (this makes us robust to one of them going down during transfer)
+				log.Warning("Error sending file to remote storage: %s", err)
+				return err
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				_, err := stream.CloseAndRecv()
+				return err
+			}
+			// Non-EOF error meand the file is incomplete, so we must signal that
+			// (there is no way in the gRPC API to break off the stream unsuccessfully
+			// so the signaling is in-band).
+			stream.Send(&pb.PutRequest{Cancel: true})
+			return err
+		}
+	}
 }
 
 // Init ensures the client is initialised.
