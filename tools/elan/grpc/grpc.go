@@ -82,7 +82,7 @@ type server struct {
 	config   *cpb.Config
 	info     *pb.InfoResponse
 	ring     *Ring
-	fan      *Fan
+	fan      Fan
 	replicas int
 }
 

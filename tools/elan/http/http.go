@@ -119,7 +119,7 @@ func svgPath(start, end uint64) string {
 	x2 := r + r2*s
 	y2 := r - r2*c
 	return fmt.Sprintf("M%d,%d L%d,%d A%d,%d 1 0,1 %0.5f,%0.5f L%0.5f,%0.5f A%d,%d 1 0,0 %d,%d",
-		r, w, r, 0, r, r, x1, y1, x2, y2, r, r, r, w)
+		r, w, r, 0, r, r, x1, y1, x2, y2, r-w, r-w, r, w)
 }
 
 // svgTransform returns an svg transform for the given hash coordinates.

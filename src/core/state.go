@@ -206,18 +206,18 @@ func (state *BuildState) AddPendingParse(label, dependor BuildLabel, forSubinclu
 }
 
 // AddPendingBuild adds a task for a pending build of a target.
-func (state *BuildState) AddPendingBuild(label BuildLabel, forSubinclude bool) {
+func (state *BuildState) AddPendingBuild(label BuildLabel, forSubinclude, remote bool) {
 	if forSubinclude {
-		state.addPending(label, SubincludeBuild)
+		state.addPending(label, SubincludeBuild, remote)
 	} else {
-		state.addPending(label, Build)
+		state.addPending(label, Build, remote)
 	}
 }
 
 // AddPendingTest adds a task for a pending test of a target.
-func (state *BuildState) AddPendingTest(label BuildLabel) {
+func (state *BuildState) AddPendingTest(label BuildLabel, remote bool) {
 	if state.NeedTests {
-		state.addPending(label, Test)
+		state.addPending(label, Test, remote)
 	}
 }
 
@@ -243,9 +243,17 @@ func (state *BuildState) nextTask(q *queue.PriorityQueue) (BuildLabel, BuildLabe
 	return task.Label, task.Dependor, task.Type
 }
 
-func (state *BuildState) addPending(label BuildLabel, t TaskType) {
+func (state *BuildState) addPending(label BuildLabel, t TaskType, remote bool) {
+	if remote {
+		state.addPendingTo(label, t, state.pendingTasks)
+	} else {
+		state.addPendingTo(label, t, state.pendingRemoteTasks)
+	}
+}
+
+func (state *BuildState) addPendingTo(label BuildLabel, t TaskType, q *queue.PriorityQueue) {
 	atomic.AddInt64(&state.progress.numPending, 1)
-	state.pendingTasks.Put(pendingTask{Label: label, Type: t})
+	q.Put(pendingTask{Label: label, Type: t})
 }
 
 // TaskDone indicates that a single task is finished. Should be called after one is finished with
@@ -256,14 +264,8 @@ func (state *BuildState) TaskDone(wasBuildOrTest bool) {
 		atomic.AddInt64(&state.progress.numRunning, -1)
 	}
 	if atomic.AddInt64(&state.progress.numPending, -1) <= 0 {
-		state.Stop(state.NumWorkers)
-	}
-}
-
-// Stop adds n stop tasks to the list of pending tasks, which stops n workers after all their other tasks are done.
-func (state *BuildState) Stop(n int) {
-	for i := 0; i < n; i++ {
-		state.pendingTasks.Put(pendingTask{Type: Stop})
+		state.kill(state.NumWorkers, state.pendingTasks, Stop)
+		state.kill(state.NumRemoteWorkers, state.pendingRemoteTasks, Stop)
 	}
 }
 
@@ -278,7 +280,15 @@ func (state *BuildState) Kill(n int) {
 func (state *BuildState) KillAll() {
 	if !state.workersKilled {
 		state.workersKilled = true
-		state.Kill(state.NumWorkers)
+		state.kill(state.NumWorkers, state.pendingTasks, Kill)
+		state.kill(state.NumRemoteWorkers, state.pendingRemoteTasks, Kill)
+	}
+}
+
+// kill sends a kill or stop signal to n workers on the given queue.
+func (state *BuildState) kill(n int, q *queue.PriorityQueue, signal TaskType) {
+	for i := 0; i < n; i++ {
+		q.Put(pendingTask{Type: signal})
 	}
 }
 
@@ -645,7 +655,7 @@ func NewBuildState(numThreads int, cache Cache, verbosity int, config *Configura
 		if state.NumRemoteWorkers == 0 {
 			state.NumRemoteWorkers = numThreads
 		}
-		state.pendingRemoteTasks = queue.NewPriorityQueue(1000, true)
+		state.pendingRemoteTasks = queue.NewPriorityQueue(10000, true)
 	}
 	return state
 }
