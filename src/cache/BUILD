@@ -15,6 +15,7 @@ go_library(
         "//src/fs",
         "//src/remote/fsclient",
         "//third_party/go:atime",
+        "//third_party/go:errgroup",
         "//third_party/go:grpc",
         "//third_party/go:humanize",
         "//third_party/go:logging",

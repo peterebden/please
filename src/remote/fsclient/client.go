@@ -363,3 +363,17 @@ func (r *reader) Read(b []byte) (int, error) {
 	r.buf = resp.Chunk[len(b):]
 	return len(b), nil
 }
+
+// IsNotFound returns true if the given error represents a failure to find an artifact
+// (which may be of interest to callers since it may be expected in some cases).
+func IsNotFound(err error) bool {
+	if me, ok := err.(*multierror.Error); ok {
+		for _, e := range me.Errors {
+			if !grpcutil.IsNotFound(e) {
+				return false
+			}
+		}
+		return true
+	}
+	return grpcutil.IsNotFound(err)
+}

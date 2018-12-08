@@ -7,11 +7,12 @@
 package cache
 
 import (
-	"bytes"
 	"io"
 	"os"
-	"path"
 
+	"golang.org/x/sync/errgroup"
+
+	"core"
 	"remote/fsclient"
 )
 
@@ -23,32 +24,37 @@ type remoteFSCache struct {
 	client fsclient.Client
 }
 
-func (c *remoteFSCache) Store(target *BuildTarget, key []byte, files ...string) {
-	if err := c.store(key, cacheArtifacts(target, files)); err != nil {
-		log.Warning("Failed to store artifacts with remote server: %s", err)
-	}
+func (c *remoteFSCache) Store(target *core.BuildTarget, key []byte, files ...string) {
+	err := c.store(key, cacheArtifacts(target, files...))
+	c.error("Failed to store artifacts with remote server: %s", err)
 }
 
-func (c *remoteFSCache) StoreExtra(target *BuildTarget, key []byte, file string) {
-	if err := c.store(key, []string{file}); err != nil {
-		log.Warning("Failed to store artifacts with remote server: %s", err)
-	}
+func (c *remoteFSCache) StoreExtra(target *core.BuildTarget, key []byte, file string) {
+	err := c.store(key, []string{file})
+	c.error("Failed to store artifact with remote server: %s", err)
 }
 
-func (c *remoteFSCache) Retrieve(target *BuildTarget, key []byte) {
+func (c *remoteFSCache) Retrieve(target *core.BuildTarget, key []byte) bool {
 	// N.B. this does not support storing / retrieving additional outs correctly.
 	//      That doesn't look easy to support through the current API but given its
-	//      current narrow usage we might just drop it instead.
-	if err := c.retrieve(target, key, cacheArtifacts(target, files)); err != nil {
-		log.Warning("Failed to store artifacts with remote server: %s", err)
-	}
+	//      current narrow usage we might just drop it instead.w
+	err := c.retrieve(target, key, cacheArtifacts(target))
+	return c.error("Failed to retrieve artifacts from remote server: %s", err)
 }
 
-func (c *remoteFSCache) RetrieveExtra(target *BuildTarget, key []byte, file string) {
-	if err := c.retrieve(target, key, []string{file}); err != nil {
-		log.Warning("Failed to store artifacts with remote server: %s", err)
-	}
+func (c *remoteFSCache) RetrieveExtra(target *core.BuildTarget, key []byte, file string) bool {
+	err := c.retrieve(target, key, []string{file})
+	return c.error("Failed to retrieve artifact from remote server: %s", err)
 }
+
+func (c *remoteFSCache) Clean(target *core.BuildTarget) {
+	// We never clean it via this interface. Later we will provide some maintenance tools
+	// for the server that will allow dropping specific artifacts if needed.
+}
+
+func (c *remoteFSCache) CleanAll() {}
+
+func (c *remoteFSCache) Shutdown() {}
 
 func (c *remoteFSCache) store(key []byte, filenames []string) error {
 	contents := make([]io.ReadSeeker, len(filenames))
@@ -63,18 +69,33 @@ func (c *remoteFSCache) store(key []byte, filenames []string) error {
 	return c.client.Put(filenames, key, contents)
 }
 
-func (c *remoteFSCache) retrieve(target *BuildTarget, key []byte, filenames []string) error {
+func (c *remoteFSCache) retrieve(target *core.BuildTarget, key []byte, filenames []string) error {
+	var g errgroup.Group
 	rs, err := c.client.Get(filenames, key)
 	if err != nil {
 		return err
 	}
 	for i, filename := range filenames {
-		f, err := os.Open(filename)
-		if err != nil {
+		r := rs[i]
+		filename := filename
+		g.Go(func() error {
+			f, err := os.Open(filename)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			_, err = io.Copy(f, r)
 			return err
-		}
-		contents[i] = f
-		defer f.Close()
+		})
 	}
-	return c.client.Put(filenames, key, contents)
+	return g.Wait()
+}
+
+func (c *remoteFSCache) error(msg string, err error) bool {
+	if err == nil {
+		return true
+	} else if !fsclient.IsNotFound(err) {
+		log.Warning(msg, err)
+	}
+	return false
 }

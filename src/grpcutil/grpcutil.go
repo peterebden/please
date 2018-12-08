@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"gopkg.in/op/go-logging.v1"
 )
 
@@ -70,4 +72,9 @@ func Dial(url string) *grpc.ClientConn {
 // AddCleanup adds a cleanup function to be called when a terminating signal is received.
 func AddCleanup(f func()) {
 	cleanups = append(cleanups, f)
+}
+
+// IsNotFound returns true if the given error represents a grpc NotFound error.
+func IsNotFound(err error) bool {
+	return status.Code(err) == codes.NotFound
 }
