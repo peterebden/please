@@ -15,6 +15,8 @@ service Elan {
     rpc Replicate(stream fs.PutRequest) returns (fs.PutResponse);
     // Similarly Retrieve is just like Get except that it can't be delegated to another node.
     rpc Retrieve(fs.GetRequest) returns (stream fs.GetResponse);
+    // Update updates the server state with new config info.
+    rpc Update(UpdateRequest) returns (UpdateResponse);
 }
 
 message RegisterRequest {
@@ -64,4 +66,12 @@ message Segment {
     fixed64 End = 2;
     // Name of the node that occupies it
     string name = 3;
+}
+
+message UpdateRequest {
+    // The current set of nodes making up the server.
+    repeated fs.Node nodes = 1;
+}
+
+message UpdateResponse {
 }

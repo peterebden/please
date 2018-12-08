@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -46,6 +47,10 @@ func Start(port int, urls []string, storage storage.Storage, name, addr string, 
 
 func start(port int, urls []string, storage storage.Storage, name, addr string, replicas int) (*grpc.Server, *server, net.Listener) {
 	s := grpc.NewServer()
+	lis := grpcutil.SetupServer(s, port)
+	if addr == "" {
+		addr = lis.Addr().String()
+	}
 	c, err := storage.LoadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load config: %s", err)
@@ -65,7 +70,7 @@ func start(port int, urls []string, storage storage.Storage, name, addr string, 
 	if err := fs.Init(urls, addr); err != nil {
 		log.Fatalf("Failed to initialise: %s", err)
 	}
-	return s, fs, grpcutil.SetupServer(s, port)
+	return s, fs, lis
 }
 
 // A Server allows some maintenance operations on the gRPC server.
@@ -120,10 +125,10 @@ func (s *server) Init(urls []string, addr string) error {
 
 // init sets up the server & establishes connections to the rest of the cluster.
 func (s *server) init(nodes []*pb.Node) error {
-	if err := s.update(nodes); err != nil {
+	if err := s.ring.Update(nodes); err != nil {
 		return err
 	}
-	return s.ring.Update(nodes)
+	return s.update(nodes)
 }
 
 // update updates the server with a set of nodes.
@@ -327,8 +332,9 @@ func (s *server) Register(ctx context.Context, req *cpb.RegisterRequest) (*cpb.R
 			return &cpb.RegisterResponse{Msg: err.Error()}, nil
 		}
 		s.update(s.ring.Export())
+		s.updatePeers(ctx, req.Node.Name)
 		if err := s.storage.SaveConfig(s.config); err != nil {
-			return &cpb.RegisterResponse{Msg: err.Error()}, nil
+			log.Error("Failed to save new config: %s", err)
 		}
 		log.Notice("Node %s added to cluster", req.Node.Name)
 		return &cpb.RegisterResponse{Accepted: true, Nodes: s.config.Nodes}, nil
@@ -337,6 +343,7 @@ func (s *server) Register(ctx context.Context, req *cpb.RegisterRequest) (*cpb.R
 	}
 	log.Notice("Re-accepted node %s into cluster", req.Node.Name)
 	s.update(s.ring.Export())
+	s.updatePeers(ctx, req.Node.Name)
 	return &cpb.RegisterResponse{Accepted: true, Nodes: s.config.Nodes}, nil
 }
 
@@ -357,6 +364,39 @@ func (s *server) GetClusterInfo() *cpb.ClusterInfoResponse {
 	resp, _ := s.ClusterInfo(context.Background(), nil)
 	resp.Segments = s.ring.Segments()
 	return resp
+}
+
+func (s *server) Update(ctx context.Context, req *cpb.UpdateRequest) (*cpb.UpdateResponse, error) {
+	log.Notice("Received notice of ring update")
+	err := s.ring.Update(req.Nodes)
+	if err != nil {
+		log.Error("Ring rejected update: %s", err)
+	} else {
+		s.update(req.Nodes)
+	}
+	return &cpb.UpdateResponse{}, err
+}
+
+// updatePeers communicates updates to the ring state to all known peers, apart from the
+// one passed in (because it is usually just joining and can't be contacted yet).
+func (s *server) updatePeers(ctx context.Context, exclude string) {
+	nodes := s.ring.ExportReplicas(1)
+	var wg sync.WaitGroup
+	for name, client := range s.ring.Nodes() {
+		if name != s.name && name != exclude {
+			wg.Add(1)
+			go func(name string, client cpb.ElanClient) {
+				log.Notice("Replicating state to %s", name)
+				// TODO(peterebden): how to reduce the timeout on the context here so we
+				//                   fail before the master request is out of time?
+				if _, err := client.Update(ctx, &cpb.UpdateRequest{Nodes: nodes}); err != nil {
+					log.Error("Error replicating to %s: %s", name, err)
+				}
+				wg.Done()
+			}(name, client)
+		}
+	}
+	wg.Wait()
 }
 
 // A replicaWriter forwards writes to a writer plus a set of channels to replicas.

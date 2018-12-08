@@ -252,6 +252,15 @@ func (r *Ring) Segments() []*cpb.Segment {
 	return ret
 }
 
+// Nodes returns a mapping of all currently known nodes to their clients.
+func (r *Ring) Nodes() map[string]cpb.ElanClient {
+	m := map[string]cpb.ElanClient{}
+	for _, seg := range r.segments {
+		m[seg.Name] = seg.Client
+	}
+	return m
+}
+
 // Find returns the node that holds the given hash.
 func (r *Ring) Find(hash uint64) (string, cpb.ElanClient) {
 	seg := r.segments[r.find(hash)]

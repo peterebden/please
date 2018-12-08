@@ -142,3 +142,37 @@ func TestServer(t *testing.T) {
 	_, err = gs.Recv()
 	assert.Equal(t, io.EOF, err)
 }
+
+func TestThreeServers(t *testing.T) {
+	// Initialise the first server
+	store1, err := storage.Init("test_store_1", 1024)
+	require.NoError(t, err)
+	s1, srv1, lis1 := start(0, nil, store1, "test-1", "", 2)
+	go s1.Serve(lis1)
+	defer s1.Stop()
+
+	// Initialise a second server to talk to it
+	store2, err := storage.Init("test_store_2", 1024)
+	require.NoError(t, err)
+	s2, srv2, lis2 := start(0, []string{lis1.Addr().String()}, store2, "test-2", "", 2)
+	go s2.Serve(lis2)
+	defer s2.Stop()
+
+	// And a third server, this is needed to test that everything ends up consistent.
+	store3, err := storage.Init("test_store_3", 1024)
+	require.NoError(t, err)
+	s3, srv3, lis3 := start(0, []string{lis1.Addr().String()}, store3, "test-3", "", 2)
+	go s3.Serve(lis3)
+	defer s3.Stop()
+
+	// Verify things look right on all three nodes
+	for _, srv := range []*server{srv1, srv2, srv3} {
+		resp, err := srv.ClusterInfo(context.Background(), &cpb.ClusterInfoRequest{})
+		require.NoError(t, err)
+		assert.True(t, resp.Healthy)
+		assert.Equal(t, 3, len(resp.Nodes))
+		assert.Equal(t, "test-1", resp.Nodes[0].Name)
+		assert.Equal(t, "test-2", resp.Nodes[1].Name)
+		assert.Equal(t, "test-3", resp.Nodes[2].Name)
+	}
+}
