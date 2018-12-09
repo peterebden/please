@@ -9,14 +9,38 @@
       <div class="column">
         <h1>Ring status</h1>
         <svg viewBox="0 0 800 800" preserveAspectRatio="xMidYMid meet">
-          <circle cx="400" cy="400" r="300" fill="#999999"/>
           {{ range .Segments }}
-            <path class="{{ className .Name }}" d="{{ svgPath .Start .End }}" transform="{{svgTransform .Start .End }}"></path>
+            <path class="node {{ className .Name }}" d="{{ svgPath .Start .End }}" transform="{{svgTransform .Start .End }}"></path>
+          {{ end }}
+          {{ range .Segments }}
+            <path class="nh {{ className .Name }}" d="{{ svgPath .Start .End }}" transform="{{svgTransform .Start .End }}"></path>
+            <text x="400" y="400">
+              <tspan x="400" dy="0">Owned by: {{ .Name }}</tspan>
+              <tspan x="400" dy="1.2em">Starts at: {{ hashCoords .Start }}</tspan>
+              <tspan x="400" dy="1.2em">Ends at: {{ hashCoords .End }}</tspan>
+            </text>
           {{ end }}
         </svg>
 
       </div>
       <div class="column">
+        <h1>Nodes</h1>
+        <table>
+          <tr>
+            <th>Name</th>
+            <th>Address</th>
+            <th>Status</th>
+            <th>Ranges</th>
+          </tr>
+          {{ range .Nodes }}
+          <tr class="{{ className .Name }}">
+            <td>{{ .Name }}</td>
+            <td>{{ .Address }}</td>
+            <td>{{ if .Online }} Online {{ else }} Offline {{ end }}</td>
+            <td>{{ hashRanges .Ranges }}</td>
+          </tr>
+          {{ end }}
+        </table>
       </div>
     </div>
   </body>

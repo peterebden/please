@@ -16,6 +16,7 @@ go_library(
     deps = [
         "//src/grpcutil",
         "//third_party/go:logging",
+        "//src/remote/proto:fs",
         "//tools/elan/proto:cluster",
     ],
 )

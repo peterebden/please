@@ -70,6 +70,7 @@ func start(port int, urls []string, storage storage.Storage, name, addr string, 
 	if err := fs.Init(urls, addr); err != nil {
 		log.Fatalf("Failed to initialise: %s", err)
 	}
+	grpcutil.AddCleanup(fs.shutdown)
 	return s, fs, lis
 }
 
@@ -397,6 +398,13 @@ func (s *server) updatePeers(ctx context.Context, exclude string) {
 		}
 	}
 	wg.Wait()
+}
+
+// shutdown implements a graceful shutdown on this node by letting others know that it is going away.
+// TODO(peterebden): we should really have the other servers detect this (e.g. by streaming
+//                   updates from it and hence noticing when they are terminated).
+func (s *server) shutdown() {
+
 }
 
 // A replicaWriter forwards writes to a writer plus a set of channels to replicas.

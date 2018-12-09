@@ -16,6 +16,7 @@ import (
 	"gopkg.in/op/go-logging.v1"
 
 	"grpcutil"
+	pb "src/remote/proto/fs"
 	cpb "tools/elan/proto/cluster"
 )
 
@@ -38,6 +39,8 @@ func ServeForever(port int, cluster Cluster) {
 	}
 	h.tmpl = template.Must(template.New("html").Funcs(template.FuncMap{
 		"className":    h.className,
+		"hashCoords":   hashCoords,
+		"hashRanges":   hashRanges,
 		"svgPath":      svgPath,
 		"svgTransform": svgTransform,
 	}).Parse(MustAssetString("index.html")))
@@ -76,7 +79,9 @@ func (h *handler) Ping(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) Serve(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
-	if err := h.tmpl.Execute(w, h.cluster.GetClusterInfo()); err != nil {
+	info := h.cluster.GetClusterInfo()
+	h.setClassNames(info)
+	if err := h.tmpl.Execute(w, info); err != nil {
 		log.Error("%s", err)
 	}
 }
@@ -91,6 +96,17 @@ func (h *handler) Static(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/css")
 	}
 	io.Copy(w, bytes.NewReader(data))
+}
+
+// setClassNames populates class names in the map for offline nodes.
+func (h *handler) setClassNames(info *cpb.ClusterInfoResponse) {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+	for _, node := range info.Nodes {
+		if !node.Online {
+			h.nodes[node.Name] = "bad-node"
+		}
+	}
 }
 
 // className returns the SVG class name for a node.
@@ -126,4 +142,18 @@ func svgPath(start, end uint64) string {
 func svgTransform(start, end uint64) string {
 	deg := float64(start) * (360.0 / float64(math.MaxUint64))
 	return fmt.Sprintf("rotate(%0.5f, 400, 400)", deg)
+}
+
+// hashCoords returns a string describing a hash coordinate.
+func hashCoords(x uint64) string {
+	return fmt.Sprintf("%016x (%0.2f%%)", x, float64(x)*100.0/float64(math.MaxUint64))
+}
+
+// hashRanges returns a string describing a set of hash ranges.
+func hashRanges(ranges []*pb.Range) string {
+	var total uint64
+	for _, r := range ranges {
+		total += r.End - r.Start
+	}
+	return fmt.Sprintf("%d ranges (%0.2f%%)", len(ranges), float64(total)*100.0/float64(math.MaxUint64))
 }

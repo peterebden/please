@@ -41,6 +41,8 @@ message Node {
     string name = 2;
     // Describes the hashes this node is responsible for.
     repeated Range ranges = 3;
+    // True if the node is currently online
+    bool online = 4;
 }
 
 message Range {
