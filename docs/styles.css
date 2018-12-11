@@ -54,6 +54,7 @@ h1, h2, h3, h4 {
 .red      { color: #fc1452; }
 .black:   { color: #111111; }
 .darkgrey { color: #242424; }
+.white    { color: #FFFFFF; }
 
 .experimental { color: #fc1452; }
 
@@ -137,12 +138,12 @@ hr {
     flex: 3 4 75%;
 }
 .left .menu-graphic {
-    margin-bottom: 3em;
-    margin-top: 3em;
+    margin-bottom: 1em;
+    margin-top: 1em;
     text-align: right;
 }
 .left .menu-blurb {
-    margin: 3em;
+    margin: 2em;
     width: 45%;
     text-align: left;
 }
@@ -235,20 +236,23 @@ td {
 /* Footer */
 footer {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
 }
 footer > div {
     flex: 1 1 auto;
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     padding-top: 1em;
 }
 footer > div > div {
     margin-top: auto;
-    flex: 1 1 50%;
+    flex: 1 1;
 }
 footer a {
     color: #29ABE2;
+}
+.lockup {
+    text-align: center;
 }
 
 /* Index page has a custom layout */
