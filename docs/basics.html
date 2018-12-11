@@ -14,18 +14,18 @@
     <p>Each BUILD file can contain a number of <em>build targets</em>. These are units of buildable code
       which can be reused by other build targets. An example is probably worth 1000 words at this point:
       <pre><code>
-	  python_library(
+	  <span class="build-rule">python_library</span>(
 	      name = 'my_library',
 	      srcs = ['file1.py', 'file2.py'],
 	  )
 
-	  python_binary(
+	  <span class="build-rule">python_binary</span>(
 	      name = 'my_binary',
 	      main = 'my_main.py',
 	      deps = [':my_library'],
 	  )
 
-	  python_test(
+	  <span class="build-rule">python_test</span>(
 	      name = 'my_library_test',
 	      srcs = ['my_library_test.py'],
 	      deps = [':my_library'],

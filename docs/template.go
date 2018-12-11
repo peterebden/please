@@ -27,6 +27,16 @@ var colours = []string{
 	"y", // yellow
 }
 
+var rotations = []string{
+	"rotate1",
+	"rotate2",
+	"rotate3",
+	"rotate4",
+	"rotate5",
+	"rotate6",
+	"rotate7",
+}
+
 var pageTitles = map[string]string{
 	"advanced.html":         "Advanced Please",
 	"acknowledgements.html": "Acknowledgements",
@@ -56,6 +66,7 @@ func main() {
 	filename := os.Args[2]
 	basename := path.Base(filename)
 	basenameIndex := int(adler32.Checksum([]byte(basename)))
+	modulo := func(s []string, i int) string { return s[(basenameIndex+i)%len(s)] }
 	funcs := template.FuncMap{
 		"menuItem": func(s string) string {
 			if basename[:len(basename)-5] == s {
@@ -63,9 +74,9 @@ func main() {
 			}
 			return ""
 		},
-		"shape": func(i int) string {
-			return shapes[(basenameIndex+i)%len(shapes)]
-		},
+		"shape":  func(i int) string { return modulo(shapes, i) },
+		"colour": func(i int) string { return modulo(colours, i) },
+		"rotate": func(i int) string { return modulo(rotations, i) },
 	}
 	data := struct {
 		Title, Header, Contents string
