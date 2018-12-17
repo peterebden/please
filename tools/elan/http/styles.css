@@ -192,29 +192,29 @@ footer a {
     font-weight: bold;
 }
 
-.node-0  { fill: #1cac00; }
-.node-6  { fill: #00ac00; }
-.node-13 { fill: #00ac1c; }
-.node-19 { fill: #00ac39; }
-.node-1  { fill: #00ac55; }
-.node-7  { fill: #00ac72; }
-.node-14 { fill: #00ac8f; }
-.node-20 { fill: #56ac00; }
-.node-2  { fill: #39ac00; }
-.node-8  { fill: #1cac00; }
-.node-15 { fill: #00ac00; }
-.node-21 { fill: #00ac1c; }
-.node-3  { fill: #00ac39; }
-.node-9  { fill: #00ac55; }
-.node-16 { fill: #00ac72; }
-.node-22 { fill: #00ac8f; }
-.node-4  { fill: #56ac00; }
-.node-10 { fill: #39ac00; }
-.node-11 { fill: #1cac00; }
-.node-17 { fill: #00ac00; }
-.node-5  { fill: #00ac1c; }
-.node-12 { fill: #00ac39; }
-.node-18 { fill: #00ac55; }
+.node-0  { fill: #29abe2; }
+.node-1  { fill: #02e68f; }
+.node-10 { fill: #ffe752; }
+.node-11 { fill: #96ee05; }
+.node-12 { fill: #ff00ff; }
+.node-13 { fill: #00ffff; }
+.node-14 { fill: #29abe2; }
+.node-15 { fill: #02e68f; }
+.node-16 { fill: #af7dff; }
+.node-17 { fill: #ffe752; }
+.node-18 { fill: #96ee05; }
+.node-19 { fill: #ff00ff; }
+.node-2  { fill: #af7dff; }
+.node-20 { fill: #00ffff; }
+.node-21 { fill: #29abe2; }
+.node-22 { fill: #02e68f; }
+.node-3  { fill: #ffe752; }
+.node-4  { fill: #96ee05; }
+.node-5  { fill: #ff00ff; }
+.node-6  { fill: #00ffff; }
+.node-7  { fill: #29abe2; }
+.node-8  { fill: #02e68f; }
+.node-9  { fill: #af7dff; }
 .bad-node{ fill: red; }
 .node    { stroke: grey; }
 .nh      { opacity: 0; }
