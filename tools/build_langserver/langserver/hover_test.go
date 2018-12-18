@@ -2,11 +2,11 @@ package langserver
 
 import (
 	"context"
-	"core"
+	"github.com/thought-machine/please/src/core"
 	"strings"
 	"testing"
 
-	"tools/build_langserver/lsp"
+	"github.com/thought-machine/please/tools/build_langserver/lsp"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -16,9 +16,6 @@ import (
  ***************************************/
 func TestGetHoverContentOnBuildDefName(t *testing.T) {
 	var ctx = context.Background()
-
-	err := storeFile(ctx, exampleBuildURI)
-	assert.Equal(t, nil, err)
 
 	content, err := handler.getHoverContent(ctx, exampleBuildURI, lsp.Position{Line: 0, Character: 3})
 	expected := analyzer.BuiltIns["go_library"].Header + "\n\n" + analyzer.BuiltIns["go_library"].Docstring
@@ -123,17 +120,17 @@ func TestGetHoverContentOnArgumentWithProperty(t *testing.T) {
 	var ctx = context.Background()
 
 	// Hover on argument name
-	content, err := handler.getHoverContent(ctx, exampleBuildURI, lsp.Position{Line: 34, Character: 6})
+	content, err := handler.getHoverContent(ctx, exampleBuildURI, lsp.Position{Line: 35, Character: 6})
 	assert.Equal(t, nil, err)
 	assert.Equal(t, "name required:true, type:str", content)
 
 	// Hover on property name
-	content, err = handler.getHoverContent(ctx, exampleBuildURI, lsp.Position{Line: 34, Character: 20})
+	content, err = handler.getHoverContent(ctx, exampleBuildURI, lsp.Position{Line: 35, Character: 20})
 	assert.Equal(t, nil, err)
 	assert.Equal(t, "", content)
 
 	// Hover on property call
-	content, err = handler.getHoverContent(ctx, exampleBuildURI, lsp.Position{Line: 34, Character: 34})
+	content, err = handler.getHoverContent(ctx, exampleBuildURI, lsp.Position{Line: 35, Character: 34})
 	assert.Equal(t, nil, err)
 	assert.Equal(t, "str.format()", content)
 }
@@ -141,7 +138,7 @@ func TestGetHoverContentOnArgumentWithProperty(t *testing.T) {
 func TestGetHoverContentArgOnTheSameLine(t *testing.T) {
 	var ctx = context.Background()
 
-	content, err := handler.getHoverContent(ctx, exampleBuildURI, lsp.Position{Line: 42, Character: 17})
+	content, err := handler.getHoverContent(ctx, exampleBuildURI, lsp.Position{Line: 43, Character: 17})
 	assert.Equal(t, nil, err)
 	assert.Equal(t, "name required:true, type:str", content)
 }
@@ -151,9 +148,6 @@ func TestGetHoverContentArgOnTheSameLine(t *testing.T) {
 ***************************************/
 func TestGetHoverContentOnPropertyAssignment(t *testing.T) {
 	var ctx = context.Background()
-
-	err := storeFile(ctx, assignBuildURI)
-	assert.Equal(t, nil, err)
 
 	//Hover on assignment with properties
 	content, err := handler.getHoverContent(ctx, assignBuildURI, lsp.Position{Line: 0, Character: 30})
@@ -188,7 +182,7 @@ func TestGetHoverAssignmentBuildLabel(t *testing.T) {
 
 	content, err := handler.getHoverContent(ctx, assignBuildURI, lsp.Position{Line: 25, Character: 13})
 	expected := []string{"go_library(", "    name = \"fs\",", "    srcs = ["}
-
+	t.Log(content)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, strings.Split(content, "\n")[:3], expected)
 }
@@ -269,9 +263,6 @@ func TestGetHoverContentAugAssign(t *testing.T) {
 func TestGetHoverContentProperty(t *testing.T) {
 	var ctx = context.Background()
 
-	err := storeFile(ctx, propURI)
-	assert.Equal(t, nil, err)
-
 	// Hover on CONFIG property
 	content, err := handler.getHoverContent(ctx, propURI, lsp.Position{Line: 0, Character: 4})
 	assert.Equal(t, nil, err)
@@ -287,9 +278,6 @@ func TestGetHoverContentProperty(t *testing.T) {
 ***************************************/
 func TestGetHoverContentAst(t *testing.T) {
 	var ctx = context.Background()
-
-	err := storeFile(ctx, miscURI)
-	assert.Equal(t, nil, err)
 
 	// Test for statement
 	content, err := handler.getHoverContent(ctx, miscURI, lsp.Position{Line: 0, Character: 11})
@@ -328,4 +316,23 @@ func TestGetHoverContentAst2(t *testing.T) {
 	content, err = handler.getHoverContent(ctx, miscURI, lsp.Position{Line: 9, Character: 17})
 	assert.Equal(t, nil, err)
 	assert.Equal(t, "str.lower()", content)
+}
+
+func TestGetHoverContentSubinclude(t *testing.T) {
+	var ctx = context.Background()
+
+	// hover on subincluded rule name
+	content, err := handler.getHoverContent(ctx, subincludeURI, lsp.Position{Line: 2, Character: 8})
+	assert.Equal(t, nil, err)
+
+	expected := "def plz_e2e_test(name, cmd, pre_cmd=None, expected_output=None, expected_failure=False,\n" +
+		"                 expect_output_contains=None, expect_output_doesnt_contain=None,\n" +
+		"                 deps=None, data=[], labels=None, sandbox=None,\n" +
+		"                 expect_file_exists=None, expect_file_doesnt_exist=None)"
+	assert.Equal(t, expected, content)
+
+	// hover on subincluded arg
+	content, err = handler.getHoverContent(ctx, subincludeURI, lsp.Position{Line: 3, Character: 7})
+	assert.Equal(t, nil, err)
+	assert.Equal(t, "name required:true", content)
 }

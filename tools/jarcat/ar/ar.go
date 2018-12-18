@@ -3,19 +3,17 @@ package ar
 
 import (
 	"bufio"
-	"bytes"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
-	"strconv"
+	"runtime"
 	"strings"
 	"time"
 
-	"github.com/blakesmith/ar"
+	"github.com/peterebden/ar"
 	"gopkg.in/op/go-logging.v1"
 
-	"fs"
+	"github.com/thought-machine/please/src/fs"
 )
 
 var log = logging.MustGetLogger("ar")
@@ -27,6 +25,18 @@ var mtime = time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
 // If combine is true they are treated as existing ar files and combined.
 // If rename is true the srcs are renamed as gcc would (i.e. the extension is replaced by .o).
 func Create(srcs []string, out string, combine, rename bool) error {
+	// Rename the sources as gcc would.
+	if rename {
+		for i, src := range srcs {
+			src = path.Base(src)
+			if ext := path.Ext(src); ext != "" {
+				src = src[:len(src)-len(ext)] + ".o"
+			}
+			srcs[i] = src
+			log.Debug("renamed ar source to %s", src)
+		}
+	}
+
 	log.Debug("Writing ar to %s", out)
 	f, err := os.Create(out)
 	if err != nil {
@@ -36,18 +46,18 @@ func Create(srcs []string, out string, combine, rename bool) error {
 	bw := bufio.NewWriter(f)
 	defer bw.Flush()
 	w := ar.NewWriter(bw)
-	if err := w.WriteGlobalHeader(); err != nil {
-		return err
+	// Write BSD-style names on OSX, GNU-style ones on Linux
+	if runtime.GOOS == "darwin" {
+		if err := w.WriteGlobalHeader(); err != nil {
+			return err
+		}
+	} else {
+		if err := w.WriteGlobalHeaderForLongFiles(allSourceNames(srcs, combine)); err != nil {
+			return err
+		}
 	}
 	for _, src := range srcs {
 		log.Debug("ar source file: %s", src)
-		if rename {
-			src = path.Base(src)
-			if ext := path.Ext(src); ext != "" {
-				src = src[:len(src)-len(ext)] + ".o"
-			}
-			log.Debug("renamed ar source to %s", src)
-		}
 		f, err := os.Open(src)
 		if err != nil {
 			return err
@@ -62,7 +72,7 @@ func Create(srcs []string, out string, combine, rename bool) error {
 						break
 					}
 					return err
-				} else if hdr.Name == "/" {
+				} else if hdr.Name == "/" || hdr.Name == "__.SYMDEF SORTED" || hdr.Name == "__.SYMDEF" {
 					log.Debug("skipping symbol table")
 					continue
 				}
@@ -70,39 +80,10 @@ func Create(srcs []string, out string, combine, rename bool) error {
 				hdr.ModTime = mtime
 				hdr.Uid = 0
 				hdr.Gid = 0
-
-				copyFile := func(r io.Reader, name string) error {
-					log.Debug("copying '%s' in from %s", name, src)
-					if err := w.WriteHeader(hdr); err != nil {
-						return err
-					}
-					_, err := io.Copy(w, r)
+				log.Debug("copying '%s' in from %s", hdr.Name, src)
+				if err := w.WriteHeader(hdr); err != nil {
 					return err
-				}
-
-				if !strings.HasPrefix(hdr.Name, "#1/") {
-					// Normal copy
-					if err := copyFile(r, hdr.Name); err != nil {
-						return err
-					}
-					continue
-				}
-
-				// BSD ar stores the name as a prefix to the data section.
-				b, err := ioutil.ReadAll(r)
-				if err != nil {
-					return err
-				}
-				l, err := strconv.Atoi(hdr.Name[3:])
-				if err != nil {
-					return err
-				}
-				name := string(bytes.TrimRightFunc(b[:l], func(r rune) bool { return r == 0 }))
-				if name == "__.SYMDEF SORTED" || name == "__.SYMDEF" {
-					log.Debug("skipping BSD symbol table")
-					continue
-				}
-				if err := copyFile(bytes.NewReader(b), name); err != nil {
+				} else if _, err = io.Copy(w, r); err != nil {
 					return err
 				}
 			}
@@ -118,6 +99,7 @@ func Create(srcs []string, out string, combine, rename bool) error {
 				Mode:    int64(info.Mode()),
 				Size:    info.Size(),
 			}
+			log.Debug("creating file %s", hdr.Name)
 			if err := w.WriteHeader(hdr); err != nil {
 				return err
 			} else if _, err := io.Copy(w, f); err != nil {
@@ -138,4 +120,26 @@ func Find() ([]string, error) {
 		}
 		return nil
 	})
+}
+
+// allSourceNames returns the name of all source files that we will add to the archive.
+func allSourceNames(srcs []string, combine bool) []string {
+	if !combine {
+		return srcs
+	}
+	ret := []string{}
+	for _, src := range srcs {
+		f, err := os.Open(src)
+		if err == nil {
+			r := ar.NewReader(f)
+			for {
+				hdr, err := r.Next()
+				if err != nil {
+					break
+				}
+				ret = append(ret, hdr.Name)
+			}
+		}
+	}
+	return ret
 }

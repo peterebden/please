@@ -3,12 +3,13 @@ package parse
 import (
 	"fmt"
 	"io"
+	"path"
 	"sort"
 	"strings"
 
-	"core"
-	"parse/asp"
-	"parse/rules"
+	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/src/parse/asp"
+	"github.com/thought-machine/please/src/parse/rules"
 )
 
 // InitParser initialises the parser engine. This is guaranteed to be called exactly once before any calls to Parse().
@@ -37,7 +38,7 @@ func newAspParser(state *core.BuildState) *asp.Parser {
 
 	for _, preload := range state.Config.Parse.PreloadBuildDefs {
 		log.Debug("Preloading build defs from %s...", preload)
-		p.MustLoadBuiltins(preload, nil, nil)
+		p.MustLoadBuiltins(path.Join(core.RepoRoot, preload), nil, nil)
 	}
 
 	log.Debug("Parser initialised")

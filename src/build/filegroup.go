@@ -16,9 +16,9 @@ import (
 	"path"
 	"sync"
 
-	"core"
-	"fs"
-	"remote/fsclient"
+	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/src/fs"
+	"github.com/thought-machine/please/src/remote/fsclient"
 )
 
 // Init initialises common resources for the build package.

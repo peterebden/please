@@ -3,17 +3,30 @@ package langserver
 import (
 	"bufio"
 	"context"
-	"core"
+	"github.com/thought-machine/please/src/core"
 	"fmt"
-	"fs"
+	"github.com/thought-machine/please/src/fs"
+	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
 
-	"tools/build_langserver/lsp"
+	"github.com/thought-machine/please/src/parse/asp"
+	"github.com/thought-machine/please/tools/build_langserver/lsp"
 )
+
+var quoteExp = regexp.MustCompile(`(^("|')([^"]|"")*("|'))`)
+var strTailExp = regexp.MustCompile(`(("|')([^"]|"")*("|')$)`)
+var strExp = regexp.MustCompile(`(^("|')([^"]|"")*("|'))`)
+var buildLabelExp = regexp.MustCompile(`("(\/\/|:)(\w+\/?)*(\w+[:]\w*)?"?$)`)
+var literalExp = regexp.MustCompile(`(\w*\.?\w*)$`)
+
+var attrExp = regexp.MustCompile(`(\.[\w]*)$`)
+var configAttrExp = regexp.MustCompile(`(CONFIG\.[\w]*)$`)
+var strAttrExp = regexp.MustCompile(`((".*"|'.*')\.\w*)$`)
+var dictAttrExp = regexp.MustCompile(`({.*}\.\w*)$`)
 
 // IsURL checks if the documentUri passed has 'file://' prefix
 func IsURL(uri lsp.DocumentURI) bool {
@@ -44,6 +57,7 @@ func GetPathFromURL(uri lsp.DocumentURI, pathType string) (documentPath string, 
 	if err != nil {
 		return "", err
 	}
+
 	if strings.HasPrefix(absPath, core.RepoRoot) {
 		pathType = strings.ToLower(pathType)
 		switch pathType {
@@ -51,17 +65,40 @@ func GetPathFromURL(uri lsp.DocumentURI, pathType string) (documentPath string, 
 			if fs.FileExists(absPath) {
 				return absPath, nil
 			}
+			return "", fmt.Errorf("file %s does not exit", pathFromURL)
 		case "path":
 			if fs.PathExists(absPath) {
 				return absPath, nil
 			}
+			return "", fmt.Errorf("path %s does not exit", pathFromURL)
 		default:
 			return "", fmt.Errorf(fmt.Sprintf("invalid pathType %s, "+
 				"can only be 'file' or 'path'", pathType))
 		}
 	}
 
-	return "", fmt.Errorf(fmt.Sprintf("invalid path %s, path must be in repo root", absPath))
+	return "", fmt.Errorf(fmt.Sprintf("invalid path %s, path must be in repo root: %s", absPath, core.RepoRoot))
+}
+
+// LocalFilesFromURI returns a slices of file path of the files in current directory
+// where the document is
+func LocalFilesFromURI(uri lsp.DocumentURI) ([]string, error) {
+	fp, err := GetPathFromURL(uri, "file")
+	if err != nil {
+		return nil, err
+	}
+
+	var files []string
+
+	f, err := ioutil.ReadDir(filepath.Dir(fp))
+	fname := filepath.Base(fp)
+	for _, i := range f {
+		if i.Name() != "." && i.Name() != fname {
+			files = append(files, i.Name())
+		}
+	}
+
+	return files, err
 }
 
 // PackageLabelFromURI returns a build label of a package
@@ -146,8 +183,7 @@ func doIOScan(uri lsp.DocumentURI, callback func(scanner *bufio.Scanner) ([]stri
 func TrimQuotes(str string) string {
 	// Regex match the string starts with qoute("),
 	// this is so that strings like this(visibility = ["//tools/build_langserver/...", "//src/core"]) won't be matched
-	re := regexp.MustCompile(`(^("|')([^"]|"")*("|'))`)
-	matched := re.FindString(strings.TrimSpace(str))
+	matched := quoteExp.FindString(strings.TrimSpace(str))
 	if matched != "" {
 		return matched[1 : len(matched)-1]
 	}
@@ -158,44 +194,74 @@ func TrimQuotes(str string) string {
 	return str
 }
 
+// ExtractStrTail extracts the string value from a string,
+// **the string value must be at the end of the string passed in**
+func ExtractStrTail(str string) string {
+	matched := strTailExp.FindString(strings.TrimSpace(str))
+
+	if matched != "" {
+		return matched[1 : len(matched)-1]
+	}
+
+	return ""
+}
+
 // LooksLikeString returns true if the input string looks like a string
 func LooksLikeString(str string) bool {
-	return mustMatch(`(^("|')([^"]|"")*("|'))`, str)
+	return mustMatch(strExp, str)
 }
 
 // LooksLikeAttribute returns true if the input string looks like an attribute: "hello".
 func LooksLikeAttribute(str string) bool {
-	return mustMatch(`(\.[\w]*)$`, str)
+	return mustMatch(attrExp, str)
 }
 
 // LooksLikeCONFIGAttr returns true if the input string looks like an attribute of CONFIG object: CONFIG.PLZ_VERSION
 func LooksLikeCONFIGAttr(str string) bool {
-	return mustMatch(`(CONFIG\.[\w]*)$`, str)
+	return mustMatch(configAttrExp, str)
 }
 
 // LooksLikeStringAttr returns true if the input string looks like an attribute of string: "hello".format()
 func LooksLikeStringAttr(str string) bool {
-	return mustMatch(`((".*"|'.*')\.\w*)$`, str)
+	return mustMatch(strAttrExp, str)
 }
 
 // LooksLikeDictAttr returns true if the input string looks like an attribute of dict
 // e.g. {"foo": 1, "bar": "baz"}.keys()
 func LooksLikeDictAttr(str string) bool {
-	return mustMatch(`({.*}\.\w*)$`, str)
+	return mustMatch(dictAttrExp, str)
 }
 
 // ExtractBuildLabel extracts build label from a string.
 // Beginning of the buildlabel must have a quote
 // end of the string must not be anything other than quotes or characters
 func ExtractBuildLabel(str string) string {
-	re := regexp.MustCompile(`("(\/\/|:)(\w+\/?)*(\w+[:]\w*)?"?$)`)
-	matched := re.FindString(strings.TrimSpace(str))
+	matched := buildLabelExp.FindString(strings.TrimSpace(str))
 
 	return strings.Trim(matched, `"`)
 }
 
-func mustMatch(pattern string, str string) bool {
-	re := regexp.MustCompile(pattern)
+// ExtractLiteral extra a literal expression such as function name, variable name from a content line
+func ExtractLiteral(str string) string {
+	trimmed := strings.TrimSpace(str)
+
+	// Ensure the literal we are looking for is not inside of a string
+	singleQuotes := regexp.MustCompile(`'`).FindAllString(trimmed, -1)
+	doubleQuotes := regexp.MustCompile(`"`).FindAllString(trimmed, -1)
+	if len(singleQuotes)%2 != 0 || len(doubleQuotes)%2 != 0 {
+		return ""
+	}
+
+	// Get our literal
+	matched := literalExp.FindString(trimmed)
+	if matched != "" {
+		return matched
+	}
+
+	return ""
+}
+
+func mustMatch(re *regexp.Regexp, str string) bool {
 	matched := re.FindString(str)
 	if matched != "" {
 		return true
@@ -203,7 +269,65 @@ func mustMatch(pattern string, str string) bool {
 	return false
 }
 
+// StringInSlice checks if an item is in a string slice
+func StringInSlice(strSlice []string, needle string) bool {
+	for _, item := range strSlice {
+		if item == needle {
+			return true
+		}
+	}
+
+	return false
+}
+
 // isEmpty checks if the hovered line is empty
 func isEmpty(lineContent string, pos lsp.Position) bool {
 	return len(lineContent) < pos.Character || strings.TrimSpace(lineContent[:pos.Character]) == ""
+}
+
+// withInRange checks if the input asp.Position from lsp is within the range of the Expression
+func withInRange(exprPos asp.Position, exprEndPos asp.Position, pos lsp.Position) bool {
+	withInLineRange := pos.Line >= exprPos.Line-1 &&
+		pos.Line <= exprEndPos.Line-1
+
+	withInColRange := pos.Character >= exprPos.Column-1 &&
+		pos.Character <= exprEndPos.Column-1
+
+	onTheSameLine := pos.Line == exprEndPos.Line-1 &&
+		pos.Line == exprPos.Line-1
+
+	if !withInLineRange || (onTheSameLine && !withInColRange) {
+		return false
+	}
+
+	if pos.Line == exprPos.Line-1 {
+		return pos.Character >= exprPos.Column-1
+	}
+
+	if pos.Line == exprEndPos.Line-1 {
+		return pos.Character <= exprEndPos.Column-1
+	}
+
+	return true
+}
+
+func withInRangeLSP(targetPos lsp.Position, targetEndPos lsp.Position, pos lsp.Position) bool {
+	start := lspPositionToAsp(targetPos)
+	end := lspPositionToAsp(targetEndPos)
+
+	return withInRange(start, end, pos)
+}
+
+func lspPositionToAsp(pos lsp.Position) asp.Position {
+	return asp.Position{
+		Line:   pos.Line + 1,
+		Column: pos.Character + 1,
+	}
+}
+
+func aspPositionToLsp(pos asp.Position) lsp.Position {
+	return lsp.Position{
+		Line:      pos.Line - 1,
+		Character: pos.Column - 1,
+	}
 }

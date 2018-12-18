@@ -2,7 +2,7 @@ package langserver
 
 import (
 	"context"
-	"core"
+	"github.com/thought-machine/please/src/core"
 	"fmt"
 	"path"
 	"strings"
@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"tools/build_langserver/lsp"
+	"github.com/thought-machine/please/tools/build_langserver/lsp"
 )
 
 func TestIsURL(t *testing.T) {
@@ -60,6 +60,14 @@ func TestGetPathFromURLFail(t *testing.T) {
 	p3, err := GetPathFromURL(currentFile, "dir")
 	assert.Equal(t, p3, "")
 	assert.Error(t, err)
+}
+
+func TestLocalFilesFromURI(t *testing.T) {
+	exampleBuildURI := lsp.DocumentURI("file://tools/build_langserver/langserver/test_data/example.build")
+	files, err := LocalFilesFromURI(exampleBuildURI)
+	assert.NoError(t, err)
+	assert.True(t, StringInSlice(files, "foo.go"))
+	assert.True(t, !StringInSlice(files, "example.go"))
 }
 
 func TestPackageLabelFromURI(t *testing.T) {
@@ -150,6 +158,12 @@ func TestTrimQoutes(t *testing.T) {
 	assert.Equal(t, "//src/core", trimed)
 }
 
+func TestExtractStringVal(t *testing.T) {
+	assert.Equal(t, "blah", ExtractStrTail(`    srcs=["blah"`))
+	assert.Equal(t, "foo", ExtractStrTail(`    "foo"`))
+	assert.Equal(t, "", ExtractStrTail(`"blah", srcs=`))
+}
+
 func TestLooksLikeAttribute(t *testing.T) {
 	assert.True(t, LooksLikeAttribute("CONFIG."))
 	assert.True(t, LooksLikeAttribute("CONFIG.J"))
@@ -221,6 +235,47 @@ func TestExtractBuildLabel(t *testing.T) {
 
 	label = ExtractBuildLabel(`"//src/cache/blah/:`)
 	assert.Equal(t, "", label)
+
+	label = ExtractBuildLabel(`"//src/ca`)
+	assert.Equal(t, "//src/ca", label)
+}
+
+func TestExtractLiteral(t *testing.T) {
+	lit := ExtractLiteral(`blah = "go_librar`)
+	assert.Equal(t, "", lit)
+
+	lit = ExtractLiteral(`blah = go_librar`)
+	assert.Equal(t, "go_librar", lit)
+
+	lit = ExtractLiteral(`go_librar`)
+	assert.Equal(t, "go_librar", lit)
+
+	lit = ExtractLiteral(`blah = " = go_librar`)
+	assert.Equal(t, "", lit)
+
+	lit = ExtractLiteral(`blah = "hello", hi = go_lib`)
+	assert.Equal(t, "go_lib", lit)
+
+	lit = ExtractLiteral(`blah = 'hello', hi = go_lib`)
+	assert.Equal(t, "go_lib", lit)
+
+	lit = ExtractLiteral(`"blah = 'hello, hi = go_lib`)
+	assert.Equal(t, "", lit)
+
+	// Tests for extracting attribute literals
+	lit = ExtractLiteral(`blah.form`)
+	assert.Equal(t, "blah.form", lit)
+
+	lit = ExtractLiteral(`hello = blah.form`)
+	assert.Equal(t, "blah.form", lit)
+
+	lit = ExtractLiteral(`hello = "blah.form`)
+	assert.Equal(t, "", lit)
+
+	lit = ExtractLiteral(`blah = 'hello', hi = blah.form`)
+	assert.Equal(t, "blah.form", lit)
+
+	assert.Equal(t, ".format", ExtractLiteral(`"blah".format`))
 }
 
 /*

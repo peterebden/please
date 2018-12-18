@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"tools/build_langserver/lsp"
+	"github.com/thought-machine/please/tools/build_langserver/lsp"
 )
 
 type workspaceStore struct {
@@ -20,6 +20,7 @@ type document struct {
 	text []string
 	// test content of the document while in editing(not been saved)
 	textInEdit []string
+	version    int
 }
 
 func newWorkspaceStore(rootURI lsp.DocumentURI) *workspaceStore {
@@ -31,11 +32,12 @@ func newWorkspaceStore(rootURI lsp.DocumentURI) *workspaceStore {
 
 // Store method is generally used to correspond to "textDocument/didOpen",
 // this stores the initial state of the document when opened
-func (ws *workspaceStore) Store(uri lsp.DocumentURI, content string) {
+func (ws *workspaceStore) Store(uri lsp.DocumentURI, content string, version int) {
 	text := SplitLines(content, true)
 	ws.documents[uri] = &document{
 		text:       text,
 		textInEdit: text,
+		version:    version,
 	}
 }
 
@@ -68,7 +70,7 @@ func (ws *workspaceStore) Close(uri lsp.DocumentURI) error {
 }
 
 // TrackEdit tracks the changes of the content for the targeting uri, and update the corresponding
-func (ws *workspaceStore) TrackEdit(uri lsp.DocumentURI, contentChanges []lsp.TextDocumentContentChangeEvent) error {
+func (ws *workspaceStore) TrackEdit(uri lsp.DocumentURI, contentChanges []lsp.TextDocumentContentChangeEvent, version int) error {
 	doc, ok := ws.documents[uri]
 	if !ok {
 		log.Error("document '%s' is not opened, edit did not apply", uri)
@@ -85,6 +87,7 @@ func (ws *workspaceStore) TrackEdit(uri lsp.DocumentURI, contentChanges []lsp.Te
 		}
 		doc.textInEdit = newText
 	}
+	doc.version = version
 
 	return nil
 }
@@ -116,7 +119,7 @@ func (ws *workspaceStore) applyChange(text []string, change lsp.TextDocumentCont
 		if i == endLine {
 			// Apparently, when you delete a whole line, intellij plugin sometimes sends the range like so:
 			// {startline: deletedline_index, startcol: 0}, {endline: nextline, endcol: len_of_deleted_line}...
-			if len(line)-1 < endCol && len(text[i-1])-1 == endCol {
+			if len(line)-1 < endCol && (len(text) != 1 && len(text[i-1])-1 == endCol) {
 				newText += line
 			} else {
 				newText += line[endCol:]
@@ -137,11 +140,12 @@ func SplitLines(content string, keepEnds bool) []string {
 
 	for i := range splited {
 		// Do not add endline character on the last empty line
-		if i == len(splited)-1 {
+		if (i == len(splited)-1 && splited[i] == "") || len(splited) <= 1 {
 			continue
 		}
 		splited[i] += "\n"
 	}
+
 	return splited
 }
 
@@ -152,11 +156,14 @@ func JoinLines(text []string, hasEnds bool) string {
 		return concat
 	}
 
+	newText := make([]string, len(text))
 	for i := range text {
-		if i == len(text)-1 {
+		if i == len(text)-1 && text[i] == "" {
+			newText[i] = text[i]
 			continue
 		}
-		text[i] = text[i][:len(text[i])-1]
+		newText[i] = strings.TrimSuffix(text[i], "\n")
 	}
-	return strings.Join(text, "\n")
+
+	return strings.Join(newText, "\n")
 }

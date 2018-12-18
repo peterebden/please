@@ -12,7 +12,7 @@ import (
 
 	"gopkg.in/op/go-logging.v1"
 
-	"core"
+	"github.com/thought-machine/please/src/core"
 )
 
 var log = logging.MustGetLogger("worker")
@@ -217,7 +217,7 @@ func (l *stderrLogger) Write(msg []byte) (int, error) {
 			if msg := strings.TrimSpace(string(l.buffer)); strings.HasPrefix(msg, "WARNING") {
 				log.Warning("Warning from remote worker: %s", msg)
 			} else {
-				log.Error("Error from remote worker: %s")
+				log.Error("Error from remote worker: %s", msg)
 			}
 		}
 		l.History = append(l.History, l.buffer...)

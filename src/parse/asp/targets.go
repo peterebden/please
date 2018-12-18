@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"core"
-	"fs"
+	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/src/fs"
 )
 
 // filegroupCommand is the command we put on filegroup rules.
@@ -21,12 +21,10 @@ func createTarget(s *scope, args []pyObject) *core.BuildTarget {
 	isTruthy := func(i int) bool {
 		return args[i] != nil && args[i] != None && (args[i] == &True || args[i].IsTruthy())
 	}
-
 	name := string(args[0].(pyString))
 	testCmd := args[2]
 	container := isTruthy(19)
 	test := isTruthy(14)
-
 	// A bunch of error checking first
 	s.NAssert(name == "all", "'all' is a reserved build target name.")
 	s.NAssert(name == "", "Target name is empty")
@@ -439,7 +437,7 @@ func asDict(obj pyObject) (pyDict, bool) {
 func checkSubDir(s *scope, src string) {
 	if strings.Contains(src, "/") {
 		// Target is in a subdirectory, check nobody else owns that.
-		for dir := path.Dir(path.Join(s.pkg.Name, src)); dir != s.pkg.Name && dir != "."; dir = path.Dir(dir) {
+		for dir := path.Dir(path.Join(s.pkg.Name, src)); dir != s.pkg.Name && dir != "." && dir != "/"; dir = path.Dir(dir) {
 			s.Assert(!fs.IsPackage(s.state.Config.Parse.BuildFileName, dir), "Trying to use file %s, but that belongs to another package (%s)", src, dir)
 		}
 	}

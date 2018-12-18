@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"core"
-	"parse/rules"
+	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/src/parse/rules"
 )
 
 func parseFileToStatements(filename string) (*scope, []*Statement, error) {
@@ -266,4 +266,10 @@ func TestSubincludeConfig(t *testing.T) {
 	assert.NoError(t, err)
 	s.SetAll(s.interpreter.Subinclude("src/parse/asp/test_data/interpreter/subinclude_config.build"), false)
 	assert.EqualValues(t, "test test", s.config.Get("test", None))
+}
+
+func TestValidateReturnVal(t *testing.T) {
+	s, err := parseFile("src/parse/asp/test_data/return_type.build")
+	assert.NotNil(t, s.Lookup("subinclude"))
+	assert.Error(t, err, "Invalid return type str from function dict_val, expecting dict")
 }

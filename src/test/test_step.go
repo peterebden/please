@@ -13,11 +13,11 @@ import (
 	"github.com/pkg/xattr"
 	"gopkg.in/op/go-logging.v1"
 
-	"build"
-	"core"
-	"metrics"
-	"utils"
-	"worker"
+	"github.com/thought-machine/please/src/build"
+	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/src/metrics"
+	"github.com/thought-machine/please/src/utils"
+	"github.com/thought-machine/please/src/worker"
 )
 
 var log = logging.MustGetLogger("test")
@@ -391,8 +391,7 @@ func parseTestOutput(stdout []byte, stderr string, runError error, duration time
 					},
 				},
 			}
-		}
-		if runError == nil {
+		} else if runError == nil {
 			return core.TestSuite{
 				TestCases: []core.TestCase{
 					{
@@ -405,6 +404,25 @@ func parseTestOutput(stdout []byte, stderr string, runError error, duration time
 								Error: &core.TestResultFailure{
 									Message: "Test failed to produce output results file",
 									Type:    "MissingResults",
+								},
+							},
+						},
+					},
+				},
+			}
+		} else if target.NoTestOutput {
+			return core.TestSuite{
+				TestCases: []core.TestCase{
+					{
+						Name: target.Results.Name,
+						Executions: []core.TestExecution{
+							{
+								Duration: &duration,
+								Stdout:   string(stdout),
+								Stderr:   stderr,
+								Failure: &core.TestResultFailure{
+									Message: "Test failed: " + runError.Error(),
+									Type:    "TestFailed",
 								},
 							},
 						},

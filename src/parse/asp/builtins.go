@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"core"
-	"fs"
+	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/src/fs"
 )
 
 // A few sneaky globals for when we don't have a scope handy
@@ -76,6 +76,12 @@ func registerBuiltins(s *scope) {
 	configMethods = map[string]*pyFunc{
 		"get":        setNativeCode(s, "config_get", configGet),
 		"setdefault": s.Lookup("setdefault").(*pyFunc),
+	}
+	if s.state.Config.Parse.GitFunctions {
+		setNativeCode(s, "git_branch", execGitBranch)
+		setNativeCode(s, "git_commit", execGitCommit)
+		setNativeCode(s, "git_show", execGitShow)
+		setNativeCode(s, "git_state", execGitState)
 	}
 	setLogCode(s, "debug", log.Debug)
 	setLogCode(s, "info", log.Info)

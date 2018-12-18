@@ -18,10 +18,10 @@ import (
 
 	"gopkg.in/op/go-logging.v1"
 
-	"build"
-	"cli"
-	"core"
-	"test"
+	"github.com/thought-machine/please/src/build"
+	"github.com/thought-machine/please/src/cli"
+	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/src/test"
 )
 
 var log = logging.MustGetLogger("output")
@@ -99,7 +99,7 @@ func MonitorState(state *core.BuildState, plainOutput, keepGoing, shouldBuild, s
 		if state.Verbosity > 0 {
 			printFailedBuildResults(failedNonTests, failedTargetMap, duration)
 		}
-		if !keepGoing {
+		if !keepGoing && !state.Watch {
 			// Die immediately and unsuccessfully, this avoids awkward interactions with various things later.
 			os.Exit(-1)
 		}
@@ -117,7 +117,7 @@ func MonitorState(state *core.BuildState, plainOutput, keepGoing, shouldBuild, s
 			log.Fatalf("Target %s hasn't built but we have no pending tasks left.\n%s", label, cycle)
 		}
 	}
-	if state.Verbosity > 0 && shouldBuild {
+	if state.Verbosity > 0 && shouldBuild && len(failedNonTests) == 0 {
 		if state.PrepareOnly || state.PrepareShell {
 			printTempDirs(state, duration)
 		} else if shouldTest { // Got to the test phase, report their results.

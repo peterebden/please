@@ -216,6 +216,9 @@ func (p *parser) parseFuncDef() *FuncDef {
 	fd := &FuncDef{
 		Name: p.next(Ident).Value,
 	}
+	if strings.HasPrefix(fd.Name, "_") {
+		fd.IsPrivate = true
+	}
 	p.next('(')
 	for p.anythingBut(')') {
 		fd.Arguments = append(fd.Arguments, p.parseArgument())
@@ -224,6 +227,15 @@ func (p *parser) parseFuncDef() *FuncDef {
 		}
 	}
 	p.next(')')
+
+	if tok := p.l.Peek(); tok.Value == "-" {
+		p.next('-')
+		p.next('>')
+
+		tok := p.oneofval("bool", "str", "int", "list", "dict", "function", "config")
+		fd.Return = tok.Value
+	}
+
 	// Get the position for the end of function defition header
 	fd.EoDef = p.next(':').Pos
 
@@ -243,6 +255,10 @@ func (p *parser) parseFuncDef() *FuncDef {
 func (p *parser) parseArgument() Argument {
 	a := Argument{
 		Name: p.next(Ident).Value,
+	}
+	// indicate an argument is private if it is prefixed with "_"
+	if strings.HasPrefix(a.Name, "_") {
+		a.IsPrivate = true
 	}
 	if tok := p.l.Peek(); tok.Type == ',' || tok.Type == ')' {
 		return a

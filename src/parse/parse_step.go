@@ -13,10 +13,10 @@ import (
 
 	"gopkg.in/op/go-logging.v1"
 
-	"cli"
-	"core"
-	"fs"
-	"worker"
+	"github.com/thought-machine/please/src/cli"
+	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/src/fs"
+	"github.com/thought-machine/please/src/worker"
 )
 
 var log = logging.MustGetLogger("parse")
@@ -236,7 +236,7 @@ func buildFileName(state *core.BuildState, pkgName string, subrepo *core.Subrepo
 		return "WORKSPACE", ""
 	}
 	for _, buildFileName := range config.Parse.BuildFileName {
-		if filename := path.Join(pkgName, buildFileName); fs.FileExists(filename) {
+		if filename := path.Join(core.RepoRoot, pkgName, buildFileName); fs.FileExists(filename) {
 			return filename, pkgName
 		}
 	}

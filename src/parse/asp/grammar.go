@@ -38,10 +38,13 @@ type FuncDef struct {
 	Arguments  []Argument   `"(" [ @@ { "," @@ } ] ")" Colon EOL`
 	Docstring  string       `[ @String EOL ]`
 	Statements []*Statement `{ @@ } Unindent`
-	EoDef	   Position
+	EoDef      Position
+	// allowed return type of the FuncDef
+	Return string
 	// Not part of the grammar. Used to indicate internal targets that can only
 	// be called using keyword arguments.
 	KeywordsOnly bool
+	IsPrivate    bool
 }
 
 // A ForStatement implements the 'for' statement.
@@ -71,6 +74,8 @@ type Argument struct {
 	// We use this to support compatibility with Bazel & Buck etc in some cases.
 	Aliases []string    `[ "&" ( { @Ident [ "&" ] } ) ]`
 	Value   *Expression `[ "=" @@ ]`
+
+	IsPrivate bool
 }
 
 // An Expression is a generalised Python expression, i.e. anything that can appear where an
@@ -166,7 +171,7 @@ type IdentStatementAction struct {
 // An IdentExpr implements parts of an expression that begin with an identifier (i.e. anything
 // that might be a variable name).
 type IdentExpr struct {
-	Pos Position
+	Pos    Position
 	EndPos Position
 	Name   string `@Ident`
 	Action []struct {
@@ -182,7 +187,7 @@ type Call struct {
 
 // A CallArgument represents a single argument at a call site of a function.
 type CallArgument struct {
-	Pos Position
+	Pos   Position
 	Name  string     `[ @@ "=" ]`
 	Value Expression `@@`
 }

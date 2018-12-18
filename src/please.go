@@ -15,30 +15,29 @@ import (
 	"github.com/jessevdk/go-flags"
 	"gopkg.in/op/go-logging.v1"
 
-	"build"
-	"cache"
-	"clean"
-	"cli"
-	"core"
-	"export"
-	"follow"
-	"fs"
-	"gc"
-	"hashes"
-	"help"
-	"ide/intellij"
-	"metrics"
-	"output"
-	"parse"
-	"query"
-	"run"
-	"sync"
-	"test"
-	"tool"
-	"update"
-	"utils"
-	"watch"
-	"worker"
+	"github.com/thought-machine/please/src/build"
+	"github.com/thought-machine/please/src/cache"
+	"github.com/thought-machine/please/src/clean"
+	"github.com/thought-machine/please/src/cli"
+	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/src/export"
+	"github.com/thought-machine/please/src/follow"
+	"github.com/thought-machine/please/src/gc"
+	"github.com/thought-machine/please/src/hashes"
+	"github.com/thought-machine/please/src/help"
+	"github.com/thought-machine/please/src/ide/intellij"
+	"github.com/thought-machine/please/src/metrics"
+	"github.com/thought-machine/please/src/output"
+	"github.com/thought-machine/please/src/parse"
+	"github.com/thought-machine/please/src/plz"
+	"github.com/thought-machine/please/src/query"
+	"github.com/thought-machine/please/src/run"
+	"github.com/thought-machine/please/src/test"
+	"github.com/thought-machine/please/src/tool"
+	"github.com/thought-machine/please/src/update"
+	"github.com/thought-machine/please/src/utils"
+	"github.com/thought-machine/please/src/watch"
+	"github.com/thought-machine/please/src/worker"
 )
 
 var log = logging.MustGetLogger("plz")
@@ -63,7 +62,7 @@ var opts struct {
 		Verbosity         cli.Verbosity `short:"v" long:"verbosity" description:"Verbosity of output (error, warning, notice, info, debug)" default:"warning"`
 		LogFile           cli.Filepath  `long:"log_file" description:"File to echo full logging output to" default:"plz-out/log/build.log"`
 		LogFileLevel      cli.Verbosity `long:"log_file_level" description:"Log level for file output" default:"debug"`
-		InteractiveOutput bool          `long:"interactive_output" description:"Show interactive output ina  terminal"`
+		InteractiveOutput bool          `long:"interactive_output" description:"Show interactive output in a terminal"`
 		PlainOutput       bool          `short:"p" long:"plain_output" description:"Don't show interactive output."`
 		Colour            bool          `long:"colour" description:"Forces coloured output from logging & other shell output."`
 		NoColour          bool          `long:"nocolour" description:"Forces colourless output from logging & other shell output."`
@@ -186,8 +185,9 @@ var opts struct {
 	} `command:"clean" description:"Cleans build artifacts" subcommands-optional:"true"`
 
 	Watch struct {
-		Run  bool `short:"r" long:"run" description:"Runs the specified targets when they change (default is to build or test as appropriate)."`
-		Args struct {
+		Run      bool `short:"r" long:"run" description:"Runs the specified targets when they change (default is to build or test as appropriate)."`
+		Watching bool `no-flag:"true"`
+		Args     struct {
 			Targets []core.BuildLabel `positional-arg-name:"targets" required:"true" description:"Targets to watch the sources of for changes"`
 		} `positional-args:"true" required:"true"`
 	} `command:"watch" description:"Watches sources of targets for changes and rebuilds them"`
@@ -646,12 +646,10 @@ var buildFunctions = map[string]func() bool{
 		})
 	},
 	"watch": func() bool {
+		opts.Watch.Watching = true
 		success, state := runBuild(opts.Watch.Args.Targets, true, true)
 		watchedProcessName := setWatchedTarget(state, state.ExpandOriginalTargets())
-		if success {
-			watch.Watch(state, state.ExpandOriginalTargets(), watchedProcessName, runWatchedBuild)
-		}
-
+		watch.Watch(state, state.ExpandOriginalTargets(), watchedProcessName, runWatchedBuild)
 		return success
 	},
 	"filter": func() bool {
@@ -736,7 +734,6 @@ func pleaseRemote(tid int, state *core.BuildState) {
 	}
 }
 
-// set the watch
 func setWatchedTarget(state *core.BuildState, labels core.BuildLabels) string {
 	if opts.Watch.Run {
 		opts.Run.Parallel.PositionalArgs.Targets = labels
@@ -756,7 +753,6 @@ func setWatchedTarget(state *core.BuildState, labels core.BuildLabels) string {
 		}
 	}
 	opts.Build.Args.Targets = labels
-
 	return "build"
 }
 
@@ -768,15 +764,6 @@ func doTest(targets []core.BuildLabel, surefireDir cli.Filepath, resultsFile cli
 	test.CopySurefireXmlFilesToDir(state, string(surefireDir))
 	test.WriteResultsToFileOrDie(state.Graph, string(resultsFile))
 	return success, state
-}
-
-// parseForVisibleTargets adds parse tasks for any targets that the given label is visible to.
-func parseForVisibleTargets(state *core.BuildState, label core.BuildLabel) {
-	if target := state.Graph.Target(label); target != nil {
-		for _, vis := range target.Visibility {
-			findOriginalTask(state, vis, false)
-		}
-	}
 }
 
 // prettyOutputs determines from input flags whether we should show 'pretty' output (ie. interactive).
@@ -819,23 +806,18 @@ func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput,
 	state.NeedHashesOnly = len(opts.Hash.Args.Targets) > 0
 	state.PrepareOnly = opts.Build.Prepare || opts.Build.Shell
 	state.PrepareShell = opts.Build.Shell || opts.Test.Shell || opts.Cover.Shell
+	state.Watch = opts.Watch.Watching
 	state.CleanWorkdirs = !opts.FeatureFlags.KeepWorkdirs
 	state.ForceRebuild = len(opts.Rebuild.Args.Targets) > 0
 	state.ShowTestOutput = opts.Test.ShowOutput || opts.Cover.ShowOutput
 	state.DebugTests = debugTests
 	state.ShowAllOutput = opts.OutputFlags.ShowAllOutput
 	state.SetIncludeAndExclude(opts.BuildFlags.Include, opts.BuildFlags.Exclude)
-	parse.InitParser(state)
-	build.Init(state)
 
-	if config.Events.Port != 0 && state.NeedBuild {
-		shutdown := follow.InitialiseServer(state, config.Events.Port)
-		defer shutdown()
+	if state.DebugTests && len(targets) != 1 {
+		log.Fatalf("-d/--debug flag can only be used with a single test target")
 	}
-	if config.Events.Port != 0 || config.Display.SystemStats {
-		go follow.UpdateResources(state)
-	}
-	metrics.InitFromConfig(config)
+
 	// Acquire the lock before we start building
 	if (state.NeedBuild || state.NeedTests) && !opts.FeatureFlags.NoLock {
 		core.AcquireRepoLock()
@@ -875,43 +857,23 @@ func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput,
 		state.Cache.Shutdown()
 	}
 
-	return success, state
-}
+	detailedTests := state.NeedTests && (opts.Test.Detailed || opts.Cover.Detailed ||
+		(len(targets) == 1 && !targets[0].IsAllTargets() &&
+			!targets[0].IsAllSubpackages() && targets[0] != core.BuildLabelStdin))
 
-// findOriginalTasks finds the original parse tasks for the original set of targets.
-func findOriginalTasks(state *core.BuildState, targets []core.BuildLabel) {
-	if state.Config.Bazel.Compatibility && fs.FileExists("WORKSPACE") {
-		// We have to parse the WORKSPACE file before anything else to understand subrepos.
-		// This is a bit crap really since it inhibits parallelism for the first step.
-		parse.Parse(0, state, core.NewBuildLabel("workspace", "all"), core.OriginalTarget, false, state.Include, state.Exclude, false)
-	}
-	if opts.BuildFlags.Arch.Arch != "" {
-		// Set up a new subrepo for this architecture.
-		state.Graph.AddSubrepo(core.SubrepoForArch(state, opts.BuildFlags.Arch))
-	}
-	for _, target := range targets {
-		if target == core.BuildLabelStdin {
-			for label := range cli.ReadStdin() {
-				findOriginalTask(state, core.ParseBuildLabels([]string{label})[0], true)
-			}
-		} else {
-			findOriginalTask(state, target, true)
-		}
-	}
-	state.TaskDone(true) // initial target adding counts as one.
-}
+	return plz.Init(targets, state, config, plz.InitOpts{
+		ParsePackageOnly: opts.ParsePackageOnly,
+		VisibilityParse:  opts.VisibilityParse,
+		DetailedTests:    detailedTests,
+		KeepGoing:        opts.BuildFlags.KeepGoing,
+		PrettyOutput:     prettyOutput,
+		ShouldRun:        !opts.Run.Args.Target.IsEmpty(),
+		ShowStatus:       opts.Build.ShowStatus,
+		TraceFile:        string(opts.OutputFlags.TraceFile),
+		Arch:             opts.BuildFlags.Arch,
+		NoLock:           !opts.FeatureFlags.NoLock,
+	})
 
-func findOriginalTask(state *core.BuildState, target core.BuildLabel, addToList bool) {
-	if opts.BuildFlags.Arch.Arch != "" {
-		target.Subrepo = opts.BuildFlags.Arch.String()
-	}
-	if target.IsAllSubpackages() {
-		for pkg := range utils.FindAllSubpackages(state.Config, target.PackageName, "") {
-			state.AddOriginalTarget(core.NewBuildLabel(pkg, "all"), addToList)
-		}
-	} else {
-		state.AddOriginalTarget(target, addToList)
-	}
 }
 
 // testTargets handles test targets which can be given in two formats; a list of targets or a single

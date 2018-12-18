@@ -12,14 +12,29 @@ type ServerCapabilities struct {
 
 	HoverProvider              bool                  `json:"hoverProvider"`
 	CompletionProvider         *CompletionOptions    `json:"completionProvider"`
-	SignatureHelpProvider      *SignatureHelpOptions `json:"signatureHelpOptions"`
+	SignatureHelpProvider      *SignatureHelpOptions `json:"signatureHelpProvider"`
 	DefinitionProvider         bool                  `json:"definitionProvider"`
 	TypeDefinitionProvider     bool                  `json:"typeDefinitionProvider,omitempty"`
 	ImplementationProvider     bool                  `json:"implementationProvider,omitempty"`
-	ReferenceProvider          bool                  `json:"referenceProvider,omitempty"`
+	ReferencesProvider         bool                  `json:"referenceProvider,omitempty"`
+	RenameProvider             bool                  `json:"renameProvider,omitempty"`
 	DocumentSymbolProvider     bool                  `json:"documentSymbolProvider,omitempty"`
 	DocumentHighlightProvider  bool                  `json:"documentHighlightProvider,omitempty"`
 	DocumentFormattingProvider bool                  `json:"documentFormattingProvider,omitempty"`
+}
+
+// TextDocumentPositionParams is a parameter literal used in requests to pass a text document
+// and a position inside that document
+type TextDocumentPositionParams struct {
+	/**
+	 * The text document.
+	 */
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+
+	/**
+	 * The position inside the text document.
+	 */
+	Position Position `json:"position"`
 }
 
 // TextDocumentSyncOptions defines the open and close notifications are sent to the server.
@@ -49,6 +64,28 @@ type CompletionOptions struct {
 // SignatureHelpOptions indicate the server provides signature help support
 type SignatureHelpOptions struct {
 	TriggerCharacters []string `json:"triggerCharacters,omitempty"`
+}
+
+// SignatureHelp is the response from "textDocument/signatureHelp"
+// represents the signature of something callable.
+type SignatureHelp struct {
+	Signatures      []SignatureInformation `json:"signatures"`
+	ActiveSignature int                    `json:"activeSignature"`
+	ActiveParameter int                    `json:"activeParameter"`
+}
+
+// SignatureInformation represents the signature of something callable.
+type SignatureInformation struct {
+	Label         string                 `json:"label"`
+	Documentation string                 `json:"documentation,omitempty"`
+	Parameters    []ParameterInformation `json:"parameters,omitempty"`
+}
+
+// ParameterInformation represents a parameter of a callable-signature. A parameter can
+// have a label and a doc-comment.
+type ParameterInformation struct {
+	Label         string `json:"label"`
+	Documentation string `json:"documentation,omitempty"`
 }
 
 // CancelParams is the params send to ‘$/cancelRequest’ method
@@ -129,4 +166,42 @@ type CompletionItem struct {
 	InsertTextFormat InsertTextFormat   `json:"insertTextFormat,omitempty"`
 	TextEdit         *TextEdit          `json:"textEdit,omitempty"`
 	Data             interface{}        `json:"data,omitempty"`
+}
+
+// PublishDiagnosticsParams is the params sent from the server to the client for textDocument/publishDiagnostics method
+type PublishDiagnosticsParams struct {
+	URI         DocumentURI   `json:"uri"`
+	Diagnostics []*Diagnostic `json:"diagnostics"`
+}
+
+// DocumentFormattingParams is the params sent from the client for textDocument/formatting request
+type DocumentFormattingParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Options      FormattingOptions      `json:"options"`
+}
+
+// FormattingOptions represent Value-object describing what options formatting should use.
+type FormattingOptions struct {
+	TabSize      int    `json:"tabSize"`
+	InsertSpaces bool   `json:"insertSpaces"`
+	Key          string `json:"key"`
+}
+
+// ReferenceParams is the params sent from the client for textDocument/references request
+type ReferenceParams struct {
+	*TextDocumentPositionParams
+
+	Context ReferenceContext `json:"context"`
+}
+
+// ReferenceContext is the context used in ReferenceParams
+type ReferenceContext struct {
+	IncludeDeclaration bool `json:"includeDeclaration"`
+}
+
+// RenameParams is the params sent from the client for textDocument/rename request
+type RenameParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+	NewName      string                 `json:"newName"`
 }

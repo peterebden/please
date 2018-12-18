@@ -19,10 +19,10 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"gopkg.in/op/go-logging.v1"
 
-	"core"
-	"fs"
-	"metrics"
-	"worker"
+	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/src/fs"
+	"github.com/thought-machine/please/src/metrics"
+	"github.com/thought-machine/please/src/worker"
 )
 
 var log = logging.MustGetLogger("build")
@@ -430,7 +430,7 @@ func RemoveOutputs(target *core.BuildTarget) error {
 // It returns true if something was removed.
 func checkForStaleOutput(filename string, err error) bool {
 	if perr, ok := err.(*os.PathError); ok && perr.Err.Error() == "not a directory" {
-		for dir := path.Dir(filename); dir != "." && dir != "/" && path.Base(dir) != "plz-out"; dir = path.Dir(filename) {
+		for dir := path.Dir(filename); dir != "." && dir != "/" && path.Base(dir) != "plz-out"; dir = path.Dir(dir) {
 			if fs.FileExists(dir) {
 				log.Warning("Removing %s which appears to be a stale output file", dir)
 				os.Remove(dir)
@@ -464,7 +464,15 @@ func calculateAndCheckRuleHash(state *core.BuildState, target *core.BuildTarget)
 	// Set appropriate permissions on outputs
 	if target.IsBinary {
 		for _, output := range target.FullOutputs() {
-			if err := os.Chmod(output, target.OutMode()); err != nil {
+			// Walk through the output,
+			// if the output is a directory,apply output mode to the file instead of the directory
+			err := fs.Walk(output, func(path string, isDir bool) error {
+				if isDir {
+					return nil
+				}
+				return os.Chmod(path, target.OutMode())
+			})
+			if err != nil {
 				return nil, err
 			}
 		}

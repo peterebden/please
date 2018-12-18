@@ -2,16 +2,17 @@ package langserver
 
 import (
 	"context"
-	"core"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"sync"
-
-	"tools/build_langserver/lsp"
 
 	"github.com/sourcegraph/jsonrpc2"
 	"gopkg.in/op/go-logging.v1"
+
+	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/tools/build_langserver/lsp"
 )
 
 var log = logging.MustGetLogger("lsp")
@@ -21,8 +22,7 @@ func NewHandler() jsonrpc2.Handler {
 	h := &LsHandler{
 		IsServerDown: false,
 	}
-	return langHandler{
-		jsonrpc2.HandlerWithError(h.Handle)}
+	return langHandler{jsonrpc2.HandlerWithError(h.Handle)}
 }
 
 // handler wraps around LsHandler to correctly handler requests in the correct order
@@ -44,24 +44,36 @@ type LsHandler struct {
 
 	IsServerDown         bool
 	supportedCompletions []lsp.CompletionItemKind
+
+	diagPublisher *diagnosticsPublisher
 }
 
 // Handle function takes care of all the incoming from the client, and returns the correct response
 func (h *LsHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result interface{}, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("Panic in handler: %s: %s", r, debug.Stack())
+		}
+	}()
 	if req.Method != "initialize" && h.init == nil {
 		return nil, fmt.Errorf("server must be initialized")
 	}
 	h.conn = conn
 
-	log.Info(fmt.Sprintf("handling method %s with params: %s", req.Method, req.Params))
+	log.Info("handling method %s with params: %s", req.Method, req.Params)
 	methods := map[string]func(ctx context.Context, req *jsonrpc2.Request) (result interface{}, err error){
-		"initialize":              h.handleInit,
-		"initialzed":              h.handleInitialized,
-		"shutdown":                h.handleShutDown,
-		"exit":                    h.handleExit,
-		"$/cancelRequest":         h.handleCancel,
-		"textDocument/hover":      h.handleHover,
-		"textDocument/completion": h.handleCompletion,
+		"initialize":                 h.handleInit,
+		"initialzed":                 h.handleInitialized,
+		"shutdown":                   h.handleShutDown,
+		"exit":                       h.handleExit,
+		"$/cancelRequest":            h.handleCancel,
+		"textDocument/hover":         h.handleHover,
+		"textDocument/completion":    h.handleCompletion,
+		"textDocument/signatureHelp": h.handleSignature,
+		"textDocument/definition":    h.handleDefinition,
+		"textDocument/formatting":    h.handleReformatting,
+		"textDocument/references":    h.handleReferences,
+		"textDocument/rename":        h.handleRename,
 	}
 
 	if req.Method != "initialize" && req.Method != "exit" &&
@@ -71,9 +83,12 @@ func (h *LsHandler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrp
 	}
 
 	if method, ok := methods[req.Method]; ok {
-		return method(ctx, req)
+		result, err := method(ctx, req)
+		if err != nil {
+			log.Error("Error handling %s: %s", req.Method, err)
+		}
+		return result, err
 	}
-	// TODO(bnm): call fs request handlers like, textDocument/didOpen
 
 	return h.handleTDRequests(ctx, req)
 }
@@ -94,6 +109,7 @@ func (h *LsHandler) handleInit(ctx context.Context, req *jsonrpc2.Request) (resu
 	// Set the Init state of the handler
 	h.mu.Lock()
 	defer h.mu.Unlock()
+
 	// TODO(bnmetrics): Ideas: this could essentially be a bit fragile.
 	// maybe we can defer until user send a request with first file URL
 	core.FindRepoRoot()
@@ -102,6 +118,7 @@ func (h *LsHandler) handleInit(ctx context.Context, req *jsonrpc2.Request) (resu
 	params.EnsureRoot()
 	h.repoRoot = string(params.RootURI)
 	h.workspace = newWorkspaceStore(params.RootURI)
+	h.diagPublisher = newDiagnosticsPublisher()
 
 	h.supportedCompletions = params.Capabilities.TextDocument.Completion.CompletionItemKind.ValueSet
 	h.init = &params
@@ -121,6 +138,13 @@ func (h *LsHandler) handleInit(ctx context.Context, req *jsonrpc2.Request) (resu
 
 	defer h.requestStore.Cancel(req.ID)
 
+	// start the goroutine for publishing diagnostics
+	go func() {
+		for {
+			h.publishDiagnostics(h.conn)
+		}
+	}()
+
 	// Fill in the response results
 	TDsync := lsp.SyncIncremental
 	completeOps := &lsp.CompletionOptions{
@@ -129,20 +153,22 @@ func (h *LsHandler) handleInit(ctx context.Context, req *jsonrpc2.Request) (resu
 	}
 
 	sigHelpOps := &lsp.SignatureHelpOptions{
-		TriggerCharacters: []string{"{", ","},
+		TriggerCharacters: []string{"(", ","},
 	}
 
-	defer log.Info("Plz build file language server initialized")
+	log.Info("Initializing plz build file language server..")
 	return lsp.InitializeResult{
+
 		Capabilities: lsp.ServerCapabilities{
 			TextDocumentSync:           &TDsync,
 			HoverProvider:              true,
+			RenameProvider:             true,
 			CompletionProvider:         completeOps,
 			SignatureHelpProvider:      sigHelpOps,
 			DefinitionProvider:         true,
 			TypeDefinitionProvider:     true,
 			ImplementationProvider:     true,
-			ReferenceProvider:          true,
+			ReferencesProvider:         true,
 			DocumentFormattingProvider: true,
 			DocumentHighlightProvider:  true,
 			DocumentSymbolProvider:     true,
@@ -189,6 +215,46 @@ func (h *LsHandler) handleCancel(ctx context.Context, req *jsonrpc2.Request) (re
 	return nil, nil
 }
 
+// getParamFromTDPositionReq gets the lsp.TextDocumentPositionParams struct
+// if the method sends a TextDocumentPositionParams json object, e.g. "textDocument/definition", "textDocument/hover"
+func (h *LsHandler) getParamFromTDPositionReq(req *jsonrpc2.Request, methodName string) (*lsp.TextDocumentPositionParams, error) {
+	if req.Params == nil {
+		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams}
+	}
+
+	log.Info("%s with params %s", methodName, req.Params)
+	var params *lsp.TextDocumentPositionParams
+	if err := json.Unmarshal(*req.Params, &params); err != nil {
+		return nil, err
+	}
+
+	documentURI, err := getURIAndHandleErrors(params.TextDocument.URI, methodName)
+	if err != nil {
+		return nil, err
+	}
+
+	params.TextDocument.URI = documentURI
+
+	return params, nil
+}
+
+// ensureLineContent handle cases when the completion pos happens on the last line of the file, without any newline char
+func (h *LsHandler) ensureLineContent(uri lsp.DocumentURI, pos lsp.Position) string {
+	fileContent := h.workspace.documents[uri].textInEdit
+	// so we don't run into the problem of 'index out of range'
+	if len(fileContent)-1 < pos.Line {
+		return ""
+	}
+
+	lineContent := fileContent[pos.Line]
+
+	if len(lineContent)+1 == pos.Character && len(fileContent) == pos.Line+1 {
+		lineContent += "\n"
+	}
+
+	return lineContent
+}
+
 func getURIAndHandleErrors(uri lsp.DocumentURI, method string) (lsp.DocumentURI, error) {
 	documentURI, err := EnsureURL(uri, "file")
 	if err != nil {
@@ -200,4 +266,19 @@ func getURIAndHandleErrors(uri lsp.DocumentURI, method string) (lsp.DocumentURI,
 		}
 	}
 	return documentURI, err
+}
+
+func isVisible(buildDef *BuildDef, currentPkg string) bool {
+	for _, i := range buildDef.Visibility {
+		if i == "PUBLIC" {
+			return true
+		}
+
+		label := core.ParseBuildLabel(i, currentPkg)
+		currentPkgLabel := core.ParseBuildLabel(currentPkg, currentPkg)
+		if label.Includes(currentPkgLabel) {
+			return true
+		}
+	}
+	return false
 }
