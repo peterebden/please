@@ -252,6 +252,7 @@ func TestMerge(t *testing.T) {
 				{Start: 9223372036854775809, End: 11529215046068469760},
 				{Start: 13835058055282163713, End: 16140901064495857664},
 			},
+			Online: true,
 		}, {
 			Address: address,
 			Name:    "node-2",
@@ -261,6 +262,7 @@ func TestMerge(t *testing.T) {
 				{Start: 11529215046068469761, End: 13835058055282163712},
 				{Start: 16140901064495857665, End: 18446744073709551615},
 			},
+			Online: true,
 		},
 	}
 	r := newRing(testClientFactory)
@@ -280,6 +282,7 @@ func TestMerge(t *testing.T) {
 			{Start: 3005843009213693952, End: 4611686018427387904},
 			{Start: 7017529027641081856, End: 9223372036854775808},
 		},
+		Online: true,
 	})
 	assert.NoError(t, r.Merge(nodes[2].Name, nodes[2].Address, nodes[2].Ranges))
 	// The existing ranges should have updated correctly.
