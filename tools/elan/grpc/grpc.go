@@ -385,6 +385,10 @@ func (s *server) updatePeers(ctx context.Context, exclude string) {
 	var wg sync.WaitGroup
 	for name, client := range s.ring.Nodes() {
 		if name != s.name && name != exclude {
+			if client == nil {
+				log.Warning("Not replicating to %s since it seems to be offline", name)
+				continue
+			}
 			wg.Add(1)
 			go func(name string, client cpb.ElanClient) {
 				log.Notice("Replicating state to %s", name)
@@ -392,6 +396,7 @@ func (s *server) updatePeers(ctx context.Context, exclude string) {
 				//                   fail before the master request is out of time?
 				if _, err := client.Update(ctx, &cpb.UpdateRequest{Nodes: nodes}); err != nil {
 					log.Error("Error replicating to %s: %s", name, err)
+					go s.disablePeer(name)
 				}
 				wg.Done()
 			}(name, client)
@@ -404,7 +409,35 @@ func (s *server) updatePeers(ctx context.Context, exclude string) {
 // TODO(peterebden): we should really have the other servers detect this (e.g. by streaming
 //                   updates from it and hence noticing when they are terminated).
 func (s *server) shutdown() {
+	s.disablePeer(s.name)
+}
 
+// disablePeer shuts down one of the peers that we've found to be unreachable.
+func (s *server) disablePeer(name string) {
+	node := s.ring.UpdateNode(name, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	s.updatePeers(ctx, "")
+	if name != s.name && node != nil {
+		t := time.NewTicker(1 * time.Minute)
+		defer t.Stop()
+		for range t.C {
+			log.Notice("Attempting reconnect to %s", name)
+			if s.reconnect(name, node.Address) {
+				log.Notice("Reconnected to %s", name)
+				break
+			}
+		}
+	}
+}
+
+// reconnect reconnects to a single node. It returns true if successful.
+func (s *server) reconnect(name, address string) bool {
+	client := cpb.NewElanClient(grpcutil.Dial(address))
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	_, err := client.ClusterInfo(ctx, &cpb.ClusterInfoRequest{})
+	return err == nil
 }
 
 // A replicaWriter forwards writes to a writer plus a set of channels to replicas.

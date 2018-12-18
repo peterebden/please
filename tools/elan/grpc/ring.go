@@ -28,7 +28,7 @@ type clientFactory func(string) cpb.ElanClient
 // servers in a cluster.
 type Ring struct {
 	segments      []segment
-	addresses     map[string]string
+	nodes         []*pb.Node
 	clientFactory clientFactory
 	// Used to guard mutating operations on the ring.
 	mutex sync.Mutex
@@ -42,7 +42,6 @@ func NewRing() *Ring {
 // newRing creates a new ring, and allows specifying a function to construct new clients.
 func newRing(f clientFactory) *Ring {
 	return &Ring{
-		addresses:     map[string]string{},
 		clientFactory: f,
 	}
 }
@@ -64,7 +63,6 @@ func (r *Ring) Update(nodes []*pb.Node) error {
 		m2[seg.Start] = seg.Name
 	}
 	segs := []segment{}
-	addrs := map[string]string{}
 	for _, node := range nodes {
 		for _, rng := range node.Ranges {
 			if name, present := m2[rng.Start]; present && name != node.Name {
@@ -80,12 +78,11 @@ func (r *Ring) Update(nodes []*pb.Node) error {
 				s.Client = r.clientFactory(node.Address)
 			}
 			segs = append(segs, s)
-			addrs[node.Name] = node.Address
 		}
 	}
 	r.segments = r.sort(segs)
 	r.segments = segs
-	r.addresses = addrs
+	r.nodes = nodes
 	return nil
 }
 
@@ -93,7 +90,7 @@ func (r *Ring) Update(nodes []*pb.Node) error {
 func (r *Ring) Add(name, address string, client cpb.ElanClient) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	if _, present := r.addresses[name]; present {
+	if r.Node(name) != nil {
 		return fmt.Errorf("Attempted to re-add node %s to ring", name)
 	}
 	// Generate a set of tokens
@@ -102,7 +99,12 @@ func (r *Ring) Add(name, address string, client cpb.ElanClient) error {
 			return err
 		}
 	}
-	r.addresses[name] = address
+	r.nodes = append(r.nodes, &pb.Node{
+		Name:    name,
+		Address: address,
+		Ranges:  r.ranges(name),
+		Online:  true,
+	})
 	return nil
 }
 
@@ -112,28 +114,25 @@ func (r *Ring) Merge(name, address string, ranges []*pb.Range) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	client := r.clientFactory(address)
-	if existingAddress, present := r.addresses[name]; present {
+	if node := r.Node(name); node != nil {
 		// node exists, verify it has the same set of tokens
-		tokens := r.tokens(name)
+		tokens := r.ranges(name)
 		if len(ranges) != 0 {
 			if len(tokens) != len(ranges) {
 				return fmt.Errorf("Mismatching ranges (already registered for %d, new request has %d)", len(tokens), len(ranges))
 			}
 			for i, tok := range tokens {
-				if ranges[i].Start != tok {
-					return fmt.Errorf("Mismatching token: %d / %d", tok, ranges[i].Start)
+				if ranges[i].Start != tok.Start {
+					return fmt.Errorf("Mismatching token: %d / %d", tok.Start, ranges[i].Start)
 				}
 			}
 		}
 		// Update its address to whatever it says it is now (it might have changed)
-		if existingAddress != address {
-			r.addresses[name] = address
-			for i, seg := range r.segments {
-				if seg.Name == name {
-					r.segments[i].Client = client
-				}
-			}
+		if node.Address != address {
+			node.Address = address
+			r.UpdateNode(name, client)
 		}
+		node.Online = true
 		return nil
 	}
 	// node does not exist, add it.
@@ -146,7 +145,36 @@ func (r *Ring) Merge(name, address string, ranges []*pb.Range) error {
 		segs = append(segs, segment{Start: rng.Start, End: rng.End, Name: name, Client: client})
 	}
 	r.segments = r.sort(segs)
-	r.addresses[name] = address
+	r.nodes = append(r.nodes, &pb.Node{
+		Name:    name,
+		Address: address,
+		Ranges:  r.ranges(name),
+		Online:  true,
+	})
+	return nil
+}
+
+// UpdateNode sets a new client for a node and updates its liveness.
+func (r *Ring) UpdateNode(name string, client cpb.ElanClient) *pb.Node {
+	if node := r.Node(name); node != nil {
+		node.Online = client != nil
+		for i, seg := range r.segments {
+			if seg.Name == name {
+				r.segments[i].Client = client
+			}
+		}
+		return node
+	}
+	return nil
+}
+
+// Node returns the node of given name.
+func (r *Ring) Node(name string) *pb.Node {
+	for _, node := range r.nodes {
+		if node.Name == name {
+			return node
+		}
+	}
 	return nil
 }
 
@@ -184,12 +212,12 @@ func (r *Ring) genToken(tokenIndex uint64, name string, client cpb.ElanClient) e
 	return fmt.Errorf("Couldn't generate a new token after %d tries", numAttempts)
 }
 
-// tokens returns the set of tokens for a given node.
-func (r *Ring) tokens(node string) []uint64 {
-	ret := []uint64{}
+// ranges returns the set of owned ranges for a given node.
+func (r *Ring) ranges(node string) []*pb.Range {
+	ret := []*pb.Range{}
 	for _, seg := range r.segments {
 		if seg.Name == node {
-			ret = append(ret, seg.Start)
+			ret = append(ret, &pb.Range{Start: seg.Start, End: seg.End})
 		}
 	}
 	return ret
@@ -212,18 +240,18 @@ func (r *Ring) Export() []*pb.Node {
 // ExportReplicas exports the current state of the ring with additional ranges for replicas.
 // This obviously means that there will be overlaps when replicas > 1.
 func (r *Ring) ExportReplicas(replicas int) []*pb.Node {
-	ret := make([]*pb.Node, 0, len(r.addresses))
-	m := make(map[string]*pb.Node, len(r.addresses))
-	for name, address := range r.addresses {
-		n := &pb.Node{Name: name, Address: address}
-		m[name] = n
+	ret := make([]*pb.Node, 0, len(r.nodes))
+	m := make(map[string]*pb.Node, len(r.nodes))
+	for _, node := range r.nodes {
+		n := &pb.Node{Name: node.Name, Address: node.Address, Online: node.Online}
+		m[node.Name] = n
 		ret = append(ret, n)
 	}
 	for _, s := range r.segments {
 		names := []string{s.Name}
 		if replicas > 1 {
-			if replicas >= len(r.addresses) {
-				replicas = len(r.addresses) - 1
+			if replicas >= len(r.nodes) {
+				replicas = len(r.nodes) - 1
 			}
 			// Doing a log(n) find here is a little suboptimal but it's a lot easier just to
 			// reuse the code that exists
@@ -271,9 +299,9 @@ func (r *Ring) Find(hash uint64) (string, cpb.ElanClient) {
 // excluding the given one. If not enough replicas are known then it will return
 // as many as possible.
 func (r *Ring) FindReplicas(hash uint64, n int, current string) ([]string, []cpb.ElanClient) {
-	if n >= len(r.addresses) {
-		log.Warning("Insufficient replicas available (%d requested, %d nodes known (excluding this one)", n, len(r.addresses)-1)
-		n = len(r.addresses) - 1
+	if n >= len(r.nodes) {
+		log.Warning("Insufficient replicas available (%d requested, %d nodes known (excluding this one)", n, len(r.nodes)-1)
+		n = len(r.nodes) - 1
 	}
 	names := make([]string, 0, n)
 	clients := make([]cpb.ElanClient, 0, n)
