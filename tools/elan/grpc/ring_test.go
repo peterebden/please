@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	pb "src/remote/proto/fs"
-	cpb "tools/elan/proto/cluster"
+	cpb "github.com/thought-machine/please/tools/elan/proto/cluster"
 )
 
 const address = "localhost:9928"

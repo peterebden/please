@@ -11,7 +11,7 @@ import (
 
 	"grpcutil"
 	rpb "src/remote/proto/remote"
-	pb "tools/mettle/proto/worker"
+	pb "github.com/thought-machine/please/tools/mettle/proto/worker"
 )
 
 const port = 9923

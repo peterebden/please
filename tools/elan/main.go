@@ -7,10 +7,10 @@ import (
 
 	"gopkg.in/op/go-logging.v1"
 
-	"cli"
-	"tools/elan/grpc"
-	"tools/elan/http"
-	"tools/elan/storage"
+	"github.com/thought-machine/please/src/cli"
+	"github.com/thought-machine/please/tools/elan/grpc"
+	"github.com/thought-machine/please/tools/elan/http"
+	"github.com/thought-machine/please/tools/elan/storage"
 )
 
 var log = logging.MustGetLogger("elan")

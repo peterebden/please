@@ -12,8 +12,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"core"
-	"remote/fsclient"
+	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/src/remote/fsclient"
 )
 
 func newRemoteFSCache(urls []string) *remoteFSCache {

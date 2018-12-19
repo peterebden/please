@@ -13,7 +13,7 @@ import (
 
 	"grpcutil"
 	pb "src/remote/proto/remote"
-	wpb "tools/mettle/proto/worker"
+	wpb "github.com/thought-machine/please/tools/mettle/proto/worker"
 )
 
 var log = logging.MustGetLogger("master")

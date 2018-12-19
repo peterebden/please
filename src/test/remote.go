@@ -12,8 +12,8 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	"google.golang.org/grpc"
 
-	"core"
-	pb "test/proto/remote"
+	"github.com/thought-machine/please/src/core"
+	pb "github.com/thought-machine/please/src/test/proto/remote"
 )
 
 var remoteClient pb.RemoteTestMasterClient

@@ -14,10 +14,10 @@ import (
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/op/go-logging.v1"
 
-	"fs"
+	"github.com/thought-machine/please/src/fs"
 	"grpcutil"
 	pb "src/remote/proto/remote"
-	wpb "tools/mettle/proto/worker"
+	wpb "github.com/thought-machine/please/tools/mettle/proto/worker"
 )
 
 var log = logging.MustGetLogger("worker")

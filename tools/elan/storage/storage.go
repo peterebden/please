@@ -18,8 +18,8 @@ import (
 	"github.com/pkg/xattr"
 	"gopkg.in/op/go-logging.v1"
 
-	"fs"
-	cpb "tools/elan/proto/cluster"
+	"github.com/thought-machine/please/src/fs"
+	cpb "github.com/thought-machine/please/tools/elan/proto/cluster"
 )
 
 var log = logging.MustGetLogger("storage")

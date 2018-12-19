@@ -11,7 +11,7 @@ import (
 
 	"grpcutil"
 	pb "src/remote/proto/fs"
-	cpb "tools/elan/proto/cluster"
+	cpb "github.com/thought-machine/please/tools/elan/proto/cluster"
 )
 
 const (

@@ -10,8 +10,8 @@ import (
 
 	"grpcutil"
 	pb "src/remote/proto/fs"
-	cpb "tools/elan/proto/cluster"
-	"tools/elan/storage"
+	cpb "github.com/thought-machine/please/tools/elan/proto/cluster"
+	"github.com/thought-machine/please/tools/elan/storage"
 )
 
 func TestServer(t *testing.T) {

@@ -4,9 +4,9 @@ package main
 import (
 	"gopkg.in/op/go-logging.v1"
 
-	"cli"
-	"tools/mettle/master"
-	"tools/mettle/worker"
+	"github.com/thought-machine/please/src/cli"
+	"github.com/thought-machine/please/tools/mettle/master"
+	"github.com/thought-machine/please/tools/mettle/worker"
 )
 
 var log = logging.MustGetLogger("mettle")

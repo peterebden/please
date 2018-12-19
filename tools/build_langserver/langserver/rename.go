@@ -2,7 +2,7 @@ package langserver
 
 import (
 	"context"
-	"core"
+	"github.com/thought-machine/please/src/core"
 	"encoding/json"
 
 	"github.com/sourcegraph/jsonrpc2"

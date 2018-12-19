@@ -15,9 +15,9 @@ import (
 	"google.golang.org/grpc"
 	"gopkg.in/op/go-logging.v1"
 
-	"core"
+	"github.com/thought-machine/please/src/core"
 	"grpcutil"
-	pb "remote/proto/remote"
+	pb "github.com/thought-machine/please/src/remote/proto/remote"
 )
 
 var log = logging.MustGetLogger("remote")
