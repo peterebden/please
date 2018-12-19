@@ -1,0 +1,11 @@
+# N.B. This is provided for local development on Minikube (because there has to be a
+#      storageclass for the statefulset's PVC).
+---
+apiVersion: storage.k8s.io/v1beta1
+kind: StorageClass
+metadata:
+  name: fast-encrypted
+  namespace: default
+provisioner: k8s.io/minikube-hostpath
+parameters:
+  encrypted: "true"

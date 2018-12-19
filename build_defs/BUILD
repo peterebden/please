@@ -29,3 +29,15 @@ genrule(
     cmd = "echo \"VERSION = '`cat $SRCS`'\" > $OUT",
     visibility = ["PUBLIC"],
 )
+
+filegroup(
+    name = "docker",
+    srcs = ["docker.build_defs"],
+    visibility = ["//tools/..."],
+)
+
+filegroup(
+    name = "k8s",
+    srcs = ["k8s.build_defs"],
+    visibility = ["//tools/..."],
+)

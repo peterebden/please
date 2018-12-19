@@ -27,7 +27,7 @@ var opts = struct {
 	} `group:"Options controlling networking & communication"`
 
 	Replication struct {
-		Name     string `short:"n" long:"name" description:"Friendly name for this server"`
+		Name     string `short:"n" long:"name" env:"ELAN_NAME" description:"Name identifying this server"`
 		Replicas int    `long:"replicas" default:"3" description:"Number of replicas for each artifact"`
 		Tokens   int    `long:"tokens" default:"10" description:"Number of hash tokens for this node"`
 	} `group:"Options controlling replication information"`

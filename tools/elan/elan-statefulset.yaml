@@ -1,0 +1,64 @@
+# This describes elan as a StatefulSet, which is useful for testing multiple
+# replicas locally. A DaemonSet may be more practical for "real" deployments.
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elan
+  labels:
+    app: elan
+spec:
+  serviceName: elan
+  selector:
+    matchLabels:
+      app: elan
+  template:
+    metadata:
+      labels:
+        app: elan
+    spec:
+      containers:
+        - name: elan
+          image: //tools/elan:image
+          args:
+            - "--dir"
+            - "/data"
+            - "--peer"
+            - "elan:9945"
+          env:
+            - name: ELAN_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+            requests:
+              memory: 500Mi
+              cpu: 0.5
+            limits:
+              memory: 2Gi
+              cpu: 3
+          ports:
+            - containerPort: 9945
+              name: grpc
+            - containerPort: 9946
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          volumeMounts:
+            - name: data-volume
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data-volume
+        labels:
+          app: elan
+      spec:
+        storageClassName: fast-encrypted
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 50Gi
+  updateStrategy:
+    type: RollingUpdate
