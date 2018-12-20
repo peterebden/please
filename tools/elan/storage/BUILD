@@ -7,6 +7,7 @@ go_library(
         "//third_party/go:protobuf",
         "//third_party/go:xattr",
         "//src/fs",
+        "//src/remote/proto:fs",
         "//tools/elan/proto:cluster",
     ],
 )

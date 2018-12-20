@@ -8,6 +8,9 @@ metadata:
 spec:
   type: ClusterIP
   ports:
+  - name: gossip
+    port: 9944
+    targetPort: gossip
   - name: grpc
     port: 9945
     targetPort: grpc

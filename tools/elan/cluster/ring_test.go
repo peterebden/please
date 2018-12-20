@@ -1,10 +1,10 @@
-package grpc
+package cluster
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	pb "src/remote/proto/fs"
+	pb "github.com/thought-machine/please/src/remote/proto/fs"
 	cpb "github.com/thought-machine/please/tools/elan/proto/cluster"
 )
 
@@ -18,7 +18,7 @@ func testClientFactory(address string) cpb.ElanClient {
 
 func TestRingInit(t *testing.T) {
 	r := newRing(testClientFactory)
-	err := r.Add("test1", address, nil)
+	err := r.Add(&pb.Node{Name: "test1", Address: address})
 	assert.NoError(t, err)
 	nodes := r.Export()
 	assert.Equal(t, 1, len(nodes))
@@ -31,38 +31,42 @@ func TestRingInit(t *testing.T) {
 
 func TestCannotReAddSameNode(t *testing.T) {
 	r := newRing(testClientFactory)
-	err := r.Add("test1", address, nil)
+	err := r.Add(&pb.Node{Name: "test1", Address: address})
 	assert.NoError(t, err)
 	nodes := r.Export()
-	err = r.Add("test1", address, nil)
+	err = r.Add(&pb.Node{Name: "test1", Address: address})
 	assert.Error(t, err)
 	assert.Equal(t, nodes, r.Export())
 }
 
 func TestUpdateRejectsHashChanges(t *testing.T) {
-	nodes := []*pb.Node{
-		{
-			Address: address,
-			Name:    "node-1",
-			Ranges: []*pb.Range{
-				{Start: 0, End: 4611686018427387904},
-				{Start: 4611686018427387905, End: 9223372036854775808},
-				{Start: 9223372036854775809, End: 13835058055282163712},
-				{Start: 13835058055282163713, End: 18446744073709551615},
-			},
+	node := &pb.Node{
+		Address: address,
+		Name:    "node-1",
+		Ranges: []*pb.Range{
+			{Start: 0, End: 4611686018427387904},
+			{Start: 4611686018427387905, End: 9223372036854775808},
+			{Start: 9223372036854775809, End: 13835058055282163712},
+			{Start: 13835058055282163713, End: 18446744073709551615},
 		},
 	}
 	r := newRing(testClientFactory)
-	assert.NoError(t, r.Update(nodes))
-	assert.Equal(t, nodes, r.Export())
+	assert.NoError(t, r.Update(node))
+	assert.EqualValues(t, node, r.Export()[0])
 
 	// This change is OK; ends of ranges are allowed to move
-	nodes[0].Ranges[0].End = 17
-	assert.NoError(t, r.Update(nodes))
+	node.Ranges[0].End = 17
+	assert.NoError(t, r.Update(node))
 
 	// This is not; a new node is claiming existing ranges.
-	nodes[0].Name = "node-2"
-	assert.Error(t, r.Update(nodes))
+	node = &pb.Node{
+		Address: address,
+		Name:    "node-2",
+		Ranges: []*pb.Range{
+			{Start: 0, End: 4611686018427387904},
+		},
+	}
+	assert.Error(t, r.Update(node))
 }
 
 func TestUpdateAddingNewNodes(t *testing.T) {
@@ -79,7 +83,7 @@ func TestUpdateAddingNewNodes(t *testing.T) {
 		},
 	}
 	r := newRing(testClientFactory)
-	assert.NoError(t, r.Update(nodes))
+	assert.NoError(t, r.Update(nodes[0]))
 	assert.Equal(t, nodes, r.Export())
 
 	nodes = []*pb.Node{
@@ -103,7 +107,7 @@ func TestUpdateAddingNewNodes(t *testing.T) {
 			},
 		},
 	}
-	assert.NoError(t, r.Update(nodes))
+	assert.NoError(t, r.Update(nodes[1]))
 	assert.Equal(t, nodes, r.Export())
 }
 
@@ -121,7 +125,7 @@ func TestVerify(t *testing.T) {
 		},
 	}
 	r := newRing(testClientFactory)
-	assert.NoError(t, r.Update(nodes))
+	assert.NoError(t, r.Update(nodes[0]))
 	assert.NoError(t, r.Verify())
 }
 
@@ -148,7 +152,8 @@ func TestVerify2(t *testing.T) {
 		},
 	}
 	r := newRing(testClientFactory)
-	assert.NoError(t, r.Update(nodes))
+	assert.NoError(t, r.Update(nodes[0]))
+	assert.NoError(t, r.Update(nodes[1]))
 	assert.NoError(t, r.Verify())
 }
 
@@ -166,7 +171,7 @@ func TestVerifyDoesNotStartAtZero(t *testing.T) {
 		},
 	}
 	r := newRing(testClientFactory)
-	assert.NoError(t, r.Update(nodes))
+	assert.NoError(t, r.Update(nodes[0]))
 	assert.Error(t, r.Verify())
 }
 
@@ -184,7 +189,7 @@ func TestVerifyDoesNotEndAtMax(t *testing.T) {
 		},
 	}
 	r := newRing(testClientFactory)
-	assert.NoError(t, r.Update(nodes))
+	assert.NoError(t, r.Update(nodes[0]))
 	assert.Error(t, r.Verify())
 }
 
@@ -216,7 +221,8 @@ func TestFind(t *testing.T) {
 		},
 	}
 	r := newRing(testClientFactory)
-	assert.NoError(t, r.Update(nodes))
+	assert.NoError(t, r.Update(nodes[0]))
+	assert.NoError(t, r.Update(nodes[1]))
 
 	name, client1 := r.Find(0)
 	assert.Equal(t, "node-1", name)
@@ -239,54 +245,4 @@ func TestFind(t *testing.T) {
 	names, clients = r.FindReplicas(2305843009213693952, 1, "node-1")
 	assert.EqualValues(t, []string{"node-2"}, names)
 	assert.EqualValues(t, []cpb.ElanClient{client2}, clients)
-}
-
-func TestMerge(t *testing.T) {
-	nodes := []*pb.Node{
-		{
-			Address: address,
-			Name:    "node-1",
-			Ranges: []*pb.Range{
-				{Start: 0, End: 2305843009213693951},
-				{Start: 4611686018427387905, End: 6917529027641081855},
-				{Start: 9223372036854775809, End: 11529215046068469760},
-				{Start: 13835058055282163713, End: 16140901064495857664},
-			},
-			Online: true,
-		}, {
-			Address: address,
-			Name:    "node-2",
-			Ranges: []*pb.Range{
-				{Start: 2305843009213693952, End: 4611686018427387904},
-				{Start: 6917529027641081856, End: 9223372036854775808},
-				{Start: 11529215046068469761, End: 13835058055282163712},
-				{Start: 16140901064495857665, End: 18446744073709551615},
-			},
-			Online: true,
-		},
-	}
-	r := newRing(testClientFactory)
-	assert.NoError(t, r.Update(nodes))
-
-	// Merging existing nodes should have no effect
-	assert.NoError(t, r.Merge(nodes[0].Name, nodes[0].Address, nodes[0].Ranges))
-	assert.NoError(t, r.Merge(nodes[1].Name, nodes[1].Address, nodes[1].Ranges))
-	assert.Equal(t, nodes, r.Export())
-
-	// Merge a new node. This simulates a node coming back up that we don't know about;
-	// it shouldn't really happen very often but might if the ring was rebuilding itself.
-	nodes = append(nodes, &pb.Node{
-		Address: address,
-		Name:    "node-3",
-		Ranges: []*pb.Range{
-			{Start: 3005843009213693952, End: 4611686018427387904},
-			{Start: 7017529027641081856, End: 9223372036854775808},
-		},
-		Online: true,
-	})
-	assert.NoError(t, r.Merge(nodes[2].Name, nodes[2].Address, nodes[2].Ranges))
-	// The existing ranges should have updated correctly.
-	nodes[1].Ranges[0].End = 3005843009213693951
-	nodes[1].Ranges[1].End = 7017529027641081855
-	assert.Equal(t, nodes, r.Export())
 }

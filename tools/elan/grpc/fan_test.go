@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	pb "src/remote/proto/fs"
+	pb "github.com/thought-machine/please/src/remote/proto/fs"
 )
 
 func TestFanAdd(t *testing.T) {

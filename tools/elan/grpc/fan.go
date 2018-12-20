@@ -3,7 +3,7 @@ package grpc
 import (
 	"sync"
 
-	pb "src/remote/proto/fs"
+	pb "github.com/thought-machine/please/src/remote/proto/fs"
 )
 
 // A Fan implements communication of messages to a number of channels.

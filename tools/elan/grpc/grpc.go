@@ -4,12 +4,10 @@ package grpc
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -17,8 +15,9 @@ import (
 	"google.golang.org/grpc/status"
 	"gopkg.in/op/go-logging.v1"
 
-	"grpcutil"
-	pb "src/remote/proto/fs"
+	"github.com/thought-machine/please/src/grpcutil"
+	pb "github.com/thought-machine/please/src/remote/proto/fs"
+	"github.com/thought-machine/please/tools/elan/cluster"
 	cpb "github.com/thought-machine/please/tools/elan/proto/cluster"
 	"github.com/thought-machine/please/tools/elan/storage"
 )
@@ -36,126 +35,45 @@ const bufferSize = 1000
 const timeout = 5 * time.Second
 
 // Start starts the gRPC server on the given port.
-// It uses the given set of URLs for initial discovery of another node to bootstrap from.
-// If seed is true then it is allowed to seed a new cluster if it fails to contact any
-// other nodes; otherwise failure to contact them will be fatal.
-func Start(port int, urls []string, storage storage.Storage, name, addr string, replicas int) Server {
-	s, srv, lis := start(port, urls, storage, name, addr, replicas)
+func Start(port int, ring *cluster.Ring, config *cpb.Config, storage storage.Storage, replicas int) Server {
+	s, srv, lis := start(port, ring, config, storage, replicas)
 	go s.Serve(lis)
 	return srv
 }
 
-func start(port int, urls []string, storage storage.Storage, name, addr string, replicas int) (*grpc.Server, *server, net.Listener) {
+func start(port int, ring *cluster.Ring, config *cpb.Config, storage storage.Storage, replicas int) (*grpc.Server, *server, net.Listener) {
 	s := grpc.NewServer()
 	lis := grpcutil.SetupServer(s, port)
-	if addr == "" {
-		addr = lis.Addr().String()
-	}
-	c, err := storage.LoadConfig()
-	if err != nil {
-		log.Fatalf("Failed to load config: %s", err)
-	}
-	if !c.Initialised {
-		c.ThisNode = &pb.Node{Name: name, Address: addr}
-	}
 	fs := &server{
-		name:     name,
+		name:     config.ThisNode.Name,
 		storage:  storage,
-		config:   c,
-		ring:     NewRing(),
 		replicas: replicas,
+		ring:     ring,
+		info: &pb.InfoResponse{
+			ThisNode: config.ThisNode,
+			Node:     config.Nodes,
+		},
 	}
 	pb.RegisterRemoteFSServer(s, fs)
 	cpb.RegisterElanServer(s, fs)
-	if err := fs.Init(urls, addr); err != nil {
-		log.Fatalf("Failed to initialise: %s", err)
-	}
-	grpcutil.AddCleanup(fs.shutdown)
 	return s, fs, lis
 }
 
 // A Server allows some maintenance operations on the gRPC server.
 type Server interface {
-	// Init initialises the server & storage by connecting to the given URLs.
-	Init(urls []string, addr string) error
 	// GetClusterInfo returns diagnostic information about the cluster.
 	GetClusterInfo() *cpb.ClusterInfoResponse
+	// ListenUpdates receives updates from the given channel.
+	ListenUpdates(<-chan *pb.Node)
 }
 
 type server struct {
 	name     string
 	storage  storage.Storage
-	config   *cpb.Config
 	info     *pb.InfoResponse
-	ring     *Ring
+	ring     *cluster.Ring
 	fan      Fan
 	replicas int
-}
-
-func (s *server) Init(urls []string, addr string) error {
-	for _, url := range urls {
-		client := cpb.NewElanClient(grpcutil.Dial(url))
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-		resp, err := client.Register(ctx, &cpb.RegisterRequest{Node: s.config.ThisNode})
-		if err != nil {
-			// Not fatal, might have failed to contact server
-			log.Warning("Failed to initialise off %s: %s", url, err)
-		} else if !resp.Accepted {
-			// This is fatal, we've been told our config is unacceptable.
-			return fmt.Errorf("Request to join cluster rejected: %s", resp.Msg)
-		} else {
-			return s.init(resp.Nodes)
-		}
-	}
-	log.Error("Failed to contact any initial nodes")
-	if s.config.Initialised {
-		log.Warning("Config already initialised, proceeding with last known settings")
-		return s.init(s.config.Nodes)
-	}
-	log.Warning("Seeding new cluster")
-	if err := s.ring.Add(s.name, addr, nil); err != nil {
-		return err
-	}
-	if err := s.init(s.ring.Export()); err != nil {
-		return err
-	}
-	s.config.Initialised = true
-	return s.storage.SaveConfig(s.config)
-}
-
-// init sets up the server & establishes connections to the rest of the cluster.
-func (s *server) init(nodes []*pb.Node) error {
-	if err := s.ring.Update(nodes); err != nil {
-		return err
-	}
-	return s.update(nodes)
-}
-
-// update updates the server with a set of nodes.
-func (s *server) update(nodes []*pb.Node) error {
-	s.config.Nodes = nodes
-	s.config.ThisNode = s.node(s.name)
-	if s.config.ThisNode == nil {
-		return fmt.Errorf("this node (%s) not included in cluster info", s.name)
-	}
-	// The returned response has overlapping hash ranges that include replicas
-	s.info = &pb.InfoResponse{
-		Node:     s.ring.ExportReplicas(s.replicas),
-		ThisNode: s.config.ThisNode, // This isn't quite right really.
-	}
-	s.fan.Broadcast(s.info)
-	return nil
-}
-
-// node returns the node with a given name, or nil if it is not known.
-func (s *server) node(name string) *pb.Node {
-	for _, node := range s.config.Nodes {
-		if node.Name == name {
-			return node
-		}
-	}
-	return nil
 }
 
 func (s *server) Info(req *pb.InfoRequest, stream pb.RemoteFS_InfoServer) error {
@@ -163,12 +81,11 @@ func (s *server) Info(req *pb.InfoRequest, stream pb.RemoteFS_InfoServer) error 
 	if err := stream.Send(s.info); err != nil {
 		return err
 	}
-	// Now send any updates
 	ch := s.fan.Add()
-	log.Debug("connecting client via %p for updates", ch)
-	for msg := range ch {
-		if err := stream.Send(msg); err != nil {
-			s.fan.Remove(ch)
+	defer s.fan.Remove(ch)
+	for resp := range ch {
+		if err := stream.Send(resp); err != nil {
+			log.Warning("Error sending response: %s", err)
 			return err
 		}
 	}
@@ -322,30 +239,21 @@ func (s *server) forwardMessages(ch <-chan *pb.PutRequest, client cpb.ElanClient
 	}
 }
 
-func (s *server) Register(ctx context.Context, req *cpb.RegisterRequest) (*cpb.RegisterResponse, error) {
-	if req.Node == nil {
-		return &cpb.RegisterResponse{Msg: "bad request, missing node field"}, nil
-	} else if len(req.Node.Ranges) == 0 && s.node(req.Node.Name) == nil {
-		log.Notice("Register request from %s", req.Node.Name)
-		// Joining server doesn't have any knowledge of the cluster.
-		client := cpb.NewElanClient(grpcutil.Dial(req.Node.Address))
-		if err := s.ring.Add(req.Node.Name, req.Node.Address, client); err != nil {
-			return &cpb.RegisterResponse{Msg: err.Error()}, nil
-		}
-		s.update(s.ring.Export())
-		s.updatePeers(ctx, req.Node.Name)
-		if err := s.storage.SaveConfig(s.config); err != nil {
-			log.Error("Failed to save new config: %s", err)
-		}
-		log.Notice("Node %s added to cluster", req.Node.Name)
-		return &cpb.RegisterResponse{Accepted: true, Nodes: s.config.Nodes}, nil
-	} else if err := s.ring.Merge(req.Node.Name, req.Node.Address, req.Node.Ranges); err != nil {
-		return &cpb.RegisterResponse{Msg: err.Error()}, nil
+func (s *server) ListenUpdates(ch <-chan *pb.Node) {
+	for node := range ch {
+		s.updateNode(node)
+		s.fan.Broadcast(s.info)
 	}
-	log.Notice("Re-accepted node %s into cluster", req.Node.Name)
-	s.update(s.ring.Export())
-	s.updatePeers(ctx, req.Node.Name)
-	return &cpb.RegisterResponse{Accepted: true, Nodes: s.config.Nodes}, nil
+}
+
+func (s *server) updateNode(node *pb.Node) {
+	for _, n := range s.info.Node {
+		if n.Name == node.Name {
+			*n = *node
+			return
+		}
+	}
+	s.info.Node = append(s.info.Node, node)
 }
 
 func (s *server) ClusterInfo(ctx context.Context, req *cpb.ClusterInfoRequest) (*cpb.ClusterInfoResponse, error) {
@@ -365,79 +273,6 @@ func (s *server) GetClusterInfo() *cpb.ClusterInfoResponse {
 	resp, _ := s.ClusterInfo(context.Background(), nil)
 	resp.Segments = s.ring.Segments()
 	return resp
-}
-
-func (s *server) Update(ctx context.Context, req *cpb.UpdateRequest) (*cpb.UpdateResponse, error) {
-	log.Notice("Received notice of ring update")
-	err := s.ring.Update(req.Nodes)
-	if err != nil {
-		log.Error("Ring rejected update: %s", err)
-	} else {
-		s.update(req.Nodes)
-	}
-	return &cpb.UpdateResponse{}, err
-}
-
-// updatePeers communicates updates to the ring state to all known peers, apart from the
-// one passed in (because it is usually just joining and can't be contacted yet).
-func (s *server) updatePeers(ctx context.Context, exclude string) {
-	nodes := s.ring.ExportReplicas(1)
-	var wg sync.WaitGroup
-	for name, client := range s.ring.Nodes() {
-		if name != s.name && name != exclude {
-			if client == nil {
-				log.Warning("Not replicating to %s since it seems to be offline", name)
-				continue
-			}
-			wg.Add(1)
-			go func(name string, client cpb.ElanClient) {
-				log.Notice("Replicating state to %s", name)
-				// TODO(peterebden): how to reduce the timeout on the context here so we
-				//                   fail before the master request is out of time?
-				if _, err := client.Update(ctx, &cpb.UpdateRequest{Nodes: nodes}); err != nil {
-					log.Error("Error replicating to %s: %s", name, err)
-					go s.disablePeer(name)
-				}
-				wg.Done()
-			}(name, client)
-		}
-	}
-	wg.Wait()
-}
-
-// shutdown implements a graceful shutdown on this node by letting others know that it is going away.
-// TODO(peterebden): we should really have the other servers detect this (e.g. by streaming
-//                   updates from it and hence noticing when they are terminated).
-func (s *server) shutdown() {
-	s.disablePeer(s.name)
-}
-
-// disablePeer shuts down one of the peers that we've found to be unreachable.
-func (s *server) disablePeer(name string) {
-	node := s.ring.UpdateNode(name, nil)
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	s.updatePeers(ctx, "")
-	if name != s.name && node != nil {
-		t := time.NewTicker(1 * time.Minute)
-		defer t.Stop()
-		for range t.C {
-			log.Notice("Attempting reconnect to %s", name)
-			if s.reconnect(name, node.Address) {
-				log.Notice("Reconnected to %s", name)
-				break
-			}
-		}
-	}
-}
-
-// reconnect reconnects to a single node. It returns true if successful.
-func (s *server) reconnect(name, address string) bool {
-	client := cpb.NewElanClient(grpcutil.Dial(address))
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	_, err := client.ClusterInfo(ctx, &cpb.ClusterInfoRequest{})
-	return err == nil
 }
 
 // A replicaWriter forwards writes to a writer plus a set of channels to replicas.

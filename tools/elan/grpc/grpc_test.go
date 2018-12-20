@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"grpcutil"
-	pb "src/remote/proto/fs"
 	cpb "github.com/thought-machine/please/tools/elan/proto/cluster"
 	"github.com/thought-machine/please/tools/elan/storage"
+	"grpcutil"
+	pb "src/remote/proto/fs"
 )
 
 func TestServer(t *testing.T) {

@@ -5,6 +5,8 @@ syntax = "proto3";
 
 package fs;
 
+option go_package = "github.com/thought-machine/please/src/remote/proto/fs";
+
 service RemoteFS {
     // N.B. All requests can be directed to any node of the cluster - but information exposed
     //      by Info is intended to be used to enable "fat" clients that know

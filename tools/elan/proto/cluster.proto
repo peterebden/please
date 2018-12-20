@@ -4,34 +4,17 @@ syntax = "proto3";
 
 import "src/remote/proto/fs.proto";
 
+option go_package = "github.com/thought-machine/please/tools/elan/proto/cluster";
+
 package cluster;
 
 service Elan {
-    // Registers the current node on the cluster.
-    rpc Register(RegisterRequest) returns (RegisterResponse);
     // Returns information about the current state of the cluster.
     rpc ClusterInfo(ClusterInfoRequest) returns (ClusterInfoResponse);
     // Replicate is just like Put except that it does not trigger further replication.
     rpc Replicate(stream fs.PutRequest) returns (fs.PutResponse);
     // Similarly Retrieve is just like Get except that it can't be delegated to another node.
     rpc Retrieve(fs.GetRequest) returns (stream fs.GetResponse);
-    // Update updates the server state with new config info.
-    rpc Update(UpdateRequest) returns (UpdateResponse);
-}
-
-message RegisterRequest {
-    // Configuration that the joining server claims.
-    fs.Node node = 1;
-}
-
-message RegisterResponse {
-    // True if the request to join has been accepted and the caller is now part of the cluster.
-    // The caller must accept the returned configuration as truth.
-    bool accepted = 1;
-    // Any message pertaining to acceptance / rejection.
-    string msg = 2;
-    // The state of all the nodes in the cluster, including the caller.
-    repeated fs.Node nodes = 3;
 }
 
 message Config {
@@ -66,12 +49,4 @@ message Segment {
     fixed64 End = 2;
     // Name of the node that occupies it
     string name = 3;
-}
-
-message UpdateRequest {
-    // The current set of nodes making up the server.
-    repeated fs.Node nodes = 1;
-}
-
-message UpdateResponse {
 }

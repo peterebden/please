@@ -19,6 +19,7 @@ import (
 	"gopkg.in/op/go-logging.v1"
 
 	"github.com/thought-machine/please/src/fs"
+	pb "github.com/thought-machine/please/src/remote/proto/fs"
 	cpb "github.com/thought-machine/please/tools/elan/proto/cluster"
 )
 
@@ -57,6 +58,9 @@ type WriteCloseCanceler interface {
 type Storage interface {
 	// LoadConfig loads the current configuration for this server.
 	LoadConfig() (*cpb.Config, error)
+	// MustLoadConfig is like LoadConfig but dies on errors. It also initialises the config
+	// with the given values if empty.
+	MustLoadConfig(name, addr string) *cpb.Config
 	// SaveConfig saves the given config for this cluster.
 	SaveConfig(*cpb.Config) error
 	// Shutdown shuts down this storage instance.
@@ -120,8 +124,20 @@ func (s *storage) LoadConfig() (*cpb.Config, error) {
 	return c, jsonpb.Unmarshal(f, c)
 }
 
+func (s *storage) MustLoadConfig(name, addr string) *cpb.Config {
+	c, err := s.LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load config: %s", err)
+	}
+	if !c.Initialised {
+		c.ThisNode = &pb.Node{Name: name, Address: addr, Online: true}
+	}
+	return c
+}
+
 // SaveConfig saves this node's config for restart.
 func (s *storage) SaveConfig(config *cpb.Config) error {
+	// TODO(peterebden): this should use a write & move so it's atomic
 	f, err := os.Create(path.Join(s.Dir, configFile))
 	if err != nil {
 		return err

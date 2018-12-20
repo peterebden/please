@@ -8,6 +8,7 @@ import (
 	"gopkg.in/op/go-logging.v1"
 
 	"github.com/thought-machine/please/src/cli"
+	"github.com/thought-machine/please/tools/elan/cluster"
 	"github.com/thought-machine/please/tools/elan/grpc"
 	"github.com/thought-machine/please/tools/elan/http"
 	"github.com/thought-machine/please/tools/elan/storage"
@@ -22,6 +23,7 @@ var opts = struct {
 	Network struct {
 		DiagnosticPort int      `long:"diagnostic_port" default:"9946" description:"Port to serve HTTP diagnostics on"`
 		Port           int      `short:"p" long:"port" default:"9945" description:"Port to communicate on"`
+		GossipPort     int      `long:"gossip_port" default:"9944" description:"Port for intra-cluster communication"`
 		Peers          []string `long:"peer" required:"true" description:"URLs to discover peers on"`
 		Addr           string   `long:"addr" description:"Address to advertise on"`
 	} `group:"Options controlling networking & communication"`
@@ -62,6 +64,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialise storage backend: %s", err)
 	}
-	srv := grpc.Start(opts.Network.Port, opts.Network.Peers, s, opts.Replication.Name, opts.Network.Addr, opts.Replication.Replicas)
+	config := s.MustLoadConfig(opts.Replication.Name, opts.Network.Addr)
+	ring := cluster.NewRing()
+	srv := grpc.Start(opts.Network.Port, ring, config, s, opts.Replication.Replicas)
+	c, err := cluster.Connect(ring, config, opts.Network.GossipPort, opts.Network.Peers)
+	if err != nil {
+		log.Fatalf("Failed to join cluster: %s", err)
+	} else if err := s.SaveConfig(config); err != nil {
+		log.Fatalf("Failed to write updated config: %s", err)
+	}
+	go srv.ListenUpdates(c.Updates())
 	http.ServeForever(opts.Network.DiagnosticPort, srv)
 }

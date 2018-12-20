@@ -1,4 +1,4 @@
-package grpc
+package cluster
 
 import (
 	"fmt"
@@ -9,9 +9,9 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 
-	"grpcutil"
-	pb "src/remote/proto/fs"
+	pb "github.com/thought-machine/please/src/remote/proto/fs"
 	cpb "github.com/thought-machine/please/tools/elan/proto/cluster"
+	"grpcutil"
 )
 
 const (
@@ -51,116 +51,75 @@ func createClient(address string) cpb.ElanClient {
 	return cpb.NewElanClient(grpcutil.Dial(address))
 }
 
-// Updates this ring to match the given proto description.
-// It returns an error if the input is incompatible with its current state.
-func (r *Ring) Update(nodes []*pb.Node) error {
+// Updates this ring with the given node info.
+func (r *Ring) Update(node *pb.Node) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	m1 := map[string]cpb.ElanClient{}
-	m2 := map[uint64]string{}
-	for _, seg := range r.segments {
-		m1[seg.Name] = seg.Client
-		m2[seg.Start] = seg.Name
-	}
-	segs := []segment{}
-	for _, node := range nodes {
-		for _, rng := range node.Ranges {
-			if name, present := m2[rng.Start]; present && name != node.Name {
-				return fmt.Errorf("Incompatible ranges; we record %x as being owned by %s, but now %s claims it", rng.Start, name, node.Name)
-			}
-			s := segment{
-				Start:  rng.Start,
-				End:    rng.End,
-				Name:   node.Name,
-				Client: m1[node.Name],
-			}
-			if s.Client == nil {
-				s.Client = r.clientFactory(node.Address)
-			}
-			segs = append(segs, s)
+	// If there's an existing node, it must agree with what we already have for it.
+	if existing := r.ranges(node.Name); len(existing) > 0 {
+		if len(existing) != len(node.Ranges) {
+			return fmt.Errorf("Mismatching node ranges for %s: claims %d, but we've recorded %d", node.Name, len(node.Ranges), len(existing))
 		}
-	}
-	r.segments = r.sort(segs)
-	r.segments = segs
-	r.nodes = nodes
-	return nil
-}
-
-// Adds a new entry to the ring.
-func (r *Ring) Add(name, address string, client cpb.ElanClient) error {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	if r.Node(name) != nil {
-		return fmt.Errorf("Attempted to re-add node %s to ring", name)
-	}
-	// Generate a set of tokens
-	for i := 0; i < numTokens; i++ {
-		if err := r.genToken(uint64(i), name, client); err != nil {
-			return err
-		}
-	}
-	r.nodes = append(r.nodes, &pb.Node{
-		Name:    name,
-		Address: address,
-		Ranges:  r.ranges(name),
-		Online:  true,
-	})
-	return nil
-}
-
-// Merge adds the given node into the ring, either because it's already there or it is
-// joining with a set of previously allocated tokens.
-func (r *Ring) Merge(name, address string, ranges []*pb.Range) error {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	client := r.clientFactory(address)
-	if node := r.Node(name); node != nil {
-		// node exists, verify it has the same set of tokens
-		tokens := r.ranges(name)
-		if len(ranges) != 0 {
-			if len(tokens) != len(ranges) {
-				return fmt.Errorf("Mismatching ranges (already registered for %d, new request has %d)", len(tokens), len(ranges))
-			}
-			for i, tok := range tokens {
-				if ranges[i].Start != tok.Start {
-					return fmt.Errorf("Mismatching token: %d / %d", tok.Start, ranges[i].Start)
-				}
+		for i, r := range node.Ranges {
+			if r.Start != existing[i].Start {
+				return fmt.Errorf("Mismatching range for %s: %x vs. %x", node.Name, r.Start, existing[i].Start)
 			}
 		}
-		// Update its address to whatever it says it is now (it might have changed)
-		if node.Address != address {
-			node.Address = address
-			r.UpdateNode(name, client)
-		}
-		node.Online = true
+		// If we get here then nothing has changed about the ring; just update its proto.
+		r.UpdateNode(node.Name, true).Address = node.Address
 		return nil
 	}
-	// node does not exist, add it.
-	// This should be relatively rare; it implies the ring is rebuilding itself.
-	segs := r.segments[:]
-	for _, rng := range ranges {
-		if seg := r.segments[r.find(rng.Start)]; seg.Start == rng.Start {
-			return fmt.Errorf("Token %d is already claimed (by %s)", rng.Start, seg.Name)
-		}
-		segs = append(segs, segment{Start: rng.Start, End: rng.End, Name: name, Client: client})
+	// We have not seen this node before; it's been issued tokens by someone else and is
+	// joining the cluster for the first time.
+	segs := r.segments
+	m := map[uint64]string{}
+	for _, seg := range segs {
+		m[seg.Start] = seg.Name
 	}
+	client := r.clientFactory(node.Address)
+	for _, r := range node.Ranges {
+		if name, present := m[r.Start]; present && name != node.Name {
+			return fmt.Errorf("Node %s is claiming range %x but it is already owned by %s", node.Name, r.Start, name)
+		}
+		segs = append(segs, segment{Start: r.Start, End: r.End, Name: node.Name, Client: client})
+	}
+	r.nodes = append(r.nodes, node)
 	r.segments = r.sort(segs)
-	r.nodes = append(r.nodes, &pb.Node{
-		Name:    name,
-		Address: address,
-		Ranges:  r.ranges(name),
-		Online:  true,
-	})
 	return nil
 }
 
-// UpdateNode sets a new client for a node and updates its liveness.
-func (r *Ring) UpdateNode(name string, client cpb.ElanClient) *pb.Node {
+// Add adds a new node to the ring and issues it tokens.
+func (r *Ring) Add(node *pb.Node) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	if r.Node(node.Name) != nil {
+		return fmt.Errorf("Attempted to re-add %s to ring", node.Name)
+	}
+	client := r.clientFactory(node.Address)
+	for i := 0; i < numTokens; i++ {
+		seg, err := r.genToken(uint64(i), node.Name, client)
+		if err != nil {
+			return err
+		}
+		node.Ranges = append(node.Ranges, &pb.Range{Start: seg.Start, End: seg.End})
+	}
+	r.nodes = append(r.nodes, node)
+	return nil
+}
+
+// UpdateNode updates the node's liveness.
+func (r *Ring) UpdateNode(name string, online bool) *pb.Node {
 	if node := r.Node(name); node != nil {
-		node.Online = client != nil
-		for i, seg := range r.segments {
-			if seg.Name == name {
-				r.segments[i].Client = client
+		if online != node.Online {
+			node.Online = online
+			var client cpb.ElanClient
+			if online {
+				client = r.clientFactory(node.Address)
+			}
+			for i, seg := range r.segments {
+				if seg.Name == name {
+					r.segments[i].Client = client
+				}
 			}
 		}
 		return node
@@ -178,7 +137,7 @@ func (r *Ring) Node(name string) *pb.Node {
 	return nil
 }
 
-func (r *Ring) genToken(tokenIndex uint64, name string, client cpb.ElanClient) error {
+func (r *Ring) genToken(tokenIndex uint64, name string, client cpb.ElanClient) (segment, error) {
 	s := segment{
 		Name:   name,
 		Client: client,
@@ -197,7 +156,7 @@ func (r *Ring) genToken(tokenIndex uint64, name string, client cpb.ElanClient) e
 				r.segments[idx-1].End = token - 1
 			}
 			r.segments = append(r.segments, s)
-			return nil
+			return s, nil
 		} else if r.segments[idx].Start == token {
 			continue // Can't issue a token that is already issued to someone else
 		} else {
@@ -206,10 +165,10 @@ func (r *Ring) genToken(tokenIndex uint64, name string, client cpb.ElanClient) e
 			copy(r.segments[idx+1:], r.segments[idx:])
 			r.segments[idx] = s
 			r.segments[idx-1].End = token - 1
-			return nil
+			return s, nil
 		}
 	}
-	return fmt.Errorf("Couldn't generate a new token after %d tries", numAttempts)
+	return s, fmt.Errorf("Couldn't generate a new token after %d tries", numAttempts)
 }
 
 // ranges returns the set of owned ranges for a given node.
