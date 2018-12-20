@@ -24,7 +24,7 @@ spec:
             - "--dir"
             - "/data"
             - "--peer"
-            - "elan:9945"
+            - "elan:9944"
           env:
             - name: ELAN_NAME
               valueFrom:
@@ -38,6 +38,8 @@ spec:
               memory: 2Gi
               cpu: 3
           ports:
+            - containerPort: 9944
+              name: gossip
             - containerPort: 9945
               name: grpc
             - containerPort: 9946
