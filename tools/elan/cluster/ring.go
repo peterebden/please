@@ -51,23 +51,25 @@ func createClient(address string) cpb.ElanClient {
 	return cpb.NewElanClient(grpcutil.Dial(address))
 }
 
-// Updates this ring with the given node info.
-func (r *Ring) Update(node *pb.Node) error {
+// Updates this ring with the given node info. It returns true if the node has changed.
+func (r *Ring) Update(node *pb.Node) (bool, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	// If there's an existing node, it must agree with what we already have for it.
 	if existing := r.ranges(node.Name); len(existing) > 0 {
 		if len(existing) != len(node.Ranges) {
-			return fmt.Errorf("Mismatching node ranges for %s: claims %d, but we've recorded %d", node.Name, len(node.Ranges), len(existing))
+			return true, fmt.Errorf("Mismatching node ranges for %s: claims %d, but we've recorded %d", node.Name, len(node.Ranges), len(existing))
 		}
 		for i, r := range node.Ranges {
 			if r.Start != existing[i].Start {
-				return fmt.Errorf("Mismatching range for %s: %x vs. %x", node.Name, r.Start, existing[i].Start)
+				return true, fmt.Errorf("Mismatching range for %s: %x vs. %x", node.Name, r.Start, existing[i].Start)
 			}
 		}
 		// If we get here then nothing has changed about the ring; just update its proto.
-		r.UpdateNode(node.Name, true).Address = node.Address
-		return nil
+		newNode := r.UpdateNode(node.Name, true)
+		changed := newNode.Address != node.Address
+		newNode.Address = node.Address
+		return changed, nil
 	}
 	// We have not seen this node before; it's been issued tokens by someone else and is
 	// joining the cluster for the first time.
@@ -79,13 +81,13 @@ func (r *Ring) Update(node *pb.Node) error {
 	client := r.clientFactory(node.Address)
 	for _, r := range node.Ranges {
 		if name, present := m[r.Start]; present && name != node.Name {
-			return fmt.Errorf("Node %s is claiming range %x but it is already owned by %s", node.Name, r.Start, name)
+			return true, fmt.Errorf("Node %s is claiming range %x but it is already owned by %s", node.Name, r.Start, name)
 		}
 		segs = append(segs, segment{Start: r.Start, End: r.End, Name: node.Name, Client: client})
 	}
 	r.nodes = append(r.nodes, node)
 	r.segments = r.sort(segs)
-	return nil
+	return true, nil
 }
 
 // Add adds a new node to the ring and issues it tokens.

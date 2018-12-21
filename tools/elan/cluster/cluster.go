@@ -41,7 +41,7 @@ func Connect(ring *Ring, config *cpb.Config, port int, peers []string) (Cluster,
 	ch := make(chan *pb.Node, 10)
 	d := &delegate{
 		ring:       ring,
-		node:       config.ThisNode,
+		config:     config,
 		ch:         ch,
 		lastUpdate: time.Now(),
 	}
@@ -55,21 +55,34 @@ func Connect(ring *Ring, config *cpb.Config, port int, peers []string) (Cluster,
 	}
 	d.list = list
 	cl := &cluster{
-		list: list,
-		ring: ring,
-		node: d.node,
-		ch:   ch,
+		list:   list,
+		ring:   ring,
+		config: config,
+		ch:     ch,
 	}
 	n, err := list.Join(peers)
 	log.Notice("Contacted %d nodes", n)
 	d.WaitForGossip()
-	if len(cl.node.Ranges) == 0 {
+	if len(cl.config.ThisNode.Ranges) == 0 {
 		// We don't have any ranges; presumably we are starting for the first time.
 		log.Notice("Running first-time initialisation & generating tokens...")
-		if err := ring.Add(cl.node); err != nil {
+		if err := ring.Add(cl.config.ThisNode); err != nil {
+			return nil, err
+		} else if err := list.UpdateNode(10 * time.Second); err != nil {
 			return nil, err
 		}
-		return cl, list.UpdateNode(10 * time.Second)
+		config.Initialised = true
+	} else {
+		// Load in any existing nodes that aren't already in there.
+		for _, n := range cl.config.Nodes {
+			if ring.Node(n.Name) == nil {
+				ring.Update(n)
+			}
+		}
+	}
+	// Force an update of all the nodes now (MergeRemoteState seems lazy about it)
+	for _, n := range list.Members() {
+		d.MergeRemoteState(n.Meta, false)
 	}
 	log.Notice("Joined cluster")
 	grpcutil.AddCleanup(cl.Shutdown)
@@ -77,10 +90,10 @@ func Connect(ring *Ring, config *cpb.Config, port int, peers []string) (Cluster,
 }
 
 type cluster struct {
-	list *memberlist.Memberlist
-	ring *Ring
-	node *pb.Node
-	ch   chan *pb.Node
+	list   *memberlist.Memberlist
+	ring   *Ring
+	config *cpb.Config
+	ch     chan *pb.Node
 }
 
 func (c *cluster) Shutdown() {
@@ -109,14 +122,15 @@ func (c *cluster) Updates() <-chan *pb.Node {
 // A delegate is our implementation of memberlist's Delegate interface.
 type delegate struct {
 	ring       *Ring
-	node       *pb.Node
+	config     *cpb.Config
 	list       *memberlist.Memberlist
 	lastUpdate time.Time
 	ch         chan<- *pb.Node
 }
 
 func (d *delegate) NodeMeta(limit int) []byte {
-	return nil
+	b, _ := proto.Marshal(d.config.ThisNode)
+	return b
 }
 
 func (d *delegate) NotifyMsg(buf []byte) {
@@ -130,7 +144,7 @@ func (d *delegate) GetBroadcasts(overhead, limit int) [][]byte {
 }
 
 func (d *delegate) LocalState(join bool) []byte {
-	b, _ := proto.Marshal(d.node)
+	b, _ := proto.Marshal(d.config.ThisNode)
 	return b
 }
 func (d *delegate) MergeRemoteState(buf []byte, join bool) {
@@ -151,11 +165,15 @@ func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 				}
 			}()
 		}
-	} else if err := d.ring.Update(node); err != nil {
+	}
+	changed, err := d.ring.Update(node)
+	if err != nil {
 		log.Error("Failed to add node to ring: %s", err)
+	} else if changed {
+		d.ch <- d.ring.Node(node.Name)
 	}
 	d.lastUpdate = time.Now()
-	log.Notice("Got state update from %s", node.Name)
+	log.Notice("Got state update from %s, current ring size: %d", node.Name, len(d.ring.nodes))
 }
 
 // WaitForGossip waits for gossip to settle down after we've joined the cluster.

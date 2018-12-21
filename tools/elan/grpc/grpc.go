@@ -49,6 +49,7 @@ func start(port int, ring *cluster.Ring, config *cpb.Config, storage storage.Sto
 		storage:  storage,
 		replicas: replicas,
 		ring:     ring,
+		config:   config,
 		info: &pb.InfoResponse{
 			ThisNode: config.ThisNode,
 			Node:     config.Nodes,
@@ -71,6 +72,7 @@ type server struct {
 	name     string
 	storage  storage.Storage
 	info     *pb.InfoResponse
+	config   *cpb.Config
 	ring     *cluster.Ring
 	fan      Fan
 	replicas int
@@ -243,6 +245,10 @@ func (s *server) ListenUpdates(ch <-chan *pb.Node) {
 	for node := range ch {
 		s.updateNode(node)
 		s.fan.Broadcast(s.info)
+		s.config.Nodes = s.info.Node
+		if err := s.storage.SaveConfig(s.config); err != nil {
+			log.Error("Failed to save config: %s", err)
+		}
 	}
 }
 

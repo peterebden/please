@@ -131,6 +131,8 @@ func (s *storage) MustLoadConfig(name, addr string) *cpb.Config {
 	}
 	if !c.Initialised {
 		c.ThisNode = &pb.Node{Name: name, Address: addr, Online: true}
+	} else {
+		log.Notice("Loaded config from a previous run: %s %s (%d hash ranges)", c.ThisNode.Name, c.ThisNode.Address, len(c.ThisNode.Ranges))
 	}
 	return c
 }
