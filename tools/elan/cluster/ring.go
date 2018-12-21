@@ -142,6 +142,16 @@ func (r *Ring) genToken(tokenIndex uint64, name string, client cpb.ElanClient) (
 		Name:   name,
 		Client: client,
 	}
+	// Special case: if the ring is initially empty, we force the first token to the beginning
+	// to avoid having a gap at the start of the hash space.
+	if len(r.segments) == 0 {
+		log.Warning("Assuming this is first-time initialisation of the first ring node")
+		log.Warning("Initialising first token for the ring at position 0")
+		s.Start = 0
+		s.End = ringMax
+		r.segments = append(r.segments, s)
+		return s, nil
+	}
 	for i := 0; i < numAttempts; i++ {
 		token := uint64(rand.Int63n(tokenRange)) + tokenIndex*tokenRange
 		s.Start = token
