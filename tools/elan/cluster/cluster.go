@@ -40,9 +40,10 @@ func Connect(ring *Ring, config *cpb.Config, port int, peers []string) (Cluster,
 	c.AdvertisePort = port
 	ch := make(chan *pb.Node, 10)
 	d := &delegate{
-		ring: ring,
-		node: config.ThisNode,
-		ch:   ch,
+		ring:       ring,
+		node:       config.ThisNode,
+		ch:         ch,
+		lastUpdate: time.Now(),
 	}
 	c.Delegate = d
 	c.Events = d
@@ -162,6 +163,7 @@ func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 // kind of not 100% required so we just do our best.
 func (d *delegate) WaitForGossip() {
 	log.Notice("Waiting for gossip to settle down...")
+	d.lastUpdate = time.Now()
 	for i := 0; i < gossipRetries; i++ {
 		time.Sleep(1 * time.Second)
 		if time.Since(d.lastUpdate) > gossipTolerance {

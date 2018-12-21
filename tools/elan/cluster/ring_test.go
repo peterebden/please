@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -245,4 +246,13 @@ func TestFind(t *testing.T) {
 	names, clients = r.FindReplicas(2305843009213693952, 1, "node-1")
 	assert.EqualValues(t, []string{"node-2"}, names)
 	assert.EqualValues(t, []cpb.ElanClient{client2}, clients)
+}
+
+func TestGenToken(t *testing.T) {
+	r := newRing(testClientFactory)
+	for i := 0; i < 100; i++ {
+		for tok := 0; tok < numTokens; tok++ {
+			r.genToken(uint64(tok), fmt.Sprintf("test-%d", i), nil)
+		}
+	}
 }

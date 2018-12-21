@@ -23,7 +23,7 @@ docker_image(
 )
 
 k8s_config(
-    name = "k8s_statefulset",
-    srcs = ["elan-statefulset.yaml", "elan-svc.yaml", "storageclass.yaml"],
+    name = "k8s",
+    srcs = ["elan.yaml", "elan-svc.yaml", "storageclass.yaml"],
     containers = [":image"],
 )
