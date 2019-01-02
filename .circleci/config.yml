@@ -5,8 +5,7 @@ jobs:
      docker:
        - image: thoughtmachine/please_ubuntu:latest
      environment:
-       PLZ_ARGS: "-p --profile ci"
-       PLZ_COVER: "cover"
+       PLZ_ARGS: "-p --profile ci -o buildconfig.ci:true"
      steps:
        - checkout
        - restore_cache:
@@ -50,6 +49,7 @@ jobs:
        - image: thoughtmachine/please_ubuntu_alt:latest
      environment:
        PLZ_ARGS: "-p --profile ci"
+       PLZ_COVER: "cover"
      steps:
        - checkout
        - restore_cache:

@@ -68,7 +68,6 @@ func Build(tid int, state *core.BuildState, label core.BuildLabel) {
 	if target.IsTest && state.NeedTests {
 		state.AddPendingTest(target.Label)
 	}
-	state.Parser.UndeferAnyParses(state, target)
 }
 
 // Builds a single target
@@ -198,10 +197,9 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 			log.Debug("Checking for post-build output file for %s in cache...", target.Label)
 			if state.Cache.RetrieveExtra(target, cacheKey, target.PostBuildOutputFileName()) {
 				if postBuildOutput, err = runPostBuildFunctionIfNeeded(tid, state, target, postBuildOutput); err != nil {
-					panic(err)
-				}
-				if retrieveArtifacts() {
-					return nil
+					return err
+				} else if retrieveArtifacts() {
+					return writeRuleHash(state, target)
 				}
 			}
 		} else if retrieveArtifacts() {

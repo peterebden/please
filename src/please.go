@@ -597,7 +597,7 @@ var buildFunctions = map[string]func() bool{
 		})
 	},
 	"rules": func() bool {
-		success, state := Please(opts.Query.Rules.Args.Targets, config, true, true, false)
+		success, state := Please(opts.Query.Rules.Args.Targets, config, true, len(opts.Query.Rules.Args.Targets) > 0, false)
 		if success {
 			parse.PrintRuleArgs(state, state.ExpandOriginalTargets())
 		}
@@ -1008,7 +1008,7 @@ func initBuild(args []string) string {
 	} else if command == "help" || command == "follow" || command == "init" {
 		// These commands don't use a config file, allowing them to be run outside a repo.
 		if flagsErr != nil { // This error otherwise doesn't get checked until later.
-			cli.ParseFlagsFromArgsOrDie("Please", core.PleaseVersion.String(), &opts, os.Args)
+			cli.ParseFlagsFromArgsOrDie("Please", &opts, os.Args)
 		}
 		config = core.DefaultConfiguration()
 		if !buildFunctions[command]() {
@@ -1031,7 +1031,7 @@ func initBuild(args []string) string {
 	// can affect how we parse otherwise illegal flag combinations.
 	if (flagsErr != nil || len(extraArgs) > 0) && command != "completions" {
 		args := config.UpdateArgsWithAliases(os.Args)
-		command = cli.ParseFlagsFromArgsOrDie("Please", core.PleaseVersion.String(), &opts, args)
+		command = cli.ParseFlagsFromArgsOrDie("Please", &opts, args)
 	}
 
 	if opts.ProfilePort != 0 {
