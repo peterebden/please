@@ -66,7 +66,7 @@ func (r *Ring) Update(node *pb.Node) (bool, error) {
 			}
 		}
 		// If we get here then nothing has changed about the ring; just update its proto.
-		newNode := r.UpdateNode(node.Name, true)
+		newNode, _ := r.UpdateNode(node.Name, true)
 		changed := newNode.Address != node.Address
 		newNode.Address = node.Address
 		return changed, nil
@@ -109,24 +109,25 @@ func (r *Ring) Add(node *pb.Node) error {
 	return nil
 }
 
-// UpdateNode updates the node's liveness.
-func (r *Ring) UpdateNode(name string, online bool) *pb.Node {
+// UpdateNode updates the node's liveness and returns true if it's changed.
+func (r *Ring) UpdateNode(name string, online bool) (*pb.Node, bool) {
 	if node := r.Node(name); node != nil {
-		if online != node.Online {
-			node.Online = online
-			var client cpb.ElanClient
-			if online {
-				client = r.clientFactory(node.Address)
-			}
-			for i, seg := range r.segments {
-				if seg.Name == name {
-					r.segments[i].Client = client
-				}
+		if online == node.Online {
+			return node, false
+		}
+		node.Online = online
+		var client cpb.ElanClient
+		if online {
+			client = r.clientFactory(node.Address)
+		}
+		for i, seg := range r.segments {
+			if seg.Name == name {
+				r.segments[i].Client = client
 			}
 		}
-		return node
+		return node, true
 	}
-	return nil
+	return nil, false
 }
 
 // Node returns the node of given name.
@@ -196,9 +197,11 @@ func (r *Ring) ranges(node string) []*pb.Range {
 
 // sort sorts the given set of segments & matches up their start / end points.
 func (r *Ring) sort(segs []segment) []segment {
-	sort.Slice(segs, func(i, j int) bool { return segs[i].Start < segs[j].Start })
-	for i := range segs[:len(segs)-1] {
-		segs[i].End = segs[i+1].Start - 1
+	if len(segs) > 0 {
+		sort.Slice(segs, func(i, j int) bool { return segs[i].Start < segs[j].Start })
+		for i := range segs[:len(segs)-1] {
+			segs[i].End = segs[i+1].Start - 1
+		}
 	}
 	return segs
 }

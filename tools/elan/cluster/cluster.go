@@ -63,7 +63,9 @@ func Connect(ring *Ring, config *cpb.Config, port int, peers []string) (Cluster,
 	log.Notice("Attempting to contact initial peers...")
 	n, err := list.Join(peers)
 	log.Notice("Contacted %d nodes", n)
-	d.WaitForGossip()
+	if n > 0 {
+		d.WaitForGossip()
+	}
 	if len(cl.config.ThisNode.Ranges) == 0 {
 		// We don't have any ranges; presumably we are starting for the first time.
 		log.Notice("Running first-time initialisation & generating tokens...")
@@ -73,6 +75,7 @@ func Connect(ring *Ring, config *cpb.Config, port int, peers []string) (Cluster,
 			return nil, err
 		}
 		config.Initialised = true
+		log.Notice("First-time init complete, this node now possesses %d ranges", len(cl.config.ThisNode.Ranges))
 	} else {
 		// Load in any existing nodes that aren't already in there.
 		for _, n := range cl.config.Nodes {
@@ -130,8 +133,10 @@ type delegate struct {
 }
 
 func (d *delegate) NodeMeta(limit int) []byte {
-	b, _ := proto.Marshal(d.config.ThisNode)
-	log.Warning("here %d %d", limit, len(b))
+	// N.B. we cannot serialise the whole config here because it is typically larger than the limit.
+	//      Weirdly in some cases this seems to get sent to MergeRemoteState so we try to still
+	//      serialise the same type here.
+	b, _ := proto.Marshal(&cpb.Config{ThisNode: d.ring.Node(d.config.ThisNode.Name)})
 	return b
 }
 
@@ -146,44 +151,39 @@ func (d *delegate) GetBroadcasts(overhead, limit int) [][]byte {
 }
 
 func (d *delegate) LocalState(join bool) []byte {
-	b, err := proto.Marshal(d.config)
+	b, err := proto.Marshal(&cpb.Config{Nodes: d.ring.Export()})
 	if err != nil {
 		log.Error("error serialising local state: %s", err)
 	}
 	return b
 }
+
 func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 	cfg := &cpb.Config{}
-	log.Warning("MergeRemoteState %d", len(buf))
 	if err := proto.Unmarshal(buf, cfg); err != nil {
 		log.Error("Failed to decode state message: %s", err)
 		return
 	}
 	for _, node := range cfg.Nodes {
-		if len(node.Ranges) == 0 && node.Name != d.config.ThisNode.Name {
-			// Special case: this node has not joined before (or has forgotten itself)
-			// so if we know who it is, we tell it so.
-			if existing := d.ring.Node(node.Name); existing != nil {
-				go func() {
-					b, _ := proto.Marshal(d.config)
-					if n := d.find(node.Name); n != nil {
-						log.Notice("Updating node %s with its ranges", node.Name)
-						if err := d.list.SendReliable(n, b); err != nil {
-							log.Warning("Failed to send ranges to %s: %s", node.Name, err)
-						}
-					}
-				}()
-			}
-		}
-		changed, err := d.ring.Update(node)
-		if err != nil {
-			log.Error("Failed to add node to ring: %s", err)
-		} else if changed {
-			d.ch <- d.ring.Node(node.Name)
-			d.lastUpdate = time.Now()
-		}
+		d.updateNode(node)
 	}
-	log.Notice("Got state update from %s, current ring size: %d", cfg.ThisNode.Name, len(d.ring.nodes))
+	if len(cfg.Nodes) == 0 && cfg.ThisNode != nil {
+		d.updateNode(cfg.ThisNode)
+		log.Info("Got state update from %s, current ring size: %d", cfg.ThisNode.Name, len(d.ring.nodes))
+	} else {
+		log.Info("Got state update, current ring size: %d", len(d.ring.nodes))
+	}
+}
+
+// updateNode updates a single node as received from a remote.
+func (d *delegate) updateNode(node *pb.Node) {
+	changed, err := d.ring.Update(node)
+	if err != nil {
+		log.Error("Failed to add node to ring: %s", err)
+	} else if changed {
+		d.ch <- d.ring.Node(node.Name)
+		d.lastUpdate = time.Now()
+	}
 }
 
 // WaitForGossip waits for gossip to settle down after we've joined the cluster.
@@ -201,33 +201,36 @@ func (d *delegate) WaitForGossip() {
 	log.Warning("Giving up on waiting for gossip; too much churn?")
 }
 
-func (d *delegate) find(name string) *memberlist.Node {
-	for _, node := range d.list.Members() {
-		if node.Name == name {
-			return node
-		}
-	}
-	return nil
-}
-
 func (d *delegate) NotifyJoin(node *memberlist.Node) {
-	log.Notice("Got notification of %s joining the cluster", node.Name)
-	if node := d.ring.UpdateNode(node.Name, true); node != nil {
-		d.ch <- node
+	d.notify(node, "joining", true)
+	if d.list != nil && node.Name != d.config.ThisNode.Name {
+		// Node is joining, give it a download of everything we know right now.
+		go func() {
+			b, _ := proto.Marshal(&cpb.Config{Nodes: d.ring.Export()})
+			if err := d.list.SendReliable(node, b); err != nil {
+				log.Warning("Failed to send ranges to %s: %s", node.Name, err)
+			}
+		}()
 	}
 }
 
 func (d *delegate) NotifyLeave(node *memberlist.Node) {
-	log.Notice("Got notification of %s leaving the cluster", node.Name)
-	if node := d.ring.UpdateNode(node.Name, false); node != nil {
-		d.ch <- node
-	}
+	d.notify(node, "leaving", false)
 }
 
 func (d *delegate) NotifyUpdate(node *memberlist.Node) {
-	log.Notice("Got update from %s", node.Name)
-	if node := d.ring.UpdateNode(node.Name, true); node != nil {
-		d.ch <- node
+	d.notify(node, "update", true)
+}
+
+func (d *delegate) notify(node *memberlist.Node, action string, alive bool) {
+	if d.list != nil && node.Name != d.config.ThisNode.Name {
+		log.Notice("Cluster update from %s: %s", node.Name, action)
+		if node, changed := d.ring.UpdateNode(node.Name, alive); node != nil && changed {
+			d.ch <- node
+		}
+		if alive {
+			d.MergeRemoteState(node.Meta, alive)
+		}
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	_ "net/http/pprof"
 	"strconv"
 	"sync"
 	"time"
@@ -45,14 +46,10 @@ func ServeForever(port int, cluster Cluster) {
 		"svgTransform": svgTransform,
 	}).Parse(MustAssetString("index.html")))
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/styles.css", h.Static)
-	mux.HandleFunc("/ping", h.Ping)
-	mux.HandleFunc("/", h.Serve)
-	srv := &http.Server{
-		Addr:    ":" + strconv.Itoa(port),
-		Handler: mux,
-	}
+	http.HandleFunc("/styles.css", h.Static)
+	http.HandleFunc("/ping", h.Ping)
+	http.HandleFunc("/", h.Serve)
+	srv := &http.Server{Addr: ":" + strconv.Itoa(port)}
 	// Add a cleanup hook if the gRPC server gets shut down.
 	// This is what will actually terminate the process (because it will cause ListenAndServe
 	// to return, and hence we'll exit this function which will terminate main()).
