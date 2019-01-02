@@ -60,6 +60,7 @@ func Connect(ring *Ring, config *cpb.Config, port int, peers []string) (Cluster,
 		config: config,
 		ch:     ch,
 	}
+	log.Notice("Attempting to contact initial peers...")
 	n, err := list.Join(peers)
 	log.Notice("Contacted %d nodes", n)
 	d.WaitForGossip()
@@ -130,6 +131,7 @@ type delegate struct {
 
 func (d *delegate) NodeMeta(limit int) []byte {
 	b, _ := proto.Marshal(d.config.ThisNode)
+	log.Warning("here %d %d", limit, len(b))
 	return b
 }
 
@@ -144,36 +146,44 @@ func (d *delegate) GetBroadcasts(overhead, limit int) [][]byte {
 }
 
 func (d *delegate) LocalState(join bool) []byte {
-	b, _ := proto.Marshal(d.config.ThisNode)
+	b, err := proto.Marshal(d.config)
+	if err != nil {
+		log.Error("error serialising local state: %s", err)
+	}
 	return b
 }
 func (d *delegate) MergeRemoteState(buf []byte, join bool) {
-	node := &pb.Node{}
-	if err := proto.Unmarshal(buf, node); err != nil {
+	cfg := &cpb.Config{}
+	log.Warning("MergeRemoteState %d", len(buf))
+	if err := proto.Unmarshal(buf, cfg); err != nil {
 		log.Error("Failed to decode state message: %s", err)
-	} else if len(node.Ranges) == 0 {
-		// Special case: this node has not joined before (or has forgotten itself)
-		// so if we know who it is, we tell it so.
-		if existing := d.ring.Node(node.Name); existing != nil {
-			go func() {
-				b, _ := proto.Marshal(existing)
-				if n := d.find(node.Name); n != nil {
-					log.Notice("Updating node %s with its ranges", node.Name)
-					if err := d.list.SendReliable(n, b); err != nil {
-						log.Warning("Failed to send ranges to %s: %s", node.Name, err)
+		return
+	}
+	for _, node := range cfg.Nodes {
+		if len(node.Ranges) == 0 && node.Name != d.config.ThisNode.Name {
+			// Special case: this node has not joined before (or has forgotten itself)
+			// so if we know who it is, we tell it so.
+			if existing := d.ring.Node(node.Name); existing != nil {
+				go func() {
+					b, _ := proto.Marshal(d.config)
+					if n := d.find(node.Name); n != nil {
+						log.Notice("Updating node %s with its ranges", node.Name)
+						if err := d.list.SendReliable(n, b); err != nil {
+							log.Warning("Failed to send ranges to %s: %s", node.Name, err)
+						}
 					}
-				}
-			}()
+				}()
+			}
+		}
+		changed, err := d.ring.Update(node)
+		if err != nil {
+			log.Error("Failed to add node to ring: %s", err)
+		} else if changed {
+			d.ch <- d.ring.Node(node.Name)
+			d.lastUpdate = time.Now()
 		}
 	}
-	changed, err := d.ring.Update(node)
-	if err != nil {
-		log.Error("Failed to add node to ring: %s", err)
-	} else if changed {
-		d.ch <- d.ring.Node(node.Name)
-	}
-	d.lastUpdate = time.Now()
-	log.Notice("Got state update from %s, current ring size: %d", node.Name, len(d.ring.nodes))
+	log.Notice("Got state update from %s, current ring size: %d", cfg.ThisNode.Name, len(d.ring.nodes))
 }
 
 // WaitForGossip waits for gossip to settle down after we've joined the cluster.

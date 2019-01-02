@@ -56,7 +56,7 @@ func defaultToHostname(s *string, port int) {
 }
 
 func main() {
-	cli.ParseFlagsOrDie("elan", "13.2.5", &opts)
+	cli.ParseFlagsOrDie("elan", &opts)
 	cli.InitLogging(opts.Verbosity)
 	defaultToHostname(&opts.Network.Addr, opts.Network.Port)
 	defaultToHostname(&opts.Replication.Name, 0)
