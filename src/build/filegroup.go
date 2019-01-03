@@ -27,7 +27,7 @@ func Init(state *core.BuildState) {
 		built: map[string]bool{},
 	}
 	if len(state.Config.Build.RemoteFSURL) > 0 {
-		fsclient.NewClient(state.Config.Build.RemoteFSURL.Strings())
+		theRemoteClient = fsclient.New(state.Config.Build.RemoteFSURL.Strings())
 	}
 }
 
@@ -40,6 +40,7 @@ type filegroupBuilder struct {
 }
 
 var theFilegroupBuilder *filegroupBuilder
+var theRemoteClient fsclient.Client
 
 // Build builds a single filegroup file.
 func (builder *filegroupBuilder) Build(state *core.BuildState, target *core.BuildTarget, from, to string) error {

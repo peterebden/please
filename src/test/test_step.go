@@ -324,7 +324,7 @@ func runTest(state *core.BuildState, target *core.BuildTarget) ([]byte, error) {
 }
 
 func doTest(tid int, state *core.BuildState, target *core.BuildTarget, outputFile string) core.TestSuite {
-	if !target.Containerise && state.NumTestWorkers > 0 {
+	if !target.Containerise && state.NumRemoteWorkers > 0 {
 		if suite, err := runTestRemotely(tid, state, target); err != nil {
 			log.Error("Failed to run test remotely: %s. Will try locally.")
 		} else {

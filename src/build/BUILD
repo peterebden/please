@@ -9,6 +9,7 @@ go_library(
         "//src/cache",
         "//src/core",
         "//src/fs",
+        "//src/remote/fsclient",
         "//src/metrics",
         "//src/worker",
         "//third_party/go:go-multierror",

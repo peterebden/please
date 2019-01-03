@@ -60,7 +60,7 @@ type buildingTargetData struct {
 // and prints output while it's happening.
 func MonitorState(state *core.BuildState, plainOutput, keepGoing, shouldBuild, shouldTest, shouldRun, showStatus, detailedTests bool, traceFile string) bool {
 	failedTargetMap := map[core.BuildLabel]error{}
-	buildingTargets := make([]buildingTarget, state.NumWorkers+state.NumTestWorkers)
+	buildingTargets := make([]buildingTarget, state.NumWorkers+state.NumRemoteWorkers)
 
 	if len(state.Config.Please.Motd) != 0 {
 		r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
@@ -488,7 +488,7 @@ func printTempDirs(state *core.BuildState, duration time.Duration) {
 		target := state.Graph.TargetOrDie(label)
 		cmd := target.GetCommand(state)
 		dir := target.TmpDir()
-		env := core.BuildEnvironment(state, target)
+		env := core.BuildEnvironment(state, target, target.TmpDir())
 		if state.NeedTests {
 			cmd = target.GetTestCommand(state)
 			dir = path.Join(core.RepoRoot, target.TestDir())

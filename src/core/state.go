@@ -67,8 +67,6 @@ type BuildState struct {
 	Graph *BuildGraph
 	// Stream of pending tasks
 	pendingTasks *queue.PriorityQueue
-	// Stream of pending remote tasks. Only used if there are remote test workers.
-	pendingRemoteTasks *queue.PriorityQueue
 	// Stream of results from the build
 	Results chan *BuildResult
 	// Stream of results pushed to remote clients.
@@ -206,29 +204,24 @@ func (state *BuildState) AddPendingParse(label, dependor BuildLabel, forSubinclu
 }
 
 // AddPendingBuild adds a task for a pending build of a target.
-func (state *BuildState) AddPendingBuild(label BuildLabel, forSubinclude, remote bool) {
+func (state *BuildState) AddPendingBuild(label BuildLabel, forSubinclude bool) {
 	if forSubinclude {
-		state.addPending(label, SubincludeBuild, remote)
+		state.addPending(label, SubincludeBuild)
 	} else {
-		state.addPending(label, Build, remote)
+		state.addPending(label, Build)
 	}
 }
 
 // AddPendingTest adds a task for a pending test of a target.
-func (state *BuildState) AddPendingTest(label BuildLabel, remote bool) {
+func (state *BuildState) AddPendingTest(label BuildLabel) {
 	if state.NeedTests {
-		state.addPending(label, Test, remote)
+		state.addPending(label, Test)
 	}
 }
 
 // NextTask receives the next task that should be processed according to the priority queues.
 func (state *BuildState) NextTask() (BuildLabel, BuildLabel, TaskType) {
 	return state.nextTask(state.pendingTasks)
-}
-
-// NextTest retrieves the next task that should be processed remotely.
-func (state *BuildState) NextRemoteTask() (BuildLabel, BuildLabel, TaskType) {
-	return state.nextTask(state.pendingRemoteTasks)
 }
 
 func (state *BuildState) nextTask(q *queue.PriorityQueue) (BuildLabel, BuildLabel, TaskType) {
@@ -243,17 +236,9 @@ func (state *BuildState) nextTask(q *queue.PriorityQueue) (BuildLabel, BuildLabe
 	return task.Label, task.Dependor, task.Type
 }
 
-func (state *BuildState) addPending(label BuildLabel, t TaskType, remote bool) {
-	if remote {
-		state.addPendingTo(label, t, state.pendingTasks)
-	} else {
-		state.addPendingTo(label, t, state.pendingRemoteTasks)
-	}
-}
-
-func (state *BuildState) addPendingTo(label BuildLabel, t TaskType, q *queue.PriorityQueue) {
+func (state *BuildState) addPending(label BuildLabel, t TaskType) {
 	atomic.AddInt64(&state.progress.numPending, 1)
-	q.Put(pendingTask{Label: label, Type: t})
+	state.pendingTasks.Put(pendingTask{Label: label, Type: t})
 }
 
 // TaskDone indicates that a single task is finished. Should be called after one is finished with
@@ -264,8 +249,7 @@ func (state *BuildState) TaskDone(wasBuildOrTest bool) {
 		atomic.AddInt64(&state.progress.numRunning, -1)
 	}
 	if atomic.AddInt64(&state.progress.numPending, -1) <= 0 {
-		state.kill(state.NumWorkers, state.pendingTasks, Stop)
-		state.kill(state.NumRemoteWorkers, state.pendingRemoteTasks, Stop)
+		state.kill(state.NumWorkers, Stop)
 	}
 }
 
@@ -280,15 +264,14 @@ func (state *BuildState) Kill(n int) {
 func (state *BuildState) KillAll() {
 	if !state.workersKilled {
 		state.workersKilled = true
-		state.kill(state.NumWorkers, state.pendingTasks, Kill)
-		state.kill(state.NumRemoteWorkers, state.pendingRemoteTasks, Kill)
+		state.kill(state.NumWorkers, Kill)
 	}
 }
 
 // kill sends a kill or stop signal to n workers on the given queue.
-func (state *BuildState) kill(n int, q *queue.PriorityQueue, signal TaskType) {
+func (state *BuildState) kill(n int, signal TaskType) {
 	for i := 0; i < n; i++ {
-		q.Put(pendingTask{Type: signal})
+		state.pendingTasks.Put(pendingTask{Type: signal})
 	}
 }
 
@@ -655,7 +638,6 @@ func NewBuildState(numThreads int, cache Cache, verbosity int, config *Configura
 		if state.NumRemoteWorkers == 0 {
 			state.NumRemoteWorkers = numThreads
 		}
-		state.pendingRemoteTasks = queue.NewPriorityQueue(10000, true)
 	}
 	return state
 }

@@ -9,83 +9,25 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grpc-ecosystem/go-grpc-middleware/retry"
-	"google.golang.org/grpc"
-
 	"github.com/thought-machine/please/src/core"
-	pb "github.com/thought-machine/please/src/test/proto/remote"
+	"github.com/thought-machine/please/src/grpcutil"
+	pb "github.com/thought-machine/please/src/remote/proto/remote"
 )
 
-var remoteClient pb.RemoteTestMasterClient
+var remoteClient pb.RemoteWorkerClient
 var remoteClientOnce sync.Once
-
-const dialTimeout = 10 * time.Second
 
 func runTestRemotely(tid int, state *core.BuildState, target *core.BuildTarget) (core.TestSuite, error) {
 	state.LogBuildResult(tid, target.Label, core.TargetTesting, "Contacting remote server...")
 	remoteClientOnce.Do(func() {
 		// TODO(peterebden): Add TLS support (as always)
-		conn, err := grpc.Dial(state.Config.Test.RemoteURL.String(), grpc.WithTimeout(dialTimeout), grpc.WithInsecure(),
-			grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(grpc_retry.WithMax(3))))
-		if err != nil {
-			// It's not very nice to die here, but in practice this very rarely happens since we
-			// didn't pass WithBlock(), so most errors are picked up by the RPC call below.
-			log.Fatalf("Failed to dial remote test server: %s", err)
-		}
-		remoteClient = pb.NewRemoteTestMasterClient(conn)
+		// TODO(peterebden): we should share one of these with the build code as well.
+		conn := grpcutil.Dial(state.Config.Build.RemoteURL.String())
+		remoteClient = pb.NewRemoteWorkerClient(conn)
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+	_, cancel := context.WithTimeout(context.Background(), testTimeout(state.Config, target))
 	defer cancel()
-	rule := &pb.BuildLabel{
-		PackageName: target.Label.PackageName,
-		Name:        target.Label.Name,
-	}
-	response, err := remoteClient.GetTestWorker(ctx, &pb.TestWorkerRequest{
-		Rule:   rule,
-		Labels: target.Labels,
-	})
-	if err != nil {
-		log.Error("Failed to contact remote worker server: %s", err)
-		return core.TestSuite{}, err
-	}
-	// Now dial up a gRPC channel to the worker.
-	conn, err := grpc.Dial(response.Url, grpc.WithTimeout(dialTimeout), grpc.WithInsecure(),
-		grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(grpc_retry.WithMax(3))))
-	if err != nil {
-		return core.TestSuite{}, err
-	}
-	client := pb.NewRemoteTestWorkerClient(conn)
-
-	timeout := testTimeout(state.Config, target)
-	outputs, err := loadTargetFiles(target.FullOutputs(), target.OutDir())
-	if err != nil {
-		return core.TestSuite{}, err
-	}
-	data, err := loadTargetFiles(target.AllData(state.Graph), "")
-	if err != nil {
-		return core.TestSuite{}, err
-	}
-	req := &pb.RemoteTestRequest{
-		Rule:     rule,
-		Outputs:  outputs,
-		Data:     data,
-		Command:  target.GetTestCommand(state),
-		Coverage: state.NeedCoverage,
-		Timeout:  int32(timeout / time.Second),
-	}
-	ctx, cancel = context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	startTime := time.Now()
-	resp, err := client.ExecuteTest(ctx, req)
-	duration := time.Since(startTime)
-	if err != nil {
-		return core.TestSuite{}, err
-	}
-	suite, err := parseAllTestResultContents(resp.Results)
-	suite.Package = strings.Replace(target.Label.PackageName, "/", ".", -1)
-	suite.Name = target.Label.Name
-	suite.Duration = duration
-	return suite, err
+	return core.TestSuite{}, nil
 }
 
 // testTimeout returns the timeout duration for a test, falling back to the config if it doesn't have one set.
