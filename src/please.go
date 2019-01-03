@@ -691,49 +691,6 @@ func runQuery(needFullParse bool, labels []core.BuildLabel, onSuccess func(state
 	return false
 }
 
-func please(tid int, state *core.BuildState, parsePackageOnly bool, include, exclude []string) {
-	for {
-		label, dependor, t := state.NextTask()
-		switch t {
-		case core.Stop, core.Kill:
-			return
-		case core.Parse, core.SubincludeParse:
-			t := t
-			label := label
-			dependor := dependor
-			state.ParsePool <- func() {
-				parse.Parse(tid, state, label, dependor, parsePackageOnly, include, exclude, t == core.SubincludeParse)
-				if opts.VisibilityParse && state.IsOriginalTarget(label) {
-					parseForVisibleTargets(state, label)
-				}
-				state.TaskDone(false)
-			}
-		case core.Build, core.SubincludeBuild:
-			build.Build(tid, state, label)
-			state.TaskDone(true)
-		case core.Test:
-			test.Test(tid, state, label)
-			state.TaskDone(true)
-		}
-	}
-}
-
-func pleaseRemote(tid int, state *core.BuildState) {
-	for {
-		label, _, t := state.NextRemoteTask()
-		switch t {
-		case core.Stop, core.Kill:
-			return
-		case core.Build, core.SubincludeBuild:
-			build.Build(tid, state, label)
-			state.TaskDone(true)
-		case core.Test:
-			test.Test(tid, state, label)
-			state.TaskDone(true)
-		}
-	}
-}
-
 func setWatchedTarget(state *core.BuildState, labels core.BuildLabels) string {
 	if opts.Watch.Run {
 		opts.Run.Parallel.PositionalArgs.Targets = labels
@@ -822,39 +779,6 @@ func Please(targets []core.BuildLabel, config *core.Configuration, prettyOutput,
 	if (state.NeedBuild || state.NeedTests) && !opts.FeatureFlags.NoLock {
 		core.AcquireRepoLock()
 		defer core.ReleaseRepoLock()
-	}
-	if state.DebugTests && len(targets) != 1 {
-		log.Fatalf("-d/--debug flag can only be used with a single test target")
-	}
-	detailedTests := state.NeedTests && (opts.Test.Detailed || opts.Cover.Detailed || (len(targets) == 1 && !targets[0].IsAllTargets() && !targets[0].IsAllSubpackages() && targets[0] != core.BuildLabelStdin))
-	// Start looking for the initial targets to kick the build off
-	go findOriginalTasks(state, targets)
-	// Start up all the build workers
-	var wg sync.WaitGroup
-	wg.Add(state.NumWorkers + state.NumTestWorkers)
-	for i := 0; i < state.NumWorkers; i++ {
-		go func(tid int) {
-			please(tid, state, opts.ParsePackageOnly, opts.BuildFlags.Include, opts.BuildFlags.Exclude)
-			wg.Done()
-		}(i)
-	}
-	for i := 0; i < state.NumTestWorkers; i++ {
-		go func(tid int) {
-			pleaseTest(tid, state, opts.ParsePackageOnly, opts.BuildFlags.Include, opts.BuildFlags.Exclude)
-			wg.Done()
-		}(i + state.NumWorkers)
-	}
-	// Wait until they've all exited, which they'll do once they have no tasks left.
-	go func() {
-		wg.Wait()
-		close(state.Results) // This will signal MonitorState (below) to stop.
-	}()
-	// Draw stuff to the screen while there are still results coming through.
-	shouldRun := !opts.Run.Args.Target.IsEmpty()
-	success := output.MonitorState(state, !prettyOutput, opts.BuildFlags.KeepGoing, state.NeedBuild, state.NeedTests, shouldRun, opts.Build.ShowStatus, detailedTests, string(opts.OutputFlags.TraceFile))
-
-	if state.Cache != nil {
-		state.Cache.Shutdown()
 	}
 
 	detailedTests := state.NeedTests && (opts.Test.Detailed || opts.Cover.Detailed ||
