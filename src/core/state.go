@@ -17,8 +17,8 @@ import (
 // startTime is as close as we can conveniently get to process start time.
 var startTime = time.Now()
 
-// A TaskType identifies the kind of task returned from NextTask()
-type TaskType int
+// A taskType identifies the kind of task returned from NextTask()
+type taskType int
 
 // The values here are fiddled to make Compare work easily.
 // Essentially we prioritise on the higher bits only and use the lower ones to make
@@ -26,7 +26,7 @@ type TaskType int
 // Subinclude tasks order first, but we're happy for all build / parse / test tasks
 // to be treated equivalently.
 const (
-	Kill            TaskType = 0x0000 | 0
+	Kill            taskType = 0x0000 | 0
 	SubincludeBuild          = 0x1000 | 1
 	SubincludeParse          = 0x2000 | 2
 	Build                    = 0x4000 | 3
@@ -39,7 +39,7 @@ const (
 type pendingTask struct {
 	Label    BuildLabel // Label of target to parse
 	Dependor BuildLabel // The target that depended on it (only for parse tasks)
-	Type     TaskType
+	Type     taskType
 }
 
 func (t pendingTask) Compare(that queue.Item) int {
@@ -187,6 +187,12 @@ type SystemStats struct {
 	NumWorkerProcesses int
 }
 
+// A LabelPair is simply two build labels, used on some of our queues.
+type LabelPair struct {
+	Label, Dependor BuildLabel
+	ForSubinclude   bool
+}
+
 // AddActiveTarget increments the counter for a newly active build target.
 func (state *BuildState) AddActiveTarget() {
 	atomic.AddInt64(&state.progress.numActive, 1)
@@ -219,24 +225,7 @@ func (state *BuildState) AddPendingTest(label BuildLabel) {
 	}
 }
 
-// NextTask receives the next task that should be processed according to the priority queues.
-func (state *BuildState) NextTask() (BuildLabel, BuildLabel, TaskType) {
-	return state.nextTask(state.pendingTasks)
-}
-
-func (state *BuildState) nextTask(q *queue.PriorityQueue) (BuildLabel, BuildLabel, TaskType) {
-	t, err := q.Get(1)
-	if err != nil {
-		log.Fatalf("error receiving next task: %s", err)
-	}
-	task := t[0].(pendingTask)
-	if task.Type == Build || task.Type == SubincludeBuild || task.Type == Test {
-		atomic.AddInt64(&state.progress.numRunning, 1)
-	}
-	return task.Label, task.Dependor, task.Type
-}
-
-func (state *BuildState) addPending(label BuildLabel, t TaskType) {
+func (state *BuildState) addPending(label BuildLabel, t taskType) {
 	atomic.AddInt64(&state.progress.numPending, 1)
 	state.pendingTasks.Put(pendingTask{Label: label, Type: t})
 }
@@ -249,14 +238,42 @@ func (state *BuildState) TaskDone(wasBuildOrTest bool) {
 		atomic.AddInt64(&state.progress.numRunning, -1)
 	}
 	if atomic.AddInt64(&state.progress.numPending, -1) <= 0 {
-		state.kill(state.NumWorkers, Stop)
+		state.pendingTasks.Put(pendingTask{Type: Stop})
 	}
 }
 
-// Kill adds n kill tasks to the list of pending tasks, which stops n workers before they do anything else.
-func (state *BuildState) Kill(n int) {
-	for i := 0; i < n; i++ {
-		state.pendingTasks.Put(pendingTask{Type: Kill})
+// TaskQueues returns a set of task queues for this state.
+// It should only be called once per state instance.
+// The queues will be closed when there are no further tasks to consume.
+func (state *BuildState) TaskQueues() (parses <-chan LabelPair, builds, tests <-chan BuildLabel) {
+	ch1 := make(chan LabelPair, 100)
+	ch2 := make(chan BuildLabel, 100)
+	ch3 := make(chan BuildLabel, 100)
+	go state.feedQueues(ch1, ch2, ch3)
+	return ch1, ch2, ch3
+}
+
+// feedQueues feeds the task queues created by TaskQueues
+func (state *BuildState) feedQueues(parses chan<- LabelPair, builds, tests chan<- BuildLabel) {
+	for {
+		t, _ := state.pendingTasks.Get(1)
+		task := t[0].(pendingTask)
+		if task.Type == Build || task.Type == SubincludeBuild || task.Type == Test {
+			atomic.AddInt64(&state.progress.numRunning, 1)
+		}
+		switch task.Type {
+		case Stop, Kill:
+			close(parses)
+			close(builds)
+			close(tests)
+			return
+		case Parse, SubincludeParse:
+			parses <- LabelPair{Label: task.Label, Dependor: task.Dependor, ForSubinclude: task.Type == SubincludeParse}
+		case Build, SubincludeBuild:
+			builds <- task.Label
+		case Test:
+			tests <- task.Label
+		}
 	}
 }
 
@@ -264,14 +281,7 @@ func (state *BuildState) Kill(n int) {
 func (state *BuildState) KillAll() {
 	if !state.workersKilled {
 		state.workersKilled = true
-		state.kill(state.NumWorkers, Kill)
-	}
-}
-
-// kill sends a kill or stop signal to n workers on the given queue.
-func (state *BuildState) kill(n int, signal TaskType) {
-	for i := 0; i < n; i++ {
-		state.pendingTasks.Put(pendingTask{Type: signal})
+		state.pendingTasks.Put(pendingTask{Type: Kill})
 	}
 }
 

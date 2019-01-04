@@ -51,15 +51,17 @@ func Init(targets []core.BuildLabel, state *core.BuildState, config *core.Config
 	// Start up all the build workers
 	var wg sync.WaitGroup
 	wg.Add(state.NumWorkers + state.NumRemoteWorkers)
+	parses, builds, tests := state.TaskQueues()
 	for i := 0; i < state.NumWorkers; i++ {
 		go func(tid int) {
-			initOpts.doTasks(tid, state, state.Include, state.Exclude)
+			initOpts.doTasks(tid, state, parses, builds, tests, state.Include, state.Exclude)
 			wg.Done()
 		}(i)
 	}
 	for i := 0; i < state.NumRemoteWorkers; i++ {
 		go func(tid int) {
-			initOpts.doRemoteTasks(tid, state)
+			// Parse tasks cannot be dispatched remotely.
+			initOpts.doTasks(tid, state, nil, builds, tests, nil, nil)
 			wg.Done()
 		}(i)
 	}
@@ -96,48 +98,40 @@ func InitDefault(targets []core.BuildLabel, state *core.BuildState, config *core
 		TraceFile:        "",
 		NoLock:           true,
 	}
-	return Init(targets, state,
-		config, initOpts)
+	return Init(targets, state, config, initOpts)
 }
 
-func (i *InitOpts) doTasks(tid int, state *core.BuildState, include, exclude []string) {
-	for {
-		label, dependor, t := state.NextTask()
-		switch t {
-		case core.Stop, core.Kill:
-			return
-		case core.Parse, core.SubincludeParse:
-			t := t
-			label := label
-			dependor := dependor
+func (i *InitOpts) doTasks(tid int, state *core.BuildState, parses <-chan core.LabelPair, builds, tests <-chan core.BuildLabel, include, exclude []string) {
+	for parses != nil && builds != nil && tests != nil {
+		select {
+		case p := <-parses:
+			if p.Label.Name == "" {
+				parses = nil
+				break
+			}
+			label := p.Label
+			dependor := p.Dependor
+			forSubinclude := p.ForSubinclude
 			state.ParsePool <- func() {
-				parse.Parse(tid, state, label, dependor, i.ParsePackageOnly, include, exclude, t == core.SubincludeParse)
+				parse.Parse(tid, state, label, dependor, i.ParsePackageOnly, include, exclude, forSubinclude)
 				if i.VisibilityParse && state.IsOriginalTarget(label) {
 					i.parseForVisibleTargets(state, label)
 				}
 				state.TaskDone(false)
 			}
-		case core.Build, core.SubincludeBuild:
-			build.Build(tid, state, label)
+		case l := <-builds:
+			if l.Name == "" {
+				builds = nil
+				break
+			}
+			build.Build(tid, state, l)
 			state.TaskDone(true)
-		case core.Test:
-			test.Test(tid, state, label)
-			state.TaskDone(true)
-		}
-	}
-}
-
-func (i *InitOpts) doRemoteTasks(tid int, state *core.BuildState) {
-	for {
-		label, _, t := state.NextRemoteTask()
-		switch t {
-		case core.Stop, core.Kill:
-			return
-		case core.Build, core.SubincludeBuild:
-			build.Build(tid, state, label)
-			state.TaskDone(true)
-		case core.Test:
-			test.Test(tid, state, label)
+		case l := <-tests:
+			if l.Name == "" {
+				tests = nil
+				break
+			}
+			test.Test(tid, state, l)
 			state.TaskDone(true)
 		}
 	}
