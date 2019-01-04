@@ -1,6 +1,10 @@
 package plz
 
 import (
+	"sync"
+
+	"gopkg.in/op/go-logging.v1"
+
 	"github.com/thought-machine/please/src/build"
 	"github.com/thought-machine/please/src/cli"
 	"github.com/thought-machine/please/src/core"
@@ -11,8 +15,9 @@ import (
 	"github.com/thought-machine/please/src/parse"
 	"github.com/thought-machine/please/src/test"
 	"github.com/thought-machine/please/src/utils"
-	"sync"
 )
+
+var log = logging.MustGetLogger("plz")
 
 // InitOpts represents initialization options for please. These are usually being passed as cli args
 type InitOpts struct {
@@ -63,7 +68,7 @@ func Init(targets []core.BuildLabel, state *core.BuildState, config *core.Config
 			// Parse tasks cannot be dispatched remotely.
 			initOpts.doTasks(tid, state, nil, builds, tests, nil, nil)
 			wg.Done()
-		}(i)
+		}(state.NumWorkers + i)
 	}
 
 	// Wait until they've all exited, which they'll do once they have no tasks left.
@@ -102,7 +107,7 @@ func InitDefault(targets []core.BuildLabel, state *core.BuildState, config *core
 }
 
 func (i *InitOpts) doTasks(tid int, state *core.BuildState, parses <-chan core.LabelPair, builds, tests <-chan core.BuildLabel, include, exclude []string) {
-	for parses != nil && builds != nil && tests != nil {
+	for parses != nil || builds != nil || tests != nil {
 		select {
 		case p := <-parses:
 			if p.Label.Name == "" {

@@ -468,6 +468,11 @@ func (state *BuildState) SetTaskNumbers(active, done int64) {
 	atomic.StoreInt64(&state.progress.numDone, done)
 }
 
+// IsRemote returns true if the given thread id is a remote thread.
+func (state *BuildState) IsRemote(tid int) bool {
+	return tid >= state.NumWorkers
+}
+
 // ExpandOriginalTargets expands any pseudo-targets (ie. :all, ... has already been resolved to a bunch :all targets)
 // from the set of original targets.
 // Deprecated: Callers should use ExpandOriginalLabels instead.

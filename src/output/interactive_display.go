@@ -81,6 +81,10 @@ func printLines(state *core.BuildState, buildingTargets []buildingTarget, maxLin
 		printf("${ERASE_AFTER}\n")
 	}
 	for i := 0; i < len(buildingTargets) && i < maxLines; i++ {
+		c := '='
+		if state.IsRemote(i) {
+			c = '-'
+		}
 		buildingTargets[i].Lock()
 		// Take a local copy of the structure, which isn't *that* big, so we don't need to retain the lock
 		// while we do potentially blocking things like printing.
@@ -96,30 +100,30 @@ func printLines(state *core.BuildState, buildingTargets []buildingTarget, maxLin
 				buildingTargets[i].LastProgress = target.Target.Progress
 			}
 			if target.Eta > 0 {
-				lprintf(cols, "${BOLD_WHITE}=> [%4.1fs] ${RESET}%s%s ${BOLD_WHITE}%s${RESET} (%.1f%%%%, est %s remaining)${ERASE_AFTER}\n",
-					duration, target.Colour, label, target.Description, target.Target.Progress, target.Eta)
+				lprintf(cols, "${BOLD_WHITE}%c> [%4.1fs] ${RESET}%s%s ${BOLD_WHITE}%s${RESET} (%.1f%%%%, est %s remaining)${ERASE_AFTER}\n",
+					c, duration, target.Colour, label, target.Description, target.Target.Progress, target.Eta)
 			} else {
-				lprintf(cols, "${BOLD_WHITE}=> [%4.1fs] ${RESET}%s%s ${BOLD_WHITE}%s${RESET} (%.1f%%%% complete)${ERASE_AFTER}\n",
-					duration, target.Colour, label, target.Description, target.Target.Progress)
+				lprintf(cols, "${BOLD_WHITE}%c> [%4.1fs] ${RESET}%s%s ${BOLD_WHITE}%s${RESET} (%.1f%%%% complete)${ERASE_AFTER}\n",
+					c, duration, target.Colour, label, target.Description, target.Target.Progress)
 			}
 		} else if target.Active {
-			lprintf(cols, "${BOLD_WHITE}=> [%4.1fs] ${RESET}%s%s ${BOLD_WHITE}%s${ERASE_AFTER}\n",
-				duration, target.Colour, label, target.Description)
+			lprintf(cols, "${BOLD_WHITE}%c> [%4.1fs] ${RESET}%s%s ${BOLD_WHITE}%s${ERASE_AFTER}\n",
+				c, duration, target.Colour, label, target.Description)
 		} else if time.Since(target.Finished).Seconds() < 0.5 {
 			// Only display finished targets for half a second after they're done.
 			duration := target.Finished.Sub(target.Started).Seconds()
 			if target.Failed {
-				lprintf(cols, "${BOLD_RED}=> [%4.1fs] ${RESET}%s%s ${BOLD_RED}Failed${ERASE_AFTER}\n",
-					duration, target.Colour, label)
+				lprintf(cols, "${BOLD_RED}%c> [%4.1fs] ${RESET}%s%s ${BOLD_RED}Failed${ERASE_AFTER}\n",
+					c, duration, target.Colour, label)
 			} else if target.Cached {
-				lprintf(cols, "${BOLD_WHITE}=> [%4.1fs] ${RESET}%s%s ${BOLD_GREY}%s${ERASE_AFTER}\n",
-					duration, target.Colour, label, target.Description)
+				lprintf(cols, "${BOLD_WHITE}%c> [%4.1fs] ${RESET}%s%s ${BOLD_GREY}%s${ERASE_AFTER}\n",
+					c, duration, target.Colour, label, target.Description)
 			} else {
-				lprintf(cols, "${BOLD_WHITE}=> [%4.1fs] ${RESET}%s%s ${WHITE}%s${ERASE_AFTER}\n",
-					duration, target.Colour, label, target.Description)
+				lprintf(cols, "${BOLD_WHITE}%c> [%4.1fs] ${RESET}%s%s ${WHITE}%s${ERASE_AFTER}\n",
+					c, duration, target.Colour, label, target.Description)
 			}
 		} else {
-			printf("${BOLD_GREY}=|${ERASE_AFTER}\n")
+			printf("${BOLD_GREY}%c|${ERASE_AFTER}\n", c)
 		}
 	}
 	printf("${RESET}")
