@@ -53,6 +53,9 @@ func buildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 // Note that we lie about the location of HOME in order to keep some tools happy.
 // We read this as being slightly more POSIX-compliant than not having it set at all...
 func BuildEnvironment(state *BuildState, target *BuildTarget, tmpDir string) BuildEnv {
+	if !path.IsAbs(tmpDir) {
+		tmpDir = path.Join(RepoRoot, tmpDir)
+	}
 	env := buildEnvironment(state, target)
 	sources := target.AllSourcePaths(state.Graph)
 	outEnv := target.GetTmpOutputAll(target.Outputs())
@@ -69,7 +72,7 @@ func BuildEnvironment(state *BuildState, target *BuildTarget, tmpDir string) Bui
 	)
 	// The OUT variable is only available on rules that have a single output.
 	if len(outEnv) == 1 {
-		env = append(env, "OUT="+path.Join(RepoRoot, tmpDir, outEnv[0]))
+		env = append(env, "OUT="+path.Join(tmpDir, outEnv[0]))
 	}
 	// The SRC variable is only available on rules that have a single source file.
 	if len(sources) == 1 {

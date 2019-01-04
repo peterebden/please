@@ -32,9 +32,10 @@ func TestBuildLotsOfTargets(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	wg.Add(numWorkers)
+	parses, builds, tests := state.TaskQueues()
 	for i := 0; i < numWorkers; i++ {
 		go func(i int) {
-			please(i, state)
+			please(i, state, parses, builds, tests)
 			wg.Done()
 		}(i)
 	}
@@ -81,17 +82,9 @@ func label(i int) core.BuildLabel {
 }
 
 // please mimics the core build 'loop' from src/please.go.
-func please(tid int, state *core.BuildState) {
-	for {
-		label, _, t := state.NextTask()
-		switch t {
-		case core.Stop, core.Kill:
-			return
-		case core.Build:
-			Build(tid, state, label)
-		default:
-			panic(fmt.Sprintf("unexpected task type: %d", t))
-		}
+func please(tid int, state *core.BuildState, parses <-chan core.LabelPair, builds, tests <-chan core.BuildLabel) {
+	for label := range builds {
+		Build(tid, state, label)
 		state.TaskDone(true)
 	}
 }

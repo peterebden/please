@@ -52,12 +52,12 @@ func TestUpdateRejectsHashChanges(t *testing.T) {
 		},
 	}
 	r := newRing(testClientFactory)
-	assert.NoError(t, r.Update(node))
+	assert.NoError(t, update(r, node))
 	assert.EqualValues(t, node, r.Export()[0])
 
 	// This change is OK; ends of ranges are allowed to move
 	node.Ranges[0].End = 17
-	assert.NoError(t, r.Update(node))
+	assert.NoError(t, update(r, node))
 
 	// This is not; a new node is claiming existing ranges.
 	node = &pb.Node{
@@ -67,7 +67,7 @@ func TestUpdateRejectsHashChanges(t *testing.T) {
 			{Start: 0, End: 4611686018427387904},
 		},
 	}
-	assert.Error(t, r.Update(node))
+	assert.Error(t, update(r, node))
 }
 
 func TestUpdateAddingNewNodes(t *testing.T) {
@@ -84,7 +84,7 @@ func TestUpdateAddingNewNodes(t *testing.T) {
 		},
 	}
 	r := newRing(testClientFactory)
-	assert.NoError(t, r.Update(nodes[0]))
+	assert.NoError(t, update(r, nodes[0]))
 	assert.Equal(t, nodes, r.Export())
 
 	nodes = []*pb.Node{
@@ -108,7 +108,7 @@ func TestUpdateAddingNewNodes(t *testing.T) {
 			},
 		},
 	}
-	assert.NoError(t, r.Update(nodes[1]))
+	assert.NoError(t, update(r, nodes[1]))
 	assert.Equal(t, nodes, r.Export())
 }
 
@@ -126,7 +126,7 @@ func TestVerify(t *testing.T) {
 		},
 	}
 	r := newRing(testClientFactory)
-	assert.NoError(t, r.Update(nodes[0]))
+	assert.NoError(t, update(r, nodes[0]))
 	assert.NoError(t, r.Verify())
 }
 
@@ -153,8 +153,8 @@ func TestVerify2(t *testing.T) {
 		},
 	}
 	r := newRing(testClientFactory)
-	assert.NoError(t, r.Update(nodes[0]))
-	assert.NoError(t, r.Update(nodes[1]))
+	assert.NoError(t, update(r, nodes[0]))
+	assert.NoError(t, update(r, nodes[1]))
 	assert.NoError(t, r.Verify())
 }
 
@@ -172,7 +172,7 @@ func TestVerifyDoesNotStartAtZero(t *testing.T) {
 		},
 	}
 	r := newRing(testClientFactory)
-	assert.NoError(t, r.Update(nodes[0]))
+	assert.NoError(t, update(r, nodes[0]))
 	assert.Error(t, r.Verify())
 }
 
@@ -190,7 +190,7 @@ func TestVerifyDoesNotEndAtMax(t *testing.T) {
 		},
 	}
 	r := newRing(testClientFactory)
-	assert.NoError(t, r.Update(nodes[0]))
+	assert.NoError(t, update(r, nodes[0]))
 	assert.Error(t, r.Verify())
 }
 
@@ -222,8 +222,8 @@ func TestFind(t *testing.T) {
 		},
 	}
 	r := newRing(testClientFactory)
-	assert.NoError(t, r.Update(nodes[0]))
-	assert.NoError(t, r.Update(nodes[1]))
+	assert.NoError(t, update(r, nodes[0]))
+	assert.NoError(t, update(r, nodes[1]))
 
 	name, client1 := r.Find(0)
 	assert.Equal(t, "node-1", name)
@@ -255,4 +255,9 @@ func TestGenToken(t *testing.T) {
 			r.genToken(uint64(tok), fmt.Sprintf("test-%d", i), nil)
 		}
 	}
+}
+
+func update(r *Ring, node *pb.Node) error {
+	_, err := r.Update(node)
+	return err
 }

@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 
-	"grpcutil"
-	rpb "src/remote/proto/remote"
+	"github.com/thought-machine/please/src/grpcutil"
+	rpb "github.com/thought-machine/please/src/remote/proto/remote"
 	pb "github.com/thought-machine/please/tools/mettle/proto/worker"
 )
 

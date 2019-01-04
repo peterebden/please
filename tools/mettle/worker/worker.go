@@ -15,8 +15,8 @@ import (
 	"gopkg.in/op/go-logging.v1"
 
 	"github.com/thought-machine/please/src/fs"
-	"grpcutil"
-	pb "src/remote/proto/remote"
+	"github.com/thought-machine/please/src/grpcutil"
+	pb "github.com/thought-machine/please/src/remote/proto/remote"
 	wpb "github.com/thought-machine/please/tools/mettle/proto/worker"
 )
 

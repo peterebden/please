@@ -10,8 +10,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
-	"grpcutil"
-	pb "src/remote/proto/remote"
+	"github.com/thought-machine/please/src/grpcutil"
+	pb "github.com/thought-machine/please/src/remote/proto/remote"
 	wpb "github.com/thought-machine/please/tools/mettle/proto/worker"
 )
 

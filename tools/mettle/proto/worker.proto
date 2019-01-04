@@ -7,24 +7,25 @@
 syntax = "proto3";
 
 import "src/remote/proto/remote.proto";
+option go_package = "github.com/thought-machine/please/tools/mettle/proto/worker";
 
 service RemoteMaster {
-  // Communication between the master & worker. The workers connect as the client
-  // (since they are ephemeral and the master has a fixed location) and the master
-  // submits jobs to them via this stream.
-  rpc Work(stream WorkRequest) returns (stream WorkResponse);
+    // Communication between the master & worker. The workers connect as the client
+    // (since they are ephemeral and the master has a fixed location) and the master
+    // submits jobs to them via this stream.
+    rpc Work(stream WorkRequest) returns (stream WorkResponse);
 }
 
 message WorkRequest {
-  // A "friendly" name for this worker.
-  string name = 1;
-  // Sent as a response to completed tasks.
-  remote.RemoteTaskResponse response = 2;
+    // A "friendly" name for this worker.
+    string name = 1;
+    // Sent as a response to completed tasks.
+    remote.RemoteTaskResponse response = 2;
 }
 
 message WorkResponse {
-  // Sent when the server is shutting down.
-  bool shutdown = 1;
-  // Sent when remote work is dispatched to this worker.
-  remote.RemoteTaskRequest request = 2;
+    // Sent when the server is shutting down.
+    bool shutdown = 1;
+    // Sent when remote work is dispatched to this worker.
+    remote.RemoteTaskRequest request = 2;
 }

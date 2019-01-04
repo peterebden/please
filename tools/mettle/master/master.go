@@ -11,8 +11,8 @@ import (
 	"google.golang.org/grpc/status"
 	"gopkg.in/op/go-logging.v1"
 
-	"grpcutil"
-	pb "src/remote/proto/remote"
+	"github.com/thought-machine/please/src/grpcutil"
+	pb "github.com/thought-machine/please/src/remote/proto/remote"
 	wpb "github.com/thought-machine/please/tools/mettle/proto/worker"
 )
 

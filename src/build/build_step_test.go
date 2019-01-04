@@ -332,7 +332,7 @@ func TestMain(m *testing.M) {
 	// Move ourselves to the root of the test data tree
 	wd, _ := os.Getwd()
 	core.RepoRoot = path.Join(wd, "src/build/test_data")
-	Init(nil)
+	Init(core.NewDefaultBuildState())
 	if err := os.Chdir(core.RepoRoot); err != nil {
 		panic(err)
 	}

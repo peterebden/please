@@ -277,11 +277,21 @@ func (state *BuildState) feedQueues(parses chan<- LabelPair, builds, tests chan<
 	}
 }
 
+// StopAll stops all the workers, after their existing tasks are done.
+func (state *BuildState) StopAll() {
+	state.killall(Stop)
+}
+
 // KillAll kills all the workers.
+// This is similar to StopAll but happens faster.
 func (state *BuildState) KillAll() {
+	state.killall(Kill)
+}
+
+func (state *BuildState) killall(t taskType) {
 	if !state.workersKilled {
 		state.workersKilled = true
-		state.pendingTasks.Put(pendingTask{Type: Kill})
+		state.pendingTasks.Put(pendingTask{Type: t})
 	}
 }
 
