@@ -4,6 +4,7 @@ go_library(
         ["*.go"],
         exclude = [
             "*_test.go",
+            "stub.go",
         ],
     ),
     visibility = ["PUBLIC"],

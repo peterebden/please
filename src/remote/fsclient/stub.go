@@ -2,6 +2,6 @@
 
 package fsclient
 
-func NewClient(urls []string) (Client, error) {
+func New(urls []string) Client {
 	panic("not implemented")
 }
