@@ -12,12 +12,14 @@ service PlzEvents {
     rpc ResourceUsage(ResourceUsageRequest) returns (stream ResourceUsageResponse);
 }
 
-message ServerConfigRequest{
+message ServerConfigRequest {
 }
 
-message ServerConfigResponse{
+message ServerConfigResponse {
     // The total number of threads that the server is configured to run.
     int32 num_threads = 1;
+    // The number of remote workers that the server might use.
+    int32 num_remote_workers = 7;
     // The original targets that the server was requested to run.
     repeated BuildLabel original_targets = 2;
     // True if the server is running tests.
@@ -31,10 +33,10 @@ message ServerConfigResponse{
     int64 start_time = 6;
 }
 
-message BuildEventRequest{
+message BuildEventRequest {
 }
 
-message BuildEventResponse{
+message BuildEventResponse {
     // Internal id of the thread (goroutine, really) that generated this event.
     // These can be used to chain together consecutive events by the same worker.
     // Ids are guaranteed to be allocated sequentially, starting from 0 and are
@@ -65,7 +67,7 @@ message BuildEventResponse{
     int64 num_done = 10;
 }
 
-message BuildLabel{
+message BuildLabel {
     string package_name = 1;
     string name = 2;
 }
@@ -154,10 +156,10 @@ message TestSkip {
     string message = 1;
 }
 
-message ResourceUsageRequest{
+message ResourceUsageRequest {
 }
 
-message ResourceUsageResponse{
+message ResourceUsageResponse {
     // Total number of CPUs available to the system.
     int32 num_cpus = 1;
     // CPU usage that is measured as "in use", excluding I/O, as a percentage.

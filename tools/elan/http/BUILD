@@ -15,8 +15,8 @@ go_library(
     visibility = ["//tools/elan/..."],
     deps = [
         "//src/grpcutil",
-        "//third_party/go:logging",
         "//src/remote/proto:fs",
+        "//third_party/go:logging",
         "//tools/elan/proto:cluster",
     ],
 )

@@ -1,4 +1,5 @@
 subinclude("//build_defs:docker")
+
 subinclude("//build_defs:k8s")
 
 go_binary(
@@ -9,8 +10,8 @@ go_binary(
         "//src/cli",
         "//src/remote/proto:remote",
         "//third_party/go:logging",
-        "//tools/elan/grpc",
         "//tools/elan/cluster",
+        "//tools/elan/grpc",
         "//tools/elan/http",
         "//tools/elan/storage",
     ],
@@ -24,6 +25,10 @@ docker_image(
 
 k8s_config(
     name = "k8s",
-    srcs = ["elan.yaml", "elan-svc.yaml", "storageclass.yaml"],
+    srcs = [
+        "elan.yaml",
+        "elan-svc.yaml",
+        "storageclass.yaml",
+    ],
     containers = [":image"],
 )

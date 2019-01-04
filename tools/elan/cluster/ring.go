@@ -51,7 +51,7 @@ func createClient(address string) cpb.ElanClient {
 	return cpb.NewElanClient(grpcutil.Dial(address))
 }
 
-// Updates this ring with the given node info. It returns true if the node has changed.
+// Update updates this ring with the given node info. It returns true if the node has changed.
 func (r *Ring) Update(node *pb.Node) (bool, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()

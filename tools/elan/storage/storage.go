@@ -55,6 +55,7 @@ type WriteCloseCanceler interface {
 	Cancel()
 }
 
+// A Storage represents the underlying data storage engine
 type Storage interface {
 	// LoadConfig loads the current configuration for this server.
 	LoadConfig() (*cpb.Config, error)

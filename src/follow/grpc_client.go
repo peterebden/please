@@ -66,6 +66,7 @@ func connectSingleTry(state *core.BuildState, url string) error {
 	output.PrintConnectionMessage(url, fromProtoBuildLabels(resp.OriginalTargets), resp.Tests, resp.Coverage)
 	// Update the config appropriately; the output code reads some of its fields.
 	state.NumWorkers = int(resp.NumThreads)
+	state.NumRemoteWorkers = int(resp.NumThreads)
 	state.NeedBuild = false // We're not actually building ourselves
 	state.NeedTests = resp.Tests
 	state.NeedCoverage = resp.Coverage

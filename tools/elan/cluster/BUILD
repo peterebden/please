@@ -1,15 +1,18 @@
 go_library(
     name = "cluster",
-    srcs = ["cluster.go", "ring.go"],
+    srcs = [
+        "cluster.go",
+        "ring.go",
+    ],
     visibility = ["//tools/elan/..."],
     deps = [
+        "//src/grpcutil",
+        "//src/remote/proto:fs",
+        "//third_party/go:go-multierror",
         "//third_party/go:logging",
         "//third_party/go:memberlist",
         "//third_party/go:protobuf",
-        "//src/remote/proto:fs",
         "//tools/elan/proto:cluster",
-        "//third_party/go:go-multierror",
-        "//src/grpcutil",
     ],
 )
 

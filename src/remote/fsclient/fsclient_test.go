@@ -18,13 +18,13 @@ import (
 
 func TestClient(t *testing.T) {
 	s1 := grpc.NewServer()
-	srv1 := NewServer()
+	srv1 := newServer()
 	pb.RegisterRemoteFSServer(s1, srv1)
 	lis1 := grpcutil.SetupServer(s1, 0)
 	go s1.Serve(lis1)
 
 	s2 := grpc.NewServer()
-	srv2 := NewServer()
+	srv2 := newServer()
 	pb.RegisterRemoteFSServer(s2, srv2)
 	lis2 := grpcutil.SetupServer(s2, 0)
 	go s2.Serve(lis2)
@@ -89,7 +89,7 @@ type server struct {
 	Updates chan *pb.InfoResponse
 }
 
-func NewServer() *server {
+func newServer() *server {
 	return &server{
 		files:   map[key][]byte{},
 		Updates: make(chan *pb.InfoResponse),

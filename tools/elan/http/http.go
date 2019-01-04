@@ -9,7 +9,7 @@ import (
 	"io"
 	"math"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" // pprof automatically registers its handlers
 	"strconv"
 	"sync"
 	"time"

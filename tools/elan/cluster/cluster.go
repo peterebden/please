@@ -33,7 +33,7 @@ type Cluster interface {
 	Updates() <-chan *pb.Node
 }
 
-// Start starts the cluster server.
+// Connect starts the cluster server.
 func Connect(ring *Ring, config *cpb.Config, port int, peers []string) (Cluster, error) {
 	c := memberlist.DefaultLANConfig()
 	c.BindPort = port

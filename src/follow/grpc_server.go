@@ -72,12 +72,13 @@ func (e *eventServer) ServerConfig(ctx context.Context, r *pb.ServerConfigReques
 		targets[i] = toProtoBuildLabel(t)
 	}
 	return &pb.ServerConfigResponse{
-		NumThreads:      int32(e.State.NumWorkers + e.State.NumRemoteWorkers),
-		OriginalTargets: targets,
-		Tests:           e.State.NeedTests,
-		Coverage:        e.State.NeedCoverage,
-		LastEvents:      toProtos(e.State.LastResults, e.State.NumActive(), e.State.NumDone()),
-		StartTime:       e.State.StartTime.UnixNano(),
+		NumThreads:       int32(e.State.NumWorkers),
+		NumRemoteWorkers: int32(e.State.NumRemoteWorkers),
+		OriginalTargets:  targets,
+		Tests:            e.State.NeedTests,
+		Coverage:         e.State.NeedCoverage,
+		LastEvents:       toProtos(e.State.LastResults, e.State.NumActive(), e.State.NumDone()),
+		StartTime:        e.State.StartTime.UnixNano(),
 	}, nil
 }
 

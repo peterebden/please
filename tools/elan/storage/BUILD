@@ -3,11 +3,11 @@ go_library(
     srcs = ["storage.go"],
     visibility = ["//tools/elan/..."],
     deps = [
+        "//src/fs",
+        "//src/remote/proto:fs",
         "//third_party/go:logging",
         "//third_party/go:protobuf",
         "//third_party/go:xattr",
-        "//src/fs",
-        "//src/remote/proto:fs",
         "//tools/elan/proto:cluster",
     ],
 )

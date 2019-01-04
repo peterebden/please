@@ -61,7 +61,7 @@ func TestClientToServerCommunication(t *testing.T) {
 	clientState := core.NewBuildState(1, nil, 4, core.DefaultConfiguration())
 	connectClient(clientState, addr, retries, delay)
 	// The client state should have synced up with the server's number of threads
-	assert.Equal(t, 5, clientState.Config.Please.NumThreads)
+	assert.Equal(t, 5, clientState.NumWorkers)
 
 	// We should be able to receive the latest build events for each thread.
 	// Note that they come out in thread order, not time order.
