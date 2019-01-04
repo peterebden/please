@@ -175,6 +175,9 @@ func (s *server) put(stream pb.RemoteFS_PutServer, replicate bool) error {
 	}
 	w, err := s.storage.Save(req.Hash, req.Name)
 	if err != nil {
+		if os.IsExist(err) {
+			return status.Errorf(codes.AlreadyExists, "%s / %x already exists", req.Name, req.Hash)
+		}
 		return err
 	}
 	defer w.Close()
@@ -237,7 +240,9 @@ func (s *server) forwardMessages(ch <-chan *pb.PutRequest, client cpb.ElanClient
 		}
 	}
 	if _, err := stream.CloseAndRecv(); err != nil {
-		log.Error("Error receiving replication response: %s", err)
+		if !grpcutil.IsAlreadyExists(err) {
+			log.Error("Error receiving replication response: %s", err)
+		}
 	}
 }
 

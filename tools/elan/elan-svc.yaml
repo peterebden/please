@@ -27,7 +27,7 @@ metadata:
   labels:
     app: elan
 spec:
-  type: LoadBalancer
+  clusterIP: None
   ports:
   - name:
     port: 9945

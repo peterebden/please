@@ -7,11 +7,6 @@
 package cache
 
 import (
-	"io"
-	"os"
-
-	"golang.org/x/sync/errgroup"
-
 	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/remote/fsclient"
 )
@@ -25,12 +20,12 @@ type remoteFSCache struct {
 }
 
 func (c *remoteFSCache) Store(target *core.BuildTarget, key []byte, files ...string) {
-	err := c.store(key, cacheArtifacts(target, files...))
+	err := c.store(key, target, cacheArtifacts(target, files...))
 	c.error("Failed to store artifacts with remote server: %s", err)
 }
 
 func (c *remoteFSCache) StoreExtra(target *core.BuildTarget, key []byte, file string) {
-	err := c.store(key, []string{file})
+	err := c.store(key, target, []string{file})
 	c.error("Failed to store artifact with remote server: %s", err)
 }
 
@@ -56,39 +51,12 @@ func (c *remoteFSCache) CleanAll() {}
 
 func (c *remoteFSCache) Shutdown() {}
 
-func (c *remoteFSCache) store(key []byte, filenames []string) error {
-	contents := make([]io.ReadSeeker, len(filenames))
-	for i, filename := range filenames {
-		f, err := os.Open(filename)
-		if err != nil {
-			return err
-		}
-		contents[i] = f
-		defer f.Close()
-	}
-	return c.client.Put(filenames, key, contents)
+func (c *remoteFSCache) store(key []byte, target *core.BuildTarget, filenames []string) error {
+	return c.client.PutRelative(filenames, key, target.OutDir())
 }
 
 func (c *remoteFSCache) retrieve(target *core.BuildTarget, key []byte, filenames []string) error {
-	var g errgroup.Group
-	rs, err := c.client.Get(filenames, key)
-	if err != nil {
-		return err
-	}
-	for i, filename := range filenames {
-		r := rs[i]
-		filename := filename
-		g.Go(func() error {
-			f, err := os.Open(filename)
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-			_, err = io.Copy(f, r)
-			return err
-		})
-	}
-	return g.Wait()
+	return c.client.GetInto(filenames, key, target.OutDir())
 }
 
 func (c *remoteFSCache) error(msg string, err error) bool {

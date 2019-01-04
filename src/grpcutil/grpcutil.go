@@ -78,3 +78,8 @@ func AddCleanup(f func()) {
 func IsNotFound(err error) bool {
 	return status.Code(err) == codes.NotFound
 }
+
+// IsAlreadyExists returns true if the given error represents a grpc AlreadyExists error.
+func IsAlreadyExists(err error) bool {
+	return status.Code(err) == codes.AlreadyExists
+}
