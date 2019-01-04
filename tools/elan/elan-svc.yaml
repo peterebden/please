@@ -19,3 +19,18 @@ spec:
     targetPort: http
   selector:
     app: elan
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elan-public
+  labels:
+    app: elan
+spec:
+  type: LoadBalancer
+  ports:
+  - name:
+    port: 9945
+    targetPort: grpc
+  selector:
+    app: elan

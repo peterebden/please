@@ -2,9 +2,13 @@
 package main
 
 import (
+	"strings"
+	"time"
+
 	"gopkg.in/op/go-logging.v1"
 
 	"github.com/thought-machine/please/src/cli"
+	"github.com/thought-machine/please/src/remote/fsclient"
 	"github.com/thought-machine/please/tools/mettle/master"
 	"github.com/thought-machine/please/tools/mettle/worker"
 )
@@ -16,13 +20,16 @@ var opts = struct {
 	Verbosity cli.Verbosity `short:"v" long:"verbosity" default:"notice" description:"Verbosity of output (higher number = more output)"`
 
 	Master struct {
-		Port int `short:"p" long:"port" default:"9922" description:"Port to serve on"`
+		Port    int          `short:"p" long:"port" default:"9922" description:"Port to serve on"`
+		Retries int          `short:"r" long:"retries" default:"3" description:"Number of times to retry when all workers are busy"`
+		Wait    cli.Duration `short:"d" long:"retry_duration" default:"5s" description:"Wait time between retrying when workers are busy"`
 	} `command:"master" description:"Starts this server as the master"`
 
 	Worker struct {
-		Master cli.URL `short:"m" long:"master" required:"true" description:"URL of the master to connect to"`
-		Name   string  `short:"n" long:"name" description:"Name of this worker instance."`
-		Dir    string  `short:"d" long:"dir" default:"." description:"Working directory to run tests in"`
+		Master cli.URL  `short:"m" long:"master" required:"true" description:"URL of the master to connect to"`
+		Name   string   `short:"n" long:"name" description:"Name of this worker instance."`
+		Dir    string   `short:"d" long:"dir" default:"." description:"Working directory to run tests in"`
+		FSURL  []string `short:"u" long:"fs_url" required:"true" description:"URL of remote FS server"`
 	} `command:"worker" description:"Starts this server as a worker"`
 }{
 	Usage: `
@@ -35,13 +42,15 @@ start up and register themselves, the master then hands them out to clients on r
 }
 
 func main() {
-	command := cli.ParseFlagsOrDie("mettle", "13.2.0", &opts)
+	command := cli.ParseFlagsOrDie("mettle", &opts)
 	cli.InitLogging(opts.Verbosity)
 	if command == "master" {
 		log.Notice("Starting as a master")
-		master.Start(opts.Master.Port)
+		master.Start(opts.Master.Port, opts.Master.Retries, time.Duration(opts.Master.Wait))
 	} else {
+		log.Notice("Connecting to remote filesystem at %s", strings.Join(opts.Worker.FSURL, ", "))
+		client := fsclient.New(opts.Worker.FSURL)
 		log.Notice("Starting as worker %s, connecting to master at %s", opts.Worker.Name, opts.Worker.Master)
-		worker.Connect(opts.Worker.Master.String(), opts.Worker.Name, opts.Worker.Dir)
+		worker.Connect(opts.Worker.Master.String(), opts.Worker.Name, opts.Worker.Dir, client)
 	}
 }

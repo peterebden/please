@@ -30,7 +30,7 @@ func newSyncCache(config *core.Configuration, remoteOnly bool) core.Cache {
 	// Not sure if this is best described as a cache - it is really more than that since
 	// it's crucial to remote builds - but this is a nice place to slot it in for now.
 	if len(config.Build.RemoteFSURL) > 0 {
-		mplex.caches = append(mplex.caches, newRemoteFSCache(config.Build.RemoteFSURL.Strings()))
+		mplex.caches = append(mplex.caches, newRemoteFSCache(config.Build.RemoteFSURL))
 	}
 	if config.Cache.RPCURL != "" {
 		cache, err := newRPCCache(config)

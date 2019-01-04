@@ -8,6 +8,7 @@ go_library(
         "//src/fs",
         "//src/grpcutil",
         "//src/remote/proto:remote",
+        "//src/remote/fsclient",
         "//third_party/go:errgroup",
         "//third_party/go:grpc",
         "//third_party/go:grpc-middleware",

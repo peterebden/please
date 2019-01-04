@@ -22,7 +22,7 @@ func runTestRemotely(tid int, state *core.BuildState, target *core.BuildTarget) 
 	remoteClientOnce.Do(func() {
 		// TODO(peterebden): Add TLS support (as always)
 		// TODO(peterebden): we should share one of these with the build code as well.
-		conn := grpcutil.Dial(state.Config.Build.RemoteURL.String())
+		conn := grpcutil.Dial(state.Config.Build.RemoteURL)
 		remoteClient = pb.NewRemoteWorkerClient(conn)
 	})
 	_, cancel := context.WithTimeout(context.Background(), testTimeout(state.Config, target))

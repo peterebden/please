@@ -6,17 +6,18 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path"
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/cespare/xxhash"
 	"github.com/hashicorp/go-multierror"
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/op/go-logging.v1"
 
-	"grpcutil"
-	pb "src/remote/proto/fs"
+	"github.com/thought-machine/please/src/grpcutil"
+	pb "github.com/thought-machine/please/src/remote/proto/fs"
 )
 
 var log = logging.MustGetLogger("fsclient")
@@ -109,6 +110,19 @@ func (c *client) Put(filenames []string, hash []byte, contents []io.ReadSeeker) 
 	return g.Wait()
 }
 
+func (c *client) PutRelative(filenames []string, hash []byte, dir string) error {
+	files := make([]io.ReadSeeker, len(filenames))
+	for i, fn := range filenames {
+		f, err := os.Open(path.Join(dir, fn))
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		files[i] = f
+	}
+	return c.Put(filenames, hash, files)
+}
+
 func (c *client) putFile(nodes []*node, filename string, hash uint64, contents io.ReadSeeker) error {
 	// Try each of the nodes until we find one that works.
 	var e error
@@ -173,9 +187,7 @@ func (c *client) init() {
 
 // initFrom initialises using the given RPC client.
 func (c *client) initFrom(client pb.RemoteFSClient) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	stream, err := client.Info(ctx, &pb.InfoRequest{})
+	stream, err := client.Info(context.Background(), &pb.InfoRequest{})
 	if err != nil {
 		return err
 	}

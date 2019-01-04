@@ -27,7 +27,7 @@ func Init(state *core.BuildState) {
 		built: map[string]bool{},
 	}
 	if len(state.Config.Build.RemoteFSURL) > 0 {
-		theRemoteClient = fsclient.New(state.Config.Build.RemoteFSURL.Strings())
+		theRemoteClient = fsclient.New(state.Config.Build.RemoteFSURL)
 	}
 }
 

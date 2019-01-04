@@ -16,6 +16,7 @@ import (
 
 	"github.com/thought-machine/please/src/fs"
 	"github.com/thought-machine/please/src/grpcutil"
+	"github.com/thought-machine/please/src/remote/fsclient"
 	pb "github.com/thought-machine/please/src/remote/proto/remote"
 	wpb "github.com/thought-machine/please/tools/mettle/proto/worker"
 )
@@ -28,7 +29,7 @@ const timeout = 10 * time.Minute
 
 // Connect connects to the master and receives messages.
 // It continues forever until the server disconnects.
-func Connect(url, name, dir string, fileClient FileClient) {
+func Connect(url, name, dir string, fileClient fsclient.Client) {
 	conn := grpcutil.Dial(url)
 	client := wpb.NewRemoteMasterClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -76,7 +77,7 @@ func Connect(url, name, dir string, fileClient FileClient) {
 }
 
 type worker struct {
-	Client    FileClient
+	Client    fsclient.Client
 	Dir       string
 	Context   context.Context
 	Requests  chan *pb.RemoteTaskRequest
@@ -98,7 +99,13 @@ func (w *worker) Run() {
 			w.Responses <- resp
 			req = <-w.Requests
 		}
-		w.collectOutputs(req, resp)
+		files, err := w.collectOutputs(req)
+		resp.Files = files
+		if err != nil {
+			log.Debug("Failed to collect output files: %s", err)
+			resp.Success = false
+			resp.Msg = err.Error()
+		}
 		w.Responses <- resp
 	}
 }
@@ -173,34 +180,20 @@ func (w *worker) setupFiles(files []*pb.Fileset) error {
 }
 
 // collectOutputs collects all the output files from the build directory.
-func (w *worker) collectOutputs(req *pb.RemoteTaskRequest, resp *pb.RemoteTaskResponse) {
+func (w *worker) collectOutputs(req *pb.RemoteTaskRequest) ([]*pb.Fileset, error) {
+	if err := w.Client.PutRelative(req.Outputs, req.Hash, w.Dir); err != nil {
+		return nil, err
+	}
 	files := make([]*pb.Fileset, len(req.Outputs))
-	var g errgroup.Group
 	for i, out := range req.Outputs {
-		out := out
-		file := &pb.Fileset{Filenames: []string{out}}
-		files[i] = file
-		g.Go(func() error {
-			filename := path.Join(w.Dir, out)
-			hash, err := w.hasher.UncachedHash(filename)
-			if err != nil {
-				return err
-			}
-			f, err := os.Open(filename)
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-			return w.Client.Put(out, f, hash)
-		})
+		files[i].Filenames = []string{out}
+		hash, err := w.hasher.UncachedHash(path.Join(w.Dir, out))
+		if err != nil {
+			return nil, err
+		}
+		files[i].Hash = hash
 	}
-	if err := g.Wait(); err != nil {
-		log.Debug("Failed to collect output files: %s", err)
-		resp.Success = false
-		resp.Msg = err.Error()
-	} else {
-		resp.Files = files
-	}
+	return files, nil
 }
 
 // safeBuffer is cloned from core.
@@ -218,16 +211,4 @@ func (sb *safeBuffer) Write(b []byte) (int, error) {
 
 func (sb *safeBuffer) Bytes() []byte {
 	return sb.buf.Bytes()
-}
-
-// FileClient is a temporary interface for fetching / sending files to some futuristic
-// storage system that doesn't exist yet.
-type FileClient interface {
-	// Get requests a set of files from the remote.
-	// It returns a parallel list of readers for them, which are always of the same length
-	// as the requested filenames (as long as there is no error). The caller should close them
-	// all when done.
-	Get(filenames []string, hash []byte) ([]io.ReadCloser, error)
-	// Put dispatches a file to the remote
-	Put(filename string, content io.Reader, hash []byte) error
 }

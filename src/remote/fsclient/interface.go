@@ -11,4 +11,7 @@ type Client interface {
 	Get(filenames []string, hash []byte) ([]io.Reader, error)
 	// Put dispatches one or more files to the remote.
 	Put(filenames []string, hash []byte, contents []io.ReadSeeker) error
+	// PutRelative is a convenience method that puts a set of files relative to the given directory.
+	// It's a little higher-level than Put but less flexible.
+	PutRelative(filenames []string, hash []byte, dir string) error
 }
