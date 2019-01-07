@@ -545,6 +545,8 @@ def go_get(name:str, get:str|list, repo:str='', deps:list=[], exported_deps:list
             all_installs += [getone]
 
     # Now compile it in a separate step.
+    bin_flag = '-b' if binary else ''
+
     cmd = [
         'export GOPATH="%s"' % CONFIG.GOPATH,
         '$TOOLS_GO install -toolexec "$TOOLS_BUILDID" -gcflags "-trimpath $TMP_DIR" -asmflags "-trimpath $TMP_DIR" ' + ' '.join(all_installs or install),
@@ -567,18 +569,14 @@ def go_get(name:str, get:str|list, repo:str='', deps:list=[], exported_deps:list
         outs = outs,
         deps = deps,
         exported_deps = exported_deps,
-        tools = {
-            'go': [CONFIG.GO_TOOL],
-            'buildid': [CONFIG.BUILDID_TOOL],
-        },
+        tools = [CONFIG.GO_BUILD_TOOL],
         visibility = visibility,
         building_description = 'Compiling...',
-        cmd = ' && '.join(cmd),
+        cmd = f'$TOOL g {bin_flag}',
         binary = binary,
         requires = ['go'],
         test_only = test_only,
         labels = ['link:plz-out/go'],
-        sandbox = False,
         needs_transitive_deps = True,
         provides = provides,
     )
