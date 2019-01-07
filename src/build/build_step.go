@@ -22,6 +22,7 @@ import (
 	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/fs"
 	"github.com/thought-machine/please/src/metrics"
+	"github.com/thought-machine/please/src/remote"
 	"github.com/thought-machine/please/src/worker"
 )
 
@@ -205,6 +206,9 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		} else if retrieveArtifacts() {
 			return nil
 		}
+	}
+	if state.IsRemote(tid) {
+		return remote.Build(tid, state, target)
 	}
 	if err := target.CheckSecrets(); err != nil {
 		return err

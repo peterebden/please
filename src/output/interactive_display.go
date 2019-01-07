@@ -82,8 +82,10 @@ func printLines(state *core.BuildState, buildingTargets []buildingTarget, maxLin
 	}
 	for i := 0; i < len(buildingTargets) && i < maxLines; i++ {
 		c := '='
+		remote := ""
 		if state.IsRemote(i) {
 			c = '-'
+			remote = "(executing remotely)"
 		}
 		buildingTargets[i].Lock()
 		// Take a local copy of the structure, which isn't *that* big, so we don't need to retain the lock
@@ -107,8 +109,8 @@ func printLines(state *core.BuildState, buildingTargets []buildingTarget, maxLin
 					c, duration, target.Colour, label, target.Description, target.Target.Progress)
 			}
 		} else if target.Active {
-			lprintf(cols, "${BOLD_WHITE}%c> [%4.1fs] ${RESET}%s%s ${BOLD_WHITE}%s${ERASE_AFTER}\n",
-				c, duration, target.Colour, label, target.Description)
+			lprintf(cols, "${BOLD_WHITE}%c> [%4.1fs] ${RESET}%s%s ${BOLD_WHITE}%s${RESET} %s${ERASE_AFTER}\n",
+				c, duration, target.Colour, label, target.Description, remote)
 		} else if time.Since(target.Finished).Seconds() < 0.5 {
 			// Only display finished targets for half a second after they're done.
 			duration := target.Finished.Sub(target.Started).Seconds()
