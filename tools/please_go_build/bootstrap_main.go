@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	if err := get.Get(path.Join(os.Getenv("TMP_DIR"), os.Getenv("PKG"), "src"), false); err != nil {
+	if err := get.Get(path.Join(os.Getenv("TMP_DIR"), "src"), os.Args[2], false); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to build: %s\n", err)
 		os.Exit(1)
 	}
