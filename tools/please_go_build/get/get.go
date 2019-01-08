@@ -6,6 +6,8 @@
 package get
 
 import (
+	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 )
@@ -14,5 +16,35 @@ import (
 // Essentially this just walks the given tmpdir, finds any directories with Go files in
 // them and compiles them.
 func Get(tmpdir string, binary bool) error {
-	return filepath.Walk(tmpdir, func(path string, info os.FileInfo, err error) error
+	pkgs := []*pkg{}
+	if err := filepath.Walk(tmpdir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		} else if info.IsDir() {
+			if pkg, error := readPackage(path); err != nil {
+				return err
+			} else if len(pkg.Srcs) > 0 {
+				pkgs = append(pkgs, pkg)
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return fmt.Errorf("%s", pkgs)
+}
+
+// readPackage reads a directory containing a single Go package and returns its definition.
+func readPackage(path string) (*pkg, error) {
+	p := &pkg{Path: path}
+	files, err := ioutil.ReadDir(path)
+	if err != nil {
+		return err
+	}
+}
+
+type pkg struct {
+	Name, Path string
+	Srcs       []string
+	Deps       []*pkg
 }
