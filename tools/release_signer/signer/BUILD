@@ -3,7 +3,7 @@ go_library(
     srcs = ["signer.go"],
     visibility = ["//tools/release_signer"],
     deps = [
-        "//third_party/go:openpgp",
+        "//third_party/go:x_crypto",
     ],
 )
 

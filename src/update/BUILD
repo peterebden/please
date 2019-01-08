@@ -11,7 +11,7 @@ go_library(
         "//src/cli",
         "//src/core",
         "//third_party/go:logging",
-        "//third_party/go:openpgp",
+        "//third_party/go:x_crypto",
         "//third_party/go:prompter",
         "//third_party/go:semver",
         "//third_party/go:xz",

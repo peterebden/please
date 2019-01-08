@@ -594,11 +594,10 @@ def _go_get_download(name:str, tag:str, get:str, repo:str='', patch:str=None, ha
             'patch': [patch],
             'get': get_deps,
         },
-        outs = [subdir],
         tools = tools,
         building_description = 'Fetching...',
         cmd = ' && '.join(cmd),
-        post_build = lambda _, output: _gen_go_get_rules(name, output, deps),
+        post_build = lambda child, output: _gen_go_get_rules(name, child, output, deps),
         requires = ['go'],
         test_only = test_only,
         labels = labels + ['link:plz-out/go'],
@@ -624,36 +623,45 @@ def _go_github_repo_cmd(name, get, repo, revision):
         out = name + '.zip',
     )
     return [
-        'rm -rf src/' + out,
+        f'mkdir -p $(dirname src/{out})',
         '$TOOLS_JARCAT x $SRCS_GET',
         f'mv {dest}*/ src/{out}',
     ], [remote_rule], {'jarcat': [CONFIG.JARCAT_TOOL], 'build': [CONFIG.GO_BUILD_TOOL]}
 
 
-def _gen_go_get_rules(parent, output, deps):
-    s = lambda x: x.split(',') if x else []
+def _gen_go_get_rules(parent, child, output, deps):
+    """Generates compile rules within a go_get."""
     for line in output:
         parts = line.split('|')
-        if len(parts) == 6:
-            name, cgo_srcs, srcs, c_srcs, hdrs, more_deps = parts
+        if len(parts) == 7:
+            name, dir, cgo_srcs, srcs, c_srcs, hdrs, more_deps = parts
             add_exported_dep(parent, cgo_library(
                 name = name,
-                cgo_srcs = s(cgo_srcs),
-                go_srcs = s(srcs),
-                c_srcs = s(c_srcs),
-                hdrs = s(hdrs),
-                deps = deps + s(more_deps),
+                cgo_srcs = _annotate_out_group(child, dir, cgo_srcs, 'cgo'),
+                go_srcs = _annotate_out_group(child, dir, srcs, 'go'),
+                c_srcs = _annotate_out_group(child, dir, c_srcs, 'c'),
+                hdrs = _annotate_out_group(child, dir, hdrs, 'h'),
+                deps = deps + more_deps.split(','),
             ))
-        elif len(parts) == 4:
-            name, srcs, asm_srcs, more_deps = parts
+        elif len(parts) == 5:
+            name, dir, srcs, asm_srcs, more_deps = parts
             add_exported_dep(parent, go_library(
                 name = name,
-                srcs = s(srcs),
-                asm_srcs = s(asm_srcs),
-                deps = deps + s(more_deps),
+                srcs = _annotate_out_group(child, dir, srcs, 'go'),
+                asm_srcs = _annotate_out_group(child, dir, asm_srcs, 'asm'),
+                deps = deps + more_deps.split(','),
             ))
         else:
             log.warning('unexpected format of output: %s', line)
+
+
+def _annotate_out_group(rule_name, dir, gofiles, suffix):
+    """Annotates a build rule with an additional output group of the given files."""
+    if gofiles:
+        group = dir.replace('/', '_').replace('.', '_') + '_' + suffix
+        for gofile in gofiles.split(','):
+            add_out(rule_name, group, dir + '/' + gofile)
+        return [':%s|%s' % (rule_name, group)]
 
 
 def _replace_test_package(name, output, static, definitions):

@@ -6,13 +6,12 @@ package main
 import (
 	"fmt"
 	"os"
-	"path"
 
 	"github.com/thought-machine/please/tools/please_go_build/get"
 )
 
 func main() {
-	if err := get.Get(path.Join(os.Getenv("TMP_DIR"), "src"), os.Args[2], false); err != nil {
+	if err := get.Get("src", os.Args[2], false); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to build: %s\n", err)
 		os.Exit(1)
 	}

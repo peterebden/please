@@ -32,9 +32,9 @@ func Get(tmpdir, basePkg string, binary bool) error {
 			if p, err := readPackage(path, pkgName, basePkg); err != nil {
 				return err
 			} else if len(p.CgoSrcs) > 0 {
-				fmt.Printf("%s|%s|%s|%s|%s|%s\n", p.Name, j(p.CgoSrcs), j(p.Srcs), j(p.CSrcs), j(p.Hdrs), j(p.Deps))
+				fmt.Printf("%s|%s|%s|%s|%s|%s|%s\n", p.Name, p.Path, j(p.CgoSrcs), j(p.Srcs), j(p.CSrcs), j(p.Hdrs), j(p.Deps))
 			} else if len(p.Srcs) > 0 {
-				fmt.Printf("%s|%s|%s|%s\n", p.Name, j(p.Srcs), j(p.AsmSrcs), j(p.Deps))
+				fmt.Printf("%s|%s|%s|%s|%s\n", p.Name, p.Path, j(p.Srcs), j(p.AsmSrcs), j(p.Deps))
 			}
 		}
 		return nil
@@ -43,7 +43,10 @@ func Get(tmpdir, basePkg string, binary bool) error {
 
 // readPackage reads a directory containing a single Go package and returns its definition.
 func readPackage(path, pkgName, basePkg string) (*pkg, error) {
-	p := &pkg{Path: path, Name: strings.Replace(pkgName, "/", "_", -1)}
+	p := &pkg{
+		Path: path,
+		Name: strings.Replace(strings.Replace(pkgName, "/", "_", -1), ".", "_", -1),
+	}
 	files, err := ioutil.ReadDir(path)
 	if err != nil {
 		return nil, err
@@ -53,6 +56,9 @@ func readPackage(path, pkgName, basePkg string) (*pkg, error) {
 		if ext := filepath.Ext(name); ext == ".go" {
 			// Go files can be filtered out.
 			if ok, err := build.Default.MatchFile(path, name); ok && err == nil {
+				if strings.HasSuffix(name, "_test.go") {
+					continue // MatchFile doesn't seem to identify this.
+				}
 				cgo, imports := readImports(filepath.Join(path, name), basePkg)
 				if cgo {
 					p.CgoSrcs = append(p.CgoSrcs, name)

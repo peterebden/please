@@ -13,12 +13,6 @@ go_get(
 )
 
 go_get(
-    name = "terminal",
-    get = "golang.org/x/crypto/ssh/terminal",
-    revision = "7b85b097bf7527677d54d3220065e966a0e3b613",
-)
-
-go_get(
     name = "warnings",
     get = "gopkg.in/warnings.v0",
     revision = "v0.1.2",
@@ -88,7 +82,7 @@ go_get(
     get = "golang.org/x/net/...",
     revision = "136a25c244d3019482a795d728110278d6ba09a4",
     deps = [
-        ":terminal",
+        ":x_crypto",
         ":text",
     ],
 )
@@ -211,7 +205,7 @@ go_get(
     revision = "f49666b0047d12850875d771340e1d862d9e7a0c",
     deps = [
         ":go-isatty",
-        ":terminal",
+        ":x_crypto",
     ],
 )
 
@@ -458,8 +452,8 @@ go_get(
 )
 
 go_get(
-    name = "openpgp",
-    get = "golang.org/x/crypto/openpgp/...",
+    name = "x_crypto",
+    get = "golang.org/x/crypto",
     revision = "077efaa604f994162e3307fafe5954640763fc08",
     deps = [":cast5"],
 )
@@ -648,6 +642,6 @@ go_get(
     deps = [
         ":go-flags",
         ":logging",
-        ":terminal",
+        ":x_crypto",
     ],
 )
