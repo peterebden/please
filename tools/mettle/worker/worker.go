@@ -24,18 +24,12 @@ import (
 
 var log = logging.MustGetLogger("worker")
 
-// timeout defines a master timeout for processing streams.
-// It is, by necessity, quite long, since we might have to deal with some long individual actions.
-const timeout = 10 * time.Minute
-
 // Connect connects to the master and receives messages.
 // It continues forever until the server disconnects.
 func Connect(url, name, dir string, fileClient fsclient.Client) {
 	conn := grpcutil.Dial(url)
 	client := wpb.NewRemoteMasterClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	stream, err := client.Work(ctx)
+	stream, err := client.Work(context.Background())
 	if err != nil {
 		log.Fatalf("Failed to connect: %s", err)
 	}
@@ -55,6 +49,22 @@ func Connect(url, name, dir string, fileClient fsclient.Client) {
 	if err := stream.Send(&wpb.WorkRequest{Name: name}); err != nil {
 		log.Fatalf("Failed to send registration message: %s", err)
 	}
+
+	// Run heartbeats in the background forever
+	go func() {
+		stream, err := client.Heartbeat(context.Background())
+		if err != nil {
+			log.Fatalf("Failed to connect: %s", err)
+		}
+		for {
+			if err := stream.Send(&wpb.HeartbeatRequest{Name: name}); err != nil {
+				log.Fatalf("Failed to send heartbeat: %s", err)
+			} else if _, err := stream.Recv(); err != nil {
+				log.Fatalf("Stream terminated: %s", err)
+			}
+			time.Sleep(10 * time.Second)
+		}
+	}()
 
 	// Now read responses until the server terminates.
 	for {
@@ -84,6 +94,10 @@ type worker struct {
 	Requests  chan *pb.RemoteTaskRequest
 	Responses chan *pb.RemoteTaskResponse
 	hasher    *fs.PathHasher
+}
+
+// Heartbeat runs the Heartbeat RPC against the master.
+func (w *worker) Heartbeat(client *wpb.RemoteMasterClient) {
 }
 
 // Run runs builds until its channel is exhausted.

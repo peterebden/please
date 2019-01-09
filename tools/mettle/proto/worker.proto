@@ -14,10 +14,13 @@ service RemoteMaster {
     // (since they are ephemeral and the master has a fixed location) and the master
     // submits jobs to them via this stream.
     rpc Work(stream WorkRequest) returns (stream WorkResponse);
+    // Used for heartbeating workers to detect when they go away.
+    // This should always be connected after the first request is sent to Work.
+    rpc Heartbeat(stream HeartbeatRequest) returns (stream HeartbeatResponse);
 }
 
 message WorkRequest {
-    // A "friendly" name for this worker.
+    // A name identifying this worker.
     string name = 1;
     // Sent as a response to completed tasks.
     remote.RemoteTaskResponse response = 2;
@@ -28,4 +31,12 @@ message WorkResponse {
     bool shutdown = 1;
     // Sent when remote work is dispatched to this worker.
     remote.RemoteTaskRequest request = 2;
+}
+
+message HeartbeatRequest {
+    // A name identifying this worker.
+    string name = 1;
+}
+
+message HeartbeatResponse {
 }

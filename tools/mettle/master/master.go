@@ -19,8 +19,9 @@ import (
 var log = logging.MustGetLogger("master")
 
 type worker struct {
-	Name   string
-	stream wpb.RemoteMaster_WorkServer
+	Name      string
+	Heartbeat time.Time
+	stream    wpb.RemoteMaster_WorkServer
 }
 
 func (w *worker) Send(req *pb.RemoteTaskRequest) error {
@@ -36,11 +37,12 @@ func (w *worker) Recv() (*pb.RemoteTaskResponse, error) {
 }
 
 type master struct {
-	workers  []*worker
-	mutex    sync.Mutex
-	shutdown chan error
-	retries  int
-	pause    time.Duration
+	workers       []*worker
+	workersByName map[string]*worker
+	mutex         sync.Mutex
+	shutdown      chan error
+	retries       int
+	pause         time.Duration
 }
 
 // StopAll releases all currently waiting server goroutines.
@@ -59,18 +61,28 @@ func (m *master) Work(stream wpb.RemoteMaster_WorkServer) error {
 	if err != nil {
 		return err
 	}
-	w := &worker{
-		Name:   req.Name,
-		stream: stream,
-	}
-	m.mutex.Lock()
-	m.workers = append(m.workers, w)
-	m.mutex.Unlock()
-	log.Notice("Registered worker %s", w.Name)
-
+	w := m.createWorker(req.Name)
+	w.stream = stream
 	// Now wait until the master is shutting down. All further communication
 	// happens through the RemoteTask RPC.
 	return <-m.shutdown
+}
+
+// Heartbeat implements the internal RPC for making sure clients are still alive.
+func (m *master) Heartbeat(stream wpb.RemoteMaster_HeartbeatServer) error {
+	req, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+	w := m.createWorker(req.Name)
+	for {
+		if _, err := stream.Recv(); err != nil {
+			log.Warning("Error heartbeating worker %s: %s", w.Name, err)
+			m.deleteWorker(w)
+			return err
+		}
+		w.Heartbeat = time.Now()
+	}
 }
 
 // RemoteTask implements the external RPC, for handling requests from clients.
@@ -149,7 +161,37 @@ func (m *master) acquireWorker() (*worker, error) {
 func (m *master) releaseWorker(w *worker) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
+	// Check if this is in the name map - if not it has probably been terminated already.
+	if _, present := m.workersByName[w.Name]; present {
+		m.workers = append(m.workers, w)
+	}
+}
+
+// createWorker creates a new worker or returns an existing one by that name.
+func (m *master) createWorker(name string) *worker {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	if w, present := m.workersByName[name]; present {
+		return w
+	}
+	w := &worker{Name: name}
+	m.workersByName[name] = w
 	m.workers = append(m.workers, w)
+	log.Notice("Added worker %s, now have %d total", name, len(m.workersByName))
+	return w
+}
+
+func (m *master) deleteWorker(w *worker) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	delete(m.workersByName, w.Name)
+	for i, w2 := range m.workers {
+		if w2 == w {
+			m.workers = append(m.workers[:i], m.workers[i+1:]...)
+			break
+		}
+	}
+	log.Notice("Removed worker %s, now have %d total", w.Name, len(m.workersByName))
 }
 
 // Start starts serving the master gRPC server on the given port.
@@ -164,9 +206,10 @@ func Start(port int, retries int, pause time.Duration) {
 func createServer(port int, retries int, pause time.Duration) (*grpc.Server, *master, net.Listener) {
 	s := grpc.NewServer()
 	m := &master{
-		shutdown: make(chan error),
-		retries:  retries,
-		pause:    pause,
+		shutdown:      make(chan error),
+		retries:       retries,
+		pause:         pause,
+		workersByName: map[string]*worker{},
 	}
 	pb.RegisterRemoteWorkerServer(s, m)
 	wpb.RegisterRemoteMasterServer(s, m)
