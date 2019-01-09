@@ -269,6 +269,11 @@ func (target *BuildTarget) TmpDir() string {
 	return path.Join(TmpDir, target.Label.Subrepo, target.Label.PackageName, target.Label.Name+buildDirSuffix)
 }
 
+// ShortOutDir returns the output directory for this target, without the leading plz-out/gen.
+func (target *BuildTarget) ShortOutDir() string {
+	return path.Join(target.Label.Subrepo, target.Label.PackageName)
+}
+
 // OutDir returns the output directory for this target, eg.
 // //mickey/donald:goofy -> plz-out/gen/mickey/donald (or plz-out/bin if it's a binary)
 func (target *BuildTarget) OutDir() string {

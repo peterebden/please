@@ -9,6 +9,7 @@ package remote
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -102,9 +103,18 @@ func convertSources(state *core.BuildState, target *core.BuildTarget) ([]*pb.Fil
 		if err != nil {
 			return nil, err
 		}
-		ret = append(ret, &pb.Fileset{Hash: hash, Filenames: []string{source.Src}})
+		s := trimDirPrefix(source.Src, core.GenDir)
+		s = trimDirPrefix(s, core.BinDir)
+		ret = append(ret, &pb.Fileset{Hash: hash, Filenames: []string{s}})
 	}
 	return ret, nil
+}
+
+func trimDirPrefix(s, prefix string) string {
+	if strings.HasPrefix(s, prefix) {
+		return strings.TrimLeft(strings.TrimPrefix(s, prefix), "/")
+	}
+	return s
 }
 
 // IsRetryableLocally returns true if an error indicates a failure that can be usefully retried locally.

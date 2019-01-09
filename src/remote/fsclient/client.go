@@ -291,7 +291,7 @@ func (c *client) findNewClient(client pb.RemoteFSClient) {
 				node.Client = nil
 			} else if !found {
 				if err := c.initFrom(node.Client); err != nil {
-					log.Warning("Failed to reconnect to remote FS: %s", err)
+					log.Warning("Failed to reconnect to remote FS via %s: %s", node.Address, err)
 				} else {
 					found = true
 				}
