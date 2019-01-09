@@ -15,7 +15,7 @@ var empty = []string{}
 func TestAddDepSimple(t *testing.T) {
 	// Simple case with only one package parsed and one target added
 	state := makeState(true, false)
-	activateTarget(state, nil, buildLabel("//package1:target1"), core.OriginalTarget, false, false, empty, empty)
+	activateTarget(state, nil, buildLabel("//package1:target1"), core.OriginalTarget, false, empty, empty)
 	assertPending(t, state, []string{"//package2:target1", "//package2:target1"}, nil)
 	assert.Equal(t, 5, state.NumActive())
 }
@@ -23,9 +23,9 @@ func TestAddDepSimple(t *testing.T) {
 func TestAddDepMultiple(t *testing.T) {
 	// Similar to above but doing all targets in that package
 	state := makeState(true, false)
-	activateTarget(state, nil, buildLabel("//package1:target1"), core.OriginalTarget, false, false, empty, empty)
-	activateTarget(state, nil, buildLabel("//package1:target2"), core.OriginalTarget, false, false, empty, empty)
-	activateTarget(state, nil, buildLabel("//package1:target3"), core.OriginalTarget, false, false, empty, empty)
+	activateTarget(state, nil, buildLabel("//package1:target1"), core.OriginalTarget, false, empty, empty)
+	activateTarget(state, nil, buildLabel("//package1:target2"), core.OriginalTarget, false, empty, empty)
+	activateTarget(state, nil, buildLabel("//package1:target3"), core.OriginalTarget, false, empty, empty)
 	// We get an additional dep on target2, but not another on package2:target1 because target2
 	// is already activated since package1:target1 depends on it
 	assertPending(t, state, []string{"//package2:target1", "//package2:target1", "//package2:target2"}, nil)
@@ -35,7 +35,7 @@ func TestAddDepMultiple(t *testing.T) {
 func TestAddDepMultiplePackages(t *testing.T) {
 	// This time we already have package2 parsed
 	state := makeState(true, true)
-	activateTarget(state, nil, buildLabel("//package1:target1"), core.OriginalTarget, false, false, empty, empty)
+	activateTarget(state, nil, buildLabel("//package1:target1"), core.OriginalTarget, false, empty, empty)
 	assertPending(t, state, nil, []string{"//package2:target2"})
 	assert.Equal(t, 6, state.NumActive())
 }
@@ -44,7 +44,7 @@ func TestAddDepNoBuild(t *testing.T) {
 	// Tag state as not needing build. We shouldn't get any pending builds at this point.
 	state := makeState(true, true)
 	state.NeedBuild = false
-	activateTarget(state, nil, buildLabel("//package1:target1"), core.OriginalTarget, false, false, empty, empty)
+	activateTarget(state, nil, buildLabel("//package1:target1"), core.OriginalTarget, false, empty, empty)
 	assertPending(t, state, nil, nil)
 	assert.Equal(t, 1, state.NumActive()) // Parses only
 }
@@ -54,7 +54,7 @@ func TestAddParseDep(t *testing.T) {
 	// should still get queued for build though. Recall that we indicate this with :all...
 	state := makeState(true, true)
 	state.NeedBuild = false
-	activateTarget(state, nil, buildLabel("//package2:target2"), buildLabel("//package3:all"), false, false, empty, empty)
+	activateTarget(state, nil, buildLabel("//package2:target2"), buildLabel("//package3:all"), false, empty, empty)
 	assertPending(t, state, nil, []string{"//package2:target2"})
 	assert.Equal(t, 2, state.NumActive())
 }
@@ -63,7 +63,7 @@ func TestAddDepRescan(t *testing.T) {
 	// Simulate a post-build function and rescan.
 	state := makeState(true, true)
 	parses, builds, _ := state.TaskQueues()
-	activateTarget(state, nil, buildLabel("//package1:target1"), core.OriginalTarget, false, false, empty, empty)
+	activateTarget(state, nil, buildLabel("//package1:target1"), core.OriginalTarget, false, empty, empty)
 	assert.Equal(t, core.ParseBuildLabel("//package2:target2", ""), <-builds)
 	assert.Equal(t, 6, state.NumActive())
 
@@ -92,7 +92,7 @@ func TestAddParseDepDeferred(t *testing.T) {
 	parses, builds, _ := state.TaskQueues()
 	state.NeedBuild = false
 	assert.Equal(t, 1, state.NumActive())
-	activateTarget(state, nil, buildLabel("//package2:target2"), core.OriginalTarget, false, false, empty, empty)
+	activateTarget(state, nil, buildLabel("//package2:target2"), core.OriginalTarget, false, empty, empty)
 	assertNothingPending(t, state, parses, builds)
 
 	// Now the undefer kicks off...

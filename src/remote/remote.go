@@ -12,11 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/grpc"
 	"gopkg.in/op/go-logging.v1"
 
 	"github.com/thought-machine/please/src/core"
-	"grpcutil"
+	"github.com/thought-machine/please/src/grpcutil"
 	pb "github.com/thought-machine/please/src/remote/proto/remote"
 )
 
@@ -92,7 +91,7 @@ func Build(tid int, state *core.BuildState, target *core.BuildTarget, hash []byt
 // initClient sets up the remote client
 func initClient(state *core.BuildState) {
 	// TODO(peterebden): TLS, as usual...
-	conn := grpcutil.Dial(state.Config.Build.RemoteURL.String())
+	conn := grpcutil.Dial(state.Config.Build.RemoteURL)
 	remoteClient = pb.NewRemoteWorkerClient(conn)
 }
 
