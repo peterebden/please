@@ -203,9 +203,10 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 	}
 	if state.IsRemote(tid) {
 		if err := remote.Build(tid, state, target, cacheKey); err != nil {
-			if !remote.IsRetryableLocally(err) {
-				return err
-			}
+			// TODO(peterebden): Re-add this code once the remote service is more reliable.
+			// if !remote.IsRetryableLocally(err) {
+			// 	return err
+			// }
 			log.Warning("Error building %s remotely: %s. Will retry locally.", target.Label, err)
 		}
 	}

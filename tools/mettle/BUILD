@@ -7,6 +7,7 @@ go_binary(
         "//src/remote/fsclient",
         "//src/remote/proto:remote",
         "//third_party/go:logging",
+        "//third_party/go:prometheus",
         "//tools/mettle/master",
         "//tools/mettle/worker",
     ],

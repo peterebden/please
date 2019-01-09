@@ -43,6 +43,9 @@ message RemoteTaskResponse {
     // more responses (which may differ in any way, e.g. they may become
     // unsuccessful).
     bool complete = 1;
+    // Also true once the build is fully complete, including the prompt behaviour sent above;
+    // there will be no more communication after a message is received with done=true.
+    bool done = 6;
     // True if this message represents a successful state (not necessarily
     // complete). If false then msg will contain the error.
     bool success = 2;

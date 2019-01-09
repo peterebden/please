@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -17,6 +18,20 @@ import (
 )
 
 var log = logging.MustGetLogger("master")
+
+var numWorkers = prometheus.NewGauge(prometheus.GaugeOpts{
+	Name: "mettle_workers",
+	Help: "Current number of total registered workers.",
+})
+var availableWorkers = prometheus.NewGauge(prometheus.GaugeOpts{
+	Name: "mettle_available_workers",
+	Help: "Current number of total available workers.",
+})
+
+func init() {
+	prometheus.MustRegister(numWorkers)
+	prometheus.MustRegister(availableWorkers)
+}
 
 type worker struct {
 	Name      string
@@ -106,12 +121,15 @@ func (m *master) RemoteTask(stream pb.RemoteWorker_RemoteTaskServer) error {
 	}
 	// Stream any further messages from the client up to it.
 	// This doesn't happen on most tasks but can on some (e.g. if there's a post-build function)
+	done := false
 	go func() {
 		for {
 			if req, err := stream.Recv(); err == io.EOF {
 				break
 			} else if err != nil {
-				log.Error("Error receiving message from client: %s", err)
+				if !done {
+					log.Error("Error receiving message from client: %s", err)
+				}
 				break
 			} else if err := w.Send(req); err != nil {
 				log.Error("Error forwarding client message to worker: %s", err)
@@ -124,16 +142,17 @@ func (m *master) RemoteTask(stream pb.RemoteWorker_RemoteTaskServer) error {
 	}()
 	// Forward all the messages from the worker back down to the client.
 	for {
-		if resp, err := w.Recv(); err == io.EOF {
-			break
-		} else if err != nil {
+		if resp, err := w.Recv(); err != nil {
 			log.Error("Error receiving response from worker %s: %s", w.Name, err)
 			return err
 		} else if err := stream.Send(resp); err != nil {
 			log.Error("Error sending response to client: %s", err)
 			break
+		} else if resp.Done {
+			break
 		}
 	}
+	done = true
 	log.Notice("Finishing remote task %s and freeing %s", req.Target, w.Name)
 	return nil // Done!
 }
@@ -145,6 +164,7 @@ func (m *master) acquireWorker() (*worker, error) {
 		if len(m.workers) > 0 {
 			w := m.workers[len(m.workers)-1]
 			m.workers = m.workers[:len(m.workers)-1]
+			availableWorkers.Dec()
 			m.mutex.Unlock()
 			return w, nil
 		}
@@ -164,6 +184,7 @@ func (m *master) releaseWorker(w *worker) {
 	// Check if this is in the name map - if not it has probably been terminated already.
 	if _, present := m.workersByName[w.Name]; present {
 		m.workers = append(m.workers, w)
+		availableWorkers.Inc()
 	}
 }
 
@@ -177,6 +198,8 @@ func (m *master) createWorker(name string) *worker {
 	w := &worker{Name: name}
 	m.workersByName[name] = w
 	m.workers = append(m.workers, w)
+	numWorkers.Inc()
+	availableWorkers.Inc()
 	log.Notice("Added worker %s, now have %d total", name, len(m.workersByName))
 	return w
 }
@@ -188,18 +211,19 @@ func (m *master) deleteWorker(w *worker) {
 	for i, w2 := range m.workers {
 		if w2 == w {
 			m.workers = append(m.workers[:i], m.workers[i+1:]...)
+			availableWorkers.Dec()
 			break
 		}
 	}
+	numWorkers.Dec()
 	log.Notice("Removed worker %s, now have %d total", w.Name, len(m.workersByName))
 }
 
 // Start starts serving the master gRPC server on the given port.
 func Start(port int, retries int, pause time.Duration) {
 	s, m, lis := createServer(port, retries, pause)
+	grpcutil.AddCleanup(m.StopAll)
 	s.Serve(lis)
-	// Probably doesn't do much good, but this signals all the client goroutines to stop sleeping.
-	m.StopAll()
 }
 
 // createServer breaks out some of the functionality of Start for testing.

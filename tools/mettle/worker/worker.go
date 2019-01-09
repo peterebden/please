@@ -75,7 +75,6 @@ func Connect(url, name, dir string, fileClient fsclient.Client) {
 			log.Warning("Got shutdown from server")
 			break
 		}
-		w.Context = stream.Context()
 		w.Requests <- resp.Request
 		if err := stream.Send(&wpb.WorkRequest{
 			Response: <-w.Responses,
@@ -90,14 +89,9 @@ func Connect(url, name, dir string, fileClient fsclient.Client) {
 type worker struct {
 	Client    fsclient.Client
 	Dir       string
-	Context   context.Context
 	Requests  chan *pb.RemoteTaskRequest
 	Responses chan *pb.RemoteTaskResponse
 	hasher    *fs.PathHasher
-}
-
-// Heartbeat runs the Heartbeat RPC against the master.
-func (w *worker) Heartbeat(client *wpb.RemoteMasterClient) {
 }
 
 // Run runs builds until its channel is exhausted.
@@ -107,12 +101,13 @@ func (w *worker) Run() {
 		resp := w.Build(req)
 		if !resp.Success {
 			// Something went wrong with the command.
-			log.Warning("Finished building %s unsuccessfully", req.Target)
+			log.Warning("Finished building %s unsuccessfully: %s", req.Target, resp.Msg)
 			w.Responses <- resp
 			continue
 		} else if req.Prompt && resp.Success {
 			// We've built successfully, but the client needs to be prompted, so
 			// we get an extra request / response pair
+			resp.Done = false
 			w.Responses <- resp
 			req = <-w.Requests
 		}
@@ -132,9 +127,9 @@ func (w *worker) Run() {
 func (w *worker) Build(req *pb.RemoteTaskRequest) *pb.RemoteTaskResponse {
 	out, err := w.build(req)
 	if err != nil {
-		return &pb.RemoteTaskResponse{Msg: err.Error(), Output: out, Complete: true}
+		return &pb.RemoteTaskResponse{Msg: err.Error(), Output: out, Complete: true, Done: true}
 	}
-	return &pb.RemoteTaskResponse{Success: true, Output: out, Complete: true}
+	return &pb.RemoteTaskResponse{Success: true, Output: out, Complete: true, Done: true}
 }
 
 // build runs the actual build command.
@@ -147,7 +142,9 @@ func (w *worker) build(req *pb.RemoteTaskRequest) ([]byte, error) {
 		return nil, err
 	}
 	// TODO(peterebden): Add support for the progress reporting pseudo-protocol.
-	cmd := exec.CommandContext(w.Context, "bash", "-u", "-o", "pipefail", "-c", req.Command)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "bash", "-u", "-o", "pipefail", "-c", req.Command)
 	cmd.Env = w.replaceEnv(req.Env)
 	// We need to record both stdout (sent back on success for post-build functions) and combined
 	// stdout / stderr (sent back on failure so the user can see everything).

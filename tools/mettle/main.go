@@ -2,9 +2,12 @@
 package main
 
 import (
+	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/op/go-logging.v1"
 
 	"github.com/thought-machine/please/src/cli"
@@ -20,9 +23,10 @@ var opts = struct {
 	Verbosity cli.Verbosity `short:"v" long:"verbosity" default:"notice" description:"Verbosity of output (higher number = more output)"`
 
 	Master struct {
-		Port    int          `short:"p" long:"port" default:"9922" description:"Port to serve on"`
-		Retries int          `short:"r" long:"retries" default:"3" description:"Number of times to retry when all workers are busy"`
-		Wait    cli.Duration `short:"d" long:"retry_duration" default:"5s" description:"Wait time between retrying when workers are busy"`
+		Port        int          `short:"p" long:"port" default:"9922" description:"Port to serve on"`
+		MetricsPort int          `long:"metrics_port" default:"13434" description:"Port to serve Prometheus metrics on"`
+		Retries     int          `short:"r" long:"retries" default:"3" description:"Number of times to retry when all workers are busy"`
+		Wait        cli.Duration `short:"d" long:"retry_duration" default:"5s" description:"Wait time between retrying when workers are busy"`
 	} `command:"master" description:"Starts this server as the master"`
 
 	Worker struct {
@@ -46,6 +50,11 @@ func main() {
 	cli.InitLogging(opts.Verbosity)
 	if command == "master" {
 		log.Notice("Starting as a master")
+		log.Notice("Serving metrics on http://127.0.0.1:%d/metrics", opts.Master.MetricsPort)
+		go func() {
+			http.Handle("/metrics", promhttp.Handler())
+			log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", opts.Master.MetricsPort), nil))
+		}()
 		master.Start(opts.Master.Port, opts.Master.Retries, time.Duration(opts.Master.Wait))
 	} else {
 		log.Notice("Connecting to remote filesystem at %s", strings.Join(opts.Worker.FSURL, ", "))
