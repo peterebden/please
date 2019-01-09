@@ -3,6 +3,7 @@ package worker
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -88,9 +89,11 @@ type worker struct {
 // Run runs builds until its channel is exhausted.
 func (w *worker) Run() {
 	for req := range w.Requests {
+		log.Notice("Received request to build %s", req.Target)
 		resp := w.Build(req)
 		if !resp.Success {
 			// Something went wrong with the command.
+			log.Warning("Finished building %s unsuccessfully", req.Target)
 			w.Responses <- resp
 			continue
 		} else if req.Prompt && resp.Success {
@@ -106,6 +109,7 @@ func (w *worker) Run() {
 			resp.Success = false
 			resp.Msg = err.Error()
 		}
+		log.Notice("Finished building %s successfully", req.Target)
 		w.Responses <- resp
 	}
 }
@@ -158,20 +162,29 @@ func (w *worker) setupFiles(files []*pb.Fileset) error {
 	// TODO(peterebden): We will need to limit parallelism here at some point.
 	var g errgroup.Group
 	for _, file := range files {
+		log.Debug("setting up file %s", file.Filenames)
 		rs, err := w.Client.Get(file.Filenames, file.Hash)
 		if err != nil {
+			log.Debug("error setting up file: %s", err)
 			return err
 		}
 		for i, r := range rs {
 			r := r
 			filename := file.Filenames[i]
 			g.Go(func() error {
-				f, err := os.Create(path.Join(w.Dir, filename))
+				fullpath := path.Join(w.Dir, filename)
+				if err := fs.EnsureDir(fullpath); err != nil {
+					return err
+				}
+				f, err := os.Create(fullpath)
 				if err != nil {
 					return err
 				}
 				defer f.Close()
 				_, err = io.Copy(f, r)
+				if err != nil && grpcutil.IsNotFound(err) {
+					return fmt.Errorf("failed to download %s / %x from remote FS", filename, file.Hash)
+				}
 				return err
 			})
 		}

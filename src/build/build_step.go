@@ -202,7 +202,12 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		}
 	}
 	if state.IsRemote(tid) {
-		return remote.Build(tid, state, target, cacheKey)
+		if err := remote.Build(tid, state, target, cacheKey); err != nil {
+			if !remote.IsRetryableLocally(err) {
+				return err
+			}
+			log.Warning("Error building %s remotely: %s. Will retry locally.", target.Label, err)
+		}
 	}
 	if err := target.CheckSecrets(); err != nil {
 		return err

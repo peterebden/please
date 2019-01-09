@@ -83,3 +83,8 @@ func IsNotFound(err error) bool {
 func IsAlreadyExists(err error) bool {
 	return status.Code(err) == codes.AlreadyExists
 }
+
+// IsResourceExhausted returns true if the given error represents a grpc ResourceExhausted error.
+func IsResourceExhausted(err error) bool {
+	return status.Code(err) == codes.ResourceExhausted
+}

@@ -26,7 +26,7 @@ var opts = struct {
 	} `command:"master" description:"Starts this server as the master"`
 
 	Worker struct {
-		Master cli.URL  `short:"m" long:"master" required:"true" description:"URL of the master to connect to"`
+		Master string   `short:"m" long:"master" required:"true" description:"URL of the master to connect to"`
 		Name   string   `short:"n" long:"name" description:"Name of this worker instance."`
 		Dir    string   `short:"d" long:"dir" default:"." description:"Working directory to run tests in"`
 		FSURL  []string `short:"u" long:"fs_url" required:"true" description:"URL of remote FS server"`
@@ -51,6 +51,6 @@ func main() {
 		log.Notice("Connecting to remote filesystem at %s", strings.Join(opts.Worker.FSURL, ", "))
 		client := fsclient.New(opts.Worker.FSURL)
 		log.Notice("Starting as worker %s, connecting to master at %s", opts.Worker.Name, opts.Worker.Master)
-		worker.Connect(opts.Worker.Master.String(), opts.Worker.Name, opts.Worker.Dir, client)
+		worker.Connect(opts.Worker.Master, opts.Worker.Name, opts.Worker.Dir, client)
 	}
 }

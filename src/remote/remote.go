@@ -106,3 +106,8 @@ func convertSources(state *core.BuildState, target *core.BuildTarget) ([]*pb.Fil
 	}
 	return ret, nil
 }
+
+// IsRetryableLocally returns true if an error indicates a failure that can be usefully retried locally.
+func IsRetryableLocally(err error) bool {
+	return grpcutil.IsResourceExhausted(err) // if the remote was out of workers
+}
