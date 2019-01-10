@@ -53,7 +53,7 @@ func buildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 // Note that we lie about the location of HOME in order to keep some tools happy.
 // We read this as being slightly more POSIX-compliant than not having it set at all...
 func BuildEnvironment(state *BuildState, target *BuildTarget, tmpDir string) BuildEnv {
-	if !path.IsAbs(tmpDir) {
+	if !path.IsAbs(tmpDir) && !strings.HasPrefix(tmpDir, "$") {
 		tmpDir = path.Join(RepoRoot, tmpDir)
 	}
 	env := buildEnvironment(state, target)
