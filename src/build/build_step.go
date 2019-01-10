@@ -208,6 +208,10 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 			// 	return err
 			// }
 			log.Warning("Error building %s remotely: %s. Will retry locally.", target.Label, err)
+		} else {
+			// TODO(peterebden): do we / should we have a concept of "unchanged" here? does it matter?
+			target.SetState(core.Built)
+			return nil
 		}
 	}
 	if err := target.CheckSecrets(); err != nil {
