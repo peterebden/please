@@ -99,9 +99,13 @@ func (c *client) getFile(hash uint64, nodes []*node, filename string) (io.Reader
 	return nil, e
 }
 
-func (c *client) GetInto(filenames []string, hash []byte, dir string) error {
+func (c *client) GetInto(filenames []string, hash []byte, dir, prefix string) error {
 	var g errgroup.Group
-	rs, err := c.Get(filenames, hash)
+	fullFilenames := make([]string, len(filenames))
+	for i, fn := range filenames {
+		fullFilenames[i] = path.Join(prefix, fn)
+	}
+	rs, err := c.Get(fullFilenames, hash)
 	if err != nil {
 		return err
 	}
@@ -143,8 +147,9 @@ func (c *client) Put(filenames []string, hash []byte, contents []io.ReadSeeker) 
 	return g.Wait()
 }
 
-func (c *client) PutRelative(filenames []string, hash []byte, dir string) error {
+func (c *client) PutRelative(filenames []string, hash []byte, dir, prefix string) error {
 	files := make([]io.ReadSeeker, len(filenames))
+	fullFilenames := make([]string, len(filenames))
 	for i, fn := range filenames {
 		f, err := os.Open(path.Join(dir, fn))
 		if err != nil {
@@ -152,8 +157,9 @@ func (c *client) PutRelative(filenames []string, hash []byte, dir string) error 
 		}
 		defer f.Close()
 		files[i] = f
+		fullFilenames[i] = path.Join(prefix, fn)
 	}
-	return c.Put(filenames, hash, files)
+	return c.Put(fullFilenames, hash, files)
 }
 
 func (c *client) putFile(nodes []*node, filename string, hash uint64, contents io.ReadSeeker) error {

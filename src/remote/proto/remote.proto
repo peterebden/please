@@ -17,6 +17,8 @@ service RemoteWorker {
 message RemoteTaskRequest {
     // The label of the target being built.
     string target = 1;
+    // Its package name
+    string package_name = 8;
     // Files that are needed to build it
     repeated Fileset files = 2;
     // Environment variables, in the form VAR=x

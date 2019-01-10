@@ -3,6 +3,7 @@ package worker
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
@@ -42,6 +43,11 @@ func Connect(url, name, dir string, fileClient fsclient.Client) {
 		Requests:  make(chan *pb.RemoteTaskRequest),
 		Responses: make(chan *pb.RemoteTaskResponse),
 		hasher:    fs.NewPathHasher(root),
+	}
+	if err := w.cleanDir(); err != nil {
+		log.Fatalf("Failed to clean workdir: %s", err)
+	} else if err := os.Chdir(w.Dir); err != nil {
+		log.Fatalf("Failed to chdir: %s", err)
 	}
 	go w.Run()
 
@@ -101,7 +107,7 @@ func (w *worker) Run() {
 		resp := w.Build(req)
 		if !resp.Success {
 			// Something went wrong with the command.
-			log.Warning("Finished building %s unsuccessfully: %s", req.Target, resp.Msg)
+			log.Warning("Finished building %s unsuccessfully: %s\nOutput: %s", req.Target, resp.Msg, resp.Output)
 			w.Responses <- resp
 			continue
 		} else if req.Prompt && resp.Success {
@@ -114,11 +120,12 @@ func (w *worker) Run() {
 		files, err := w.collectOutputs(req)
 		resp.Files = files
 		if err != nil {
-			log.Debug("Failed to collect output files: %s", err)
+			log.Warning("Failed to collect output files: %s", err)
 			resp.Success = false
 			resp.Msg = err.Error()
+		} else {
+			log.Notice("Finished building %s successfully", req.Target)
 		}
-		log.Notice("Finished building %s successfully", req.Target)
 		w.Responses <- resp
 	}
 }
@@ -134,9 +141,7 @@ func (w *worker) Build(req *pb.RemoteTaskRequest) *pb.RemoteTaskResponse {
 
 // build runs the actual build command.
 func (w *worker) build(req *pb.RemoteTaskRequest) ([]byte, error) {
-	if err := os.RemoveAll(w.Dir); err != nil {
-		return nil, err
-	} else if err := os.MkdirAll(w.Dir, os.ModeDir|0755); err != nil {
+	if err := w.cleanDir(); err != nil {
 		return nil, err
 	} else if err := w.setupFiles(req.Files); err != nil {
 		return nil, err
@@ -158,6 +163,16 @@ func (w *worker) build(req *pb.RemoteTaskRequest) ([]byte, error) {
 		return outerr.Bytes(), err
 	}
 	return out.Bytes(), nil
+}
+
+// cleanDir cleans the working directory and changes to it.
+func (w *worker) cleanDir() error {
+	if err := os.RemoveAll(w.Dir); err != nil {
+		return err
+	} else if err := os.MkdirAll(w.Dir, os.ModeDir|0755); err != nil {
+		return err
+	}
+	return os.Chdir(w.Dir)
 }
 
 // replaceEnv replaces placeholders in environment variables.
@@ -205,7 +220,7 @@ func (w *worker) setupFiles(files []*pb.Fileset) error {
 
 // collectOutputs collects all the output files from the build directory.
 func (w *worker) collectOutputs(req *pb.RemoteTaskRequest) ([]*pb.Fileset, error) {
-	if err := w.Client.PutRelative(req.Outputs, req.Hash, w.Dir); err != nil {
+	if err := w.Client.PutRelative(req.Outputs, req.Hash, w.Dir, req.PackageName); err != nil {
 		return nil, err
 	}
 	files := make([]*pb.Fileset, len(req.Outputs))

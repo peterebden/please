@@ -55,18 +55,19 @@ func Build(tid int, state *core.BuildState, target *core.BuildTarget, hash []byt
 		// plz-out we assume something must have built it already).
 		for _, localfile := range localfiles {
 			log.Debug("Storing local source with remote FS: %s", localfile.Filenames)
-			remoteFSClient.PutRelative(localfile.Filenames, localfile.Hash, "")
+			remoteFSClient.PutRelative(localfile.Filenames, localfile.Hash, "", "")
 		}
 	}
 	prompt := target.PostBuildFunction != nil
 	if err := client.Send(&pb.RemoteTaskRequest{
-		Target:  target.Label.String(),
-		Command: target.GetCommand(state),
-		Hash:    hash,
-		Outputs: target.Outputs(),
-		Prompt:  prompt,
-		Env:     core.StampedBuildEnvironment(state, target, hash, "${TMP_DIR}/"),
-		Files:   sources,
+		Target:      target.Label.String(),
+		PackageName: target.Label.PackageName,
+		Command:     target.GetCommand(state),
+		Hash:        hash,
+		Outputs:     target.Outputs(),
+		Prompt:      prompt,
+		Env:         core.StampedBuildEnvironment(state, target, hash, "${TMP_DIR}/"),
+		Files:       sources,
 	}); err != nil {
 		return err
 	}

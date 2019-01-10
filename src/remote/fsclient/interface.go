@@ -13,8 +13,8 @@ type Client interface {
 	Put(filenames []string, hash []byte, contents []io.ReadSeeker) error
 	// GetInto is a convenience method that gets a set of files into the given directory.
 	// It's a little higher-level than Get but less flexible.
-	GetInto(filenames []string, hash []byte, dir string) error
+	GetInto(filenames []string, hash []byte, dir, prefix string) error
 	// PutRelative is a convenience method that puts a set of files relative to the given directory.
 	// It's a little higher-level than Put but less flexible.
-	PutRelative(filenames []string, hash []byte, dir string) error
+	PutRelative(filenames []string, hash []byte, dir, prefix string) error
 }

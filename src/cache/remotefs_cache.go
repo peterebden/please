@@ -54,11 +54,11 @@ func (c *remoteFSCache) CleanAll() {}
 func (c *remoteFSCache) Shutdown() {}
 
 func (c *remoteFSCache) store(key []byte, target *core.BuildTarget, filenames []string) error {
-	return c.client.PutRelative(filenames, key, target.OutDir())
+	return c.client.PutRelative(filenames, key, target.OutDir(), target.Label.PackageName)
 }
 
 func (c *remoteFSCache) retrieve(target *core.BuildTarget, key []byte, filenames []string) error {
-	return c.client.GetInto(filenames, key, target.OutDir())
+	return c.client.GetInto(filenames, key, target.OutDir(), target.Label.PackageName)
 }
 
 func (c *remoteFSCache) error(msg string, err error) bool {
