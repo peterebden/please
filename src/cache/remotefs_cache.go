@@ -14,7 +14,7 @@ import (
 )
 
 func newRemoteFSCache(urls []string) *remoteFSCache {
-	return &remoteFSCache{client: fsclient.New(urls)}
+	return &remoteFSCache{client: fsclient.Get(urls)}
 }
 
 type remoteFSCache struct {

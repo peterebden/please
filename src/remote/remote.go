@@ -17,12 +17,14 @@ import (
 
 	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/grpcutil"
+	"github.com/thought-machine/please/src/remote/fsclient"
 	pb "github.com/thought-machine/please/src/remote/proto/remote"
 )
 
 var log = logging.MustGetLogger("remote")
 
 var remoteClient pb.RemoteWorkerClient
+var remoteFSClient fsclient.Client
 var remoteClientOnce sync.Once
 
 const dialTimeout = 10 * time.Second
@@ -44,9 +46,17 @@ func Build(tid int, state *core.BuildState, target *core.BuildTarget, hash []byt
 	}
 	defer client.CloseSend()
 	// Send initial request
-	sources, err := convertSources(state, target)
+	sources, localfiles, err := convertSources(state, target)
 	if err != nil {
 		return err
+	} else if len(localfiles) > 0 {
+		// There were some local sources, we have to make sure the remote has them.
+		// These are special-cased because we never actually build them (whereas for anything in
+		// plz-out we assume something must have built it already).
+		for _, localfile := range localfiles {
+			log.Debug("Storing local source with remote FS: %s", localfile.Filenames)
+			remoteFSClient.PutRelative(localfile.Filenames, localfile.Hash, "")
+		}
 	}
 	prompt := target.PostBuildFunction != nil
 	if err := client.Send(&pb.RemoteTaskRequest{
@@ -94,20 +104,26 @@ func initClient(state *core.BuildState) {
 	// TODO(peterebden): TLS, as usual...
 	conn := grpcutil.Dial(state.Config.Build.RemoteURL)
 	remoteClient = pb.NewRemoteWorkerClient(conn)
+	remoteFSClient = fsclient.Get(state.Config.Build.RemoteFSURL)
 }
 
-func convertSources(state *core.BuildState, target *core.BuildTarget) ([]*pb.Fileset, error) {
-	ret := []*pb.Fileset{}
+func convertSources(state *core.BuildState, target *core.BuildTarget) ([]*pb.Fileset, []*pb.Fileset, error) {
+	allfiles := []*pb.Fileset{}
+	localfiles := []*pb.Fileset{}
 	for source := range core.IterSources(state.Graph, target) {
 		hash, err := state.PathHasher.Hash(source.Src, false)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		s := trimDirPrefix(source.Src, core.GenDir)
-		s = trimDirPrefix(s, core.BinDir)
-		ret = append(ret, &pb.Fileset{Hash: hash, Filenames: []string{s}})
+		fs := &pb.Fileset{Hash: hash, Filenames: []string{source.Src}}
+		if strings.HasPrefix(source.Src, core.OutDir) {
+			fs.Filenames[0] = trimDirPrefix(trimDirPrefix(source.Src, core.GenDir), core.BinDir)
+		} else {
+			localfiles = append(localfiles, fs)
+		}
+		allfiles = append(allfiles, fs)
 	}
-	return ret, nil
+	return allfiles, localfiles, nil
 }
 
 func trimDirPrefix(s, prefix string) string {

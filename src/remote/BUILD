@@ -5,6 +5,7 @@ go_library(
     deps = [
         "//src/core",
         "//src/grpcutil",
+        "//src/remote/fsclient",
         "//src/remote/proto:remote",
         "//third_party/go:grpc",
         "//third_party/go:grpc-middleware",

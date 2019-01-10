@@ -27,6 +27,9 @@ var log = logging.MustGetLogger("fsclient")
 // This is important later on for us to size buffers appropriately.
 const chunkSize = 32 * 1024
 
+// theClient is a global used for Get.
+var theClient Client
+
 // New creates and returns a new client based on the given URL touchpoints that it can
 // initialise from.
 // N.B. Errors are not returned here since the initialisation is done asynchronously.
@@ -34,6 +37,14 @@ func New(urls []string) Client {
 	c := &client{urls: urls}
 	go c.Init()
 	return c
+}
+
+// Get is like New but reuses a client if one has already been created.
+func Get(urls []string) Client {
+	if theClient == nil {
+		theClient = New(urls)
+	}
+	return theClient
 }
 
 // A client is the implementation of the Client interface.
