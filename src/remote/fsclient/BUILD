@@ -6,6 +6,7 @@ go_library(
     ],
     visibility = ["PUBLIC"],
     deps = [
+        "//src/fs",
         "//src/grpcutil",
         "//src/remote/proto:fs",
         "//third_party/go:errgroup",

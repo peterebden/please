@@ -9,6 +9,7 @@ package remote
 import (
 	"context"
 	"fmt"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -81,6 +82,7 @@ func Build(tid int, state *core.BuildState, target *core.BuildTarget, hash []byt
 		} else if resp.Complete {
 			if !prompt {
 				state.LogBuildResult(tid, target.Label, core.TargetBuiltRemotely, "Built remotely")
+				recordHashes(state, target, resp)
 				break // We are done.
 			}
 			// Target has a post-build function to be run, which we have to do.
@@ -98,6 +100,16 @@ func Build(tid int, state *core.BuildState, target *core.BuildTarget, hash []byt
 		}
 	}
 	return nil
+}
+
+// recordHashes records a set of hashes once we've built a target.
+func recordHashes(state *core.BuildState, target *core.BuildTarget, resp *pb.RemoteTaskResponse) {
+	outDir := target.OutDir()
+	for _, file := range resp.Files {
+		for _, filename := range file.Filenames {
+			state.PathHasher.SetHash(path.Join(outDir, filename), file.Hash)
+		}
+	}
 }
 
 // initClient sets up the remote client

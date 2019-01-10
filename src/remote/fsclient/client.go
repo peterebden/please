@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/op/go-logging.v1"
 
+	"github.com/thought-machine/please/src/fs"
 	"github.com/thought-machine/please/src/grpcutil"
 	pb "github.com/thought-machine/please/src/remote/proto/fs"
 )
@@ -62,6 +63,7 @@ func (c *client) Get(filenames []string, hash []byte) ([]io.Reader, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Debug("fsclient.Get %s / %x / %x", filenames, hash, h)
 	// Fast path if we get a single file
 	if len(filenames) == 1 {
 		r, err := c.getFile(h, nodes, filenames[0])
@@ -111,15 +113,9 @@ func (c *client) GetInto(filenames []string, hash []byte, dir, prefix string) er
 	}
 	for i, filename := range filenames {
 		r := rs[i]
-		filename := filename
+		dest := path.Join(dir, filename)
 		g.Go(func() error {
-			f, err := os.Create(path.Join(dir, filename))
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-			_, err = io.Copy(f, r)
-			return err
+			return fs.WriteFile(r, dest, 0644)
 		})
 	}
 	return g.Wait()
@@ -132,6 +128,7 @@ func (c *client) Put(filenames []string, hash []byte, contents []io.ReadSeeker) 
 	if err != nil {
 		return err
 	}
+	log.Debug("fsclient.Put %s / %x / %x", filenames, hash, h)
 	// Fast path if we get a single file
 	if len(filenames) == 1 {
 		return c.putFile(nodes, filenames[0], h, contents[0])

@@ -7,8 +7,6 @@
 package cache
 
 import (
-	"path"
-
 	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/remote/fsclient"
 )
@@ -22,7 +20,7 @@ type remoteFSCache struct {
 }
 
 func (c *remoteFSCache) Store(target *core.BuildTarget, key []byte, files ...string) {
-	err := c.store(key, target, c.cacheArtifacts(target, files...))
+	err := c.store(key, target, cacheArtifacts(target, files...))
 	c.error("Failed to store artifacts with remote server: %s", err)
 }
 
@@ -35,7 +33,7 @@ func (c *remoteFSCache) Retrieve(target *core.BuildTarget, key []byte) bool {
 	// N.B. this does not support storing / retrieving additional outs correctly.
 	//      That doesn't look easy to support through the current API but given its
 	//      current narrow usage we might just drop it instead.
-	err := c.retrieve(target, key, c.cacheArtifacts(target))
+	err := c.retrieve(target, key, cacheArtifacts(target))
 	return c.error("Failed to retrieve artifacts from remote server: %s", err)
 }
 
@@ -68,13 +66,4 @@ func (c *remoteFSCache) error(msg string, err error) bool {
 		log.Warning(msg, err)
 	}
 	return false
-}
-
-func (c *remoteFSCache) cacheArtifacts(target *core.BuildTarget, files ...string) []string {
-	ret := cacheArtifacts(target, files...)
-	dir := target.ShortOutDir()
-	for i, out := range ret {
-		ret[i] = path.Join(dir, out)
-	}
-	return ret
 }
