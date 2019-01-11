@@ -273,7 +273,7 @@ func (r *Ring) Find(hash uint64) (string, cpb.ElanClient) {
 // excluding the given one. If not enough replicas are known then it will return
 // as many as possible.
 func (r *Ring) FindReplicas(hash uint64, n int, current string) ([]string, []cpb.ElanClient) {
-	if n >= len(r.nodes) {
+	if n > len(r.nodes) {
 		log.Warning("Insufficient replicas available (%d requested, %d nodes known (excluding this one)", n, len(r.nodes)-1)
 		n = len(r.nodes) - 1
 	}

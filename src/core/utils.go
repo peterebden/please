@@ -295,9 +295,13 @@ func killProcess(cmd *exec.Cmd, sig syscall.Signal, timeout time.Duration) bool 
 	}
 }
 
-// A SourcePair represents a source file with its source and temporary locations.
+// A SourcePair represents a source file with its source and temporary locations and the
+// target that it represents (if any).
 // This isn't typically used much by callers; it's just useful to have a single type for channels.
-type SourcePair struct{ Src, Tmp string }
+type SourcePair struct {
+	Src, Tmp string
+	Target   *BuildTarget
+}
 
 // IterSources returns all the sources for a function, allowing for sources that are other rules
 // and rules that require transitive dependencies.
@@ -317,7 +321,7 @@ func IterSources(graph *BuildGraph, target *BuildTarget) <-chan SourcePair {
 					fullPaths := providedSource.FullPaths(graph)
 					for i, sourcePath := range providedSource.Paths(graph) {
 						tmpPath := path.Join(tmpDir, sourcePath)
-						ch <- SourcePair{fullPaths[i], tmpPath}
+						ch <- SourcePair{Src: fullPaths[i], Tmp: tmpPath}
 						donePaths[tmpPath] = true
 					}
 				}
@@ -330,7 +334,7 @@ func IterSources(graph *BuildGraph, target *BuildTarget) <-chan SourcePair {
 				pkgName := dependency.Label.PackageName
 				tmpPath := path.Join(tmpDir, pkgName, dep)
 				if !donePaths[tmpPath] {
-					ch <- SourcePair{depPath, tmpPath}
+					ch <- SourcePair{Src: depPath, Tmp: tmpPath, Target: dependency}
 					donePaths[tmpPath] = true
 				}
 			}
@@ -428,7 +432,7 @@ func IterRuntimeFiles(graph *BuildGraph, target *BuildTarget, absoluteOuts bool)
 	pushOut := func(src, out string) {
 		out = makeOut(out)
 		if !done[out] {
-			ch <- SourcePair{src, out}
+			ch <- SourcePair{Src: src, Tmp: out}
 			done[out] = true
 		}
 	}

@@ -102,7 +102,7 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		if err := prepareDirectories(target); err != nil {
 			return err
 		}
-		if err := prepareSources(state.Graph, target); err != nil {
+		if err := prepareSources(state, target); err != nil {
 			return err
 		}
 		return errStop
@@ -202,6 +202,7 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		}
 	}
 	if state.IsRemote(tid) {
+		state.LogBuildResult(tid, target.Label, core.TargetBuilding, target.BuildingDescription)
 		if err := remote.Build(tid, state, target, cacheKey); err != nil {
 			// TODO(peterebden): Re-add this code once the remote service is more reliable.
 			// if !remote.IsRetryableLocally(err) {
@@ -210,14 +211,14 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 			log.Warning("Error building %s remotely: %s. Will retry locally.", target.Label, err)
 		} else {
 			// TODO(peterebden): do we / should we have a concept of "unchanged" here? does it matter?
-			target.SetState(core.Built)
+			target.SetState(core.BuiltRemotely)
 			return nil
 		}
 	}
 	if err := target.CheckSecrets(); err != nil {
 		return err
 	}
-	if err := prepareSources(state.Graph, target); err != nil {
+	if err := prepareSources(state, target); err != nil {
 		return fmt.Errorf("Error preparing sources for %s: %s", target.Label, err)
 	}
 
@@ -331,9 +332,17 @@ func prepareDirectory(directory string, remove bool) error {
 	return err
 }
 
-// Symlinks the source files of this rule into its temp directory.
-func prepareSources(graph *core.BuildGraph, target *core.BuildTarget) error {
-	for source := range core.IterSources(graph, target) {
+// Links the source files of this rule into its temp directory.
+func prepareSources(state *core.BuildState, target *core.BuildTarget) error {
+	remote := state.AnyRemote()
+	for source := range core.IterSources(state.Graph, target) {
+		// Outputs may not be available locally, ensure they are here.
+		if remote && source.Target != nil && source.Target.State() == core.BuiltRemotely && !fs.PathExists(source.Src) {
+			log.Debug("Retrieving artifacts for %s", source.Target.Label)
+			if _, ok := retrieveFromCache(state, source.Target); !ok {
+				return fmt.Errorf("Cannot retrieve artifacts to build %s locally", target.Label)
+			}
+		}
 		if err := core.PrepareSourcePair(source); err != nil {
 			return err
 		}

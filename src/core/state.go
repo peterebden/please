@@ -503,6 +503,11 @@ func (state *BuildState) SetTaskNumbers(active, done int64) {
 	atomic.StoreInt64(&state.progress.numDone, done)
 }
 
+// AnyRemote returns true if there are any remote build workers configured.
+func (state *BuildState) AnyRemote() bool {
+	return state.NumRemoteWorkers > 0
+}
+
 // IsRemote returns true if the given thread id is a remote thread.
 func (state *BuildState) IsRemote(tid int) bool {
 	return tid >= state.NumWorkers
