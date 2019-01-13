@@ -1,6 +1,4 @@
-// Package mod handles reading go.mod files and generating individual
-// libraries from it.
-package mod
+package provide
 
 import (
 	"cmd/go/internal/modfile"
@@ -17,8 +15,8 @@ type Module struct {
 var replacements = map[Module]Module{}
 var mutex sync.Mutex
 
-// Parse parses a go.mod file into a series of modules.
-func Parse(filename string) ([]Module, error) {
+// ParseMod parses a go.mod file into a series of modules.
+func ParseMod(filename string) ([]Module, error) {
 	f, err := modfile.ParseLax(filename, nil, nil)
 	if err != nil {
 		return nil, err
@@ -46,15 +44,17 @@ func Parse(filename string) ([]Module, error) {
 }
 
 // Provide converts a go.mod file into a BUILD file.
-func Provide(filename string) (string, error) {
-	mods, err := Parse(filename)
+func ProvideMod(filename string) (string, error) {
+	var b strings.Builder
+	mods, err := ParseMod(filename)
 	if err != nil {
-		return err
+		return "", err
 	}
-
+	err = modTmpl.Execute(&b, mods)
+	return b.String(), err
 }
 
-var tmpl = template.Must(template.New("build").Funcs(template.FuncMap{
+var modTmpl = template.Must(template.New("build").Funcs(template.FuncMap{
 	"name": func(in string) string { return strings.Replace(in, "/", "_", -1) },
 }).Parse(`
 {{ range . }}
