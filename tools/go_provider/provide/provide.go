@@ -10,8 +10,8 @@ import (
 	"text/template"
 )
 
-// Parse parses a single directory and returns a BUILD file for it.
-func Parse(dir string) (string, error) {
+// ProvideDir parses a single directory and returns a BUILD file for it.
+func ProvideDir(dir string) (string, error) {
 	var b strings.Builder
 	fs := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fs, dir, nil, parser.ImportsOnly)
