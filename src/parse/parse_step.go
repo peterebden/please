@@ -333,14 +333,12 @@ func providePackage(state *core.BuildState, pkg *core.Package) (bool, error) {
 		if !shouldProvide(p.Path, label) {
 			continue
 		}
-		t := state.WaitForBuiltTarget(p.Target, label)
-		outs := t.Outputs()
-		if !t.IsBinary && len(outs) != 1 {
-			log.Error("Cannot use %s as build provider %s, it must be a binary with exactly 1 output.", p.Target, name)
-			continue
+		w, err := worker.GetProviderPath(state, name, label)
+		if err != nil {
+			return false, err
 		}
 		dir := pkg.SourceRoot()
-		resp, err := worker.ProvideParse(state, path.Join(t.OutDir(), outs[0]), dir)
+		resp, err := worker.ProvideParse(state, w, dir, nil)
 		if err != nil {
 			return false, fmt.Errorf("Failed to start build provider %s: %s", name, err)
 		} else if resp != "" {
