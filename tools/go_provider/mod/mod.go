@@ -3,9 +3,10 @@
 package mod
 
 import (
-	"sync"
-
 	"cmd/go/internal/modfile"
+	"strings"
+	"sync"
+	"text/template"
 )
 
 // A Module represents a single Go module.
@@ -41,5 +42,26 @@ func Parse(filename string) ([]Module, error) {
 			ret[i] = mod
 		}
 	}
-	return nil, nil
+	return ret, nil
 }
+
+// Provide converts a go.mod file into a BUILD file.
+func Provide(filename string) (string, error) {
+	mods, err := Parse(filename)
+	if err != nil {
+		return err
+	}
+
+}
+
+var tmpl = template.Must(template.New("build").Funcs(template.FuncMap{
+	"name": func(in string) string { return strings.Replace(in, "/", "_", -1) },
+}).Parse(`
+{{ range . }}
+go_get(
+    name = "{{ name . }}",
+    get = "{{ .Path }}",
+    revision = "{{ .Version }}",
+)
+{{ end }}
+`))
