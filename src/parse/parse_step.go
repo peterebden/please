@@ -38,6 +38,10 @@ func Parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, inc
 }
 
 func parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, include, exclude []string, forSubinclude bool) error {
+	if label.Subrepo != "" && state.ThisRepoOnly && dependor != core.OriginalTarget {
+		log.Info("Not parsing into subrepo for %s (pass --subrepos to parse it too)", label)
+		return nil
+	}
 	// See if something else has parsed this package first.
 	pkg := state.WaitForPackage(label)
 	if pkg != nil {
@@ -335,16 +339,14 @@ func providePackage(state *core.BuildState, pkg *core.Package) (bool, error) {
 		if !shouldProvide(p.Path, label) {
 			continue
 		}
-		t := state.WaitForBuiltTarget(p.Target, label)
-		outs := t.Outputs()
-		if !t.IsBinary && len(outs) != 1 {
-			log.Error("Cannot use %s as build provider %s, it must be a binary with exactly 1 output.", p.Target, name)
-			continue
+		w, err := worker.GetProviderPath(state, name, label)
+		if err != nil {
+			return false, err
 		}
 		dir := pkg.SourceRoot()
-		resp, err := worker.ProvideParse(state, path.Join(t.OutDir(), outs[0]), dir)
+		resp, err := worker.ProvideParse(state, w, dir, nil)
 		if err != nil {
-			return false, fmt.Errorf("Failed to start build provider %s: %s", name, err)
+			return false, fmt.Errorf("Failed to run build provider %s: %s", name, err)
 		} else if resp != "" {
 			log.Debug("Received BUILD file from %s provider for %s: %s", name, dir, resp)
 			if err := state.Parser.ParseReader(state, pkg, strings.NewReader(resp)); err != nil {

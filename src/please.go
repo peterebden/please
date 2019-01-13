@@ -260,7 +260,9 @@ var opts struct {
 	} `command:"tool" hidden:"true" description:"Invoke one of Please's sub-tools"`
 
 	Query struct {
-		Deps struct {
+		Active   bool `no-flag:"true" description:"True if a query command is being run."`
+		Subrepos bool `long:"subrepos" short:"s" description:"Query into subrepos as well"`
+		Deps     struct {
 			Unique bool `long:"unique" short:"u" description:"Only output each dependency once"`
 			Hidden bool `long:"hidden" short:"h" description:"Output internal / hidden dependencies too"`
 			Level  int  `long:"level" default:"-1" description:"levels of the dependencies to retrieve."`
@@ -758,6 +760,7 @@ func Please(targets []core.BuildLabel, config *core.Configuration, shouldBuild, 
 	state.DebugTests = debugTests
 	state.ShowAllOutput = opts.OutputFlags.ShowAllOutput
 	state.ParsePackageOnly = opts.ParsePackageOnly
+	state.ThisRepoOnly = opts.Query.Active && !opts.Query.Subrepos
 	state.SetIncludeAndExclude(opts.BuildFlags.Include, opts.BuildFlags.Exclude)
 
 	if state.DebugTests && len(targets) != 1 {
@@ -945,6 +948,8 @@ func initBuild(args []string) string {
 		// Query commands don't need either of these set.
 		opts.OutputFlags.PlainOutput = true
 		config.Cache.DirClean = false
+		// Also record that it was a query.
+		opts.Query.Active = true
 	}
 
 	// Now we've read the config file, we may need to re-run the parser; the aliases in the config

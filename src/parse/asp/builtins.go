@@ -734,7 +734,9 @@ func subrepo(s *scope, args []pyObject) pyObject {
 	if dep != "" {
 		// N.B. The target must be already registered on this package.
 		target = s.pkg.TargetOrDie(core.ParseBuildLabelContext(dep, s.pkg).Name)
-		root = path.Join(target.OutDir(), name)
+		outs := target.Outputs()
+		s.Assert(len(outs) == 1, "Dependency %s for subrepo %s must have exactly one output", dep, name)
+		root = path.Join(target.OutDir(), outs[0])
 	} else if args[2] != None {
 		root = string(args[2].(pyString))
 	}
@@ -746,8 +748,14 @@ func subrepo(s *scope, args []pyObject) pyObject {
 		state.Config.Bazel.Compatibility = true
 		state.Config.Parse.BuildFileName = append(state.Config.Parse.BuildFileName, "BUILD.bazel")
 	}
+	name = s.pkg.SubrepoArchName(path.Join(s.pkg.Name, name))
+	if args[5] != None { // arg 5 allows setting a provider for this subrepo
+		p, present := s.state.Config.Provider[string(args[5].(pyString))]
+		s.Assert(present, "Unknown provider for subrepo: %s", args[5])
+		p.Path = append(p.Path, core.BuildLabel{Subrepo: name, Name: "..."})
+	}
 	sr := &core.Subrepo{
-		Name:           s.pkg.SubrepoArchName(path.Join(s.pkg.Name, name)),
+		Name:           name,
 		Root:           root,
 		Target:         target,
 		State:          state,
@@ -755,5 +763,5 @@ func subrepo(s *scope, args []pyObject) pyObject {
 	}
 	log.Debug("Registering subrepo %s in package %s", sr.Name, s.pkg.Label())
 	s.state.Graph.AddSubrepo(sr)
-	return None
+	return pyString("@" + name)
 }

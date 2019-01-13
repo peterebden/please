@@ -121,6 +121,8 @@ type BuildState struct {
 	NeedRun bool
 	// True if we want to calculate target hashes (ie. 'plz hash').
 	NeedHashesOnly bool
+	// True to skip loading subrepos.
+	ThisRepoOnly bool
 	// True if we only want to prepare build directories (ie. 'plz build --prepare')
 	PrepareOnly bool
 	// True if we're going to run a shell after builds are prepared.
