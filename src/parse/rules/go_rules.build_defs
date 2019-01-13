@@ -476,6 +476,35 @@ def cgo_test(name:str, srcs:list, data:list=None, deps:list=None, visibility:lis
     )
 
 
+def go_mod(name:str, src:str='go.mod', deps:list=None, visibility:list=None):
+    """Parses a go.mod file to create a set of buildable dependencies.
+
+    These are all fetched & separately compiled, which is in many cases convenient, but
+    for larger repos you may prefer separate go_get rules that allow finer-grained
+    dependencies and better incrementality.
+
+    Args:
+      name: Name of the rule
+      src: Source file, i.e. the go.mod file.
+      deps: Any additional dependencies
+      visibility: Visibility of the rule.
+    """
+    mod_rule = build_rule(
+        name = name,
+        tag = 'mod',
+        srcs = [src],
+        tools = CONFIG.PROVIDERS.GO,
+        cmd = '$(worker %s) mod $SRC',
+        outs = ['wibble'],
+        deps = deps,
+    )
+    return filegroup(
+        name = name,
+        deps = [mod_rule],
+        visibility = visibility,
+    )
+
+
 def go_get(name:str, get:str|list, repo:str='', deps:list=[], exported_deps:list=None,
            visibility:list=None, patch:str=None, binary:bool=False, test_only:bool&testonly=False,
            install:list=None, revision:str|list=None, strip:list=None, hashes:list=None,
