@@ -489,20 +489,7 @@ def go_mod(name:str, src:str='go.mod', deps:list=None, visibility:list=None):
       deps: Any additional dependencies
       visibility: Visibility of the rule.
     """
-    mod_rule = build_rule(
-        name = name,
-        tag = 'mod',
-        srcs = [src],
-        tools = CONFIG.PROVIDERS.GO,
-        cmd = '$(worker %s) mod $SRC',
-        outs = ['wibble'],
-        deps = deps,
-    )
-    return filegroup(
-        name = name,
-        deps = [mod_rule],
-        visibility = visibility,
-    )
+    invoke_provider('go', ['mod', src])
 
 
 def go_get(name:str, get:str|list, repo:str='', deps:list=[], exported_deps:list=None,

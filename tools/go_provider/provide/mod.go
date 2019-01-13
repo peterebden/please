@@ -58,10 +58,10 @@ var modTmpl = template.Must(template.New("build").Funcs(template.FuncMap{
 	"name": func(in string) string { return strings.Replace(in, "/", "_", -1) },
 }).Parse(`
 {{ range . }}
-go_get(
+go_module(
     name = "{{ name . }}",
-    get = "{{ .Path }}",
-    revision = "{{ .Version }}",
+    path = "{{ .Path }}",
+    version = "{{ .Version }}",
 )
 {{ end }}
 `))
