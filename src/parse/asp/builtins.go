@@ -728,9 +728,15 @@ func subrepo(s *scope, args []pyObject) pyObject {
 		state.Config.Bazel.Compatibility = true
 		state.Config.Parse.BuildFileName = append(state.Config.Parse.BuildFileName, "BUILD.bazel")
 	}
+	name = path.Join(s.pkg.Name, name)
+	if args[5] != None { // arg 5 allows setting a provider for this subrepo
+		p, present := s.state.Config.Provider[string(args[5].(pyString))]
+		s.Assert(present, "Unknown provider for subrepo: %s", args[5])
+		p.Path = append(p.Path, core.BuildLabel{Subrepo: name, Name: "..."})
+	}
 	log.Debug("Registering subrepo %s in package %s", name, s.pkg.Label())
 	s.state.Graph.AddSubrepo(&core.Subrepo{
-		Name:   path.Join(s.pkg.Name, name),
+		Name:   name,
 		Root:   root,
 		Target: target,
 		State:  state,
