@@ -330,7 +330,7 @@ func providePackage(state *core.BuildState, pkg *core.Package) (bool, error) {
 	success := false
 	label := pkg.Label()
 	for name, p := range state.Config.Provider {
-		if !shouldProvide(p.Paths, label) {
+		if !shouldProvide(p.Path, label) {
 			continue
 		}
 		t := state.WaitForBuiltTarget(p.Target, label)
