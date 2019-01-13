@@ -10,6 +10,7 @@ import (
 
 	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/fs"
+	"github.com/thought-machine/please/src/worker"
 )
 
 // A few sneaky globals for when we don't have a scope handy
@@ -22,6 +23,7 @@ type nativeFunc func(*scope, []pyObject) pyObject
 func registerBuiltins(s *scope) {
 	setNativeCode(s, "build_rule", buildRule)
 	setNativeCode(s, "subrepo", subrepo)
+	setNativeCode(s, "invoke_provider", invokeProvider)
 	setNativeCode(s, "fail", builtinFail)
 	setNativeCode(s, "subinclude", subinclude)
 	setNativeCode(s, "load", bazelLoad).varargs = true
@@ -741,5 +743,20 @@ func subrepo(s *scope, args []pyObject) pyObject {
 		Target: target,
 		State:  state,
 	})
+	return None
+}
+
+// invokeProvider implements the invoke_provider builtin that allows delegating part
+// of the implementation of a BUILD file to an external program.
+func invokeProvider(s *scope, args []pyObject) pyObject {
+	s.NAssert(s.pkg == nil, "Cannot call invoke_provider in this context")
+	l := asStringList(s, args[1].(pyList), "args")
+	w, err := worker.GetProviderPath(s.state, string(args[0].(pyString)), s.pkg.Label())
+	s.Assert(err == nil, "%s", err)
+	resp, err := worker.ProvideParse(s.state, w, s.pkg.SourceRoot(), l)
+	s.Assert(err == nil, "%s", err)
+	stmts, err := s.interpreter.parser.ParseData([]byte(resp), s.pkg.Filename+" (inferred)")
+	s.Assert(err == nil, "%s", err)
+	s.interpretStatements(stmts)
 	return None
 }
