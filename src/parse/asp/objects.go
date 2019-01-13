@@ -795,6 +795,12 @@ func newConfig(config *core.Configuration) *pyConfig {
 	for k, v := range config.BuildConfig {
 		c[strings.Replace(strings.ToUpper(k), "-", "_", -1)] = pyString(v)
 	}
+	// Providers are available too.
+	d := make(pyDict, len(config.Provider))
+	for name, provider := range config.Provider {
+		d[name] = provider.Target.String()
+	}
+	c["PROVIDER"] = d
 	// Settings specific to package() which aren't in the config, but it's easier to
 	// just put them in now.
 	c["DEFAULT_VISIBILITY"] = None
