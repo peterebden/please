@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/thought-machine/please/tools/go_provider/mod"
 	"github.com/thought-machine/please/tools/go_provider/provide"
 )
 
@@ -24,10 +25,10 @@ type Response struct {
 	BuildFile string   `json:"build_file"`
 }
 
-func provideFile(ch chan<- *Response, dir string) {
-	contents, err := provide.Parse(dir)
+func provideFile(ch chan<- *Response, rule, arg string, f func(string) (string, error)) {
+	contents, err := f(arg)
 	resp := &Response{
-		Rule:      dir,
+		Rule:      rule,
 		BuildFile: contents,
 	}
 	if err != nil {
@@ -53,6 +54,10 @@ func main() {
 			log.Printf("Failed to decode incoming message: %s", err)
 			continue
 		}
-		go provideFile(ch, req.Rule)
+		if len(req.Options) > 1 && req.Options[0] == "mod" {
+			go provideMod(ch, req.Rule, req.Options[1], mod.Provide)
+		} else {
+			go provideFile(ch, req.Rule, req.Rule, provide.Parse)
+		}
 	}
 }
