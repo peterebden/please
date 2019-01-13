@@ -9,7 +9,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/thought-machine/please/tools/go_provider/mod"
 	"github.com/thought-machine/please/tools/go_provider/provide"
 )
 
@@ -55,9 +54,9 @@ func main() {
 			continue
 		}
 		if len(req.Options) > 1 && req.Options[0] == "mod" {
-			go provideMod(ch, req.Rule, req.Options[1], mod.Provide)
+			go provideFile(ch, req.Rule, req.Options[1], provide.ProvideMod)
 		} else {
-			go provideFile(ch, req.Rule, req.Rule, provide.Parse)
+			go provideFile(ch, req.Rule, req.Rule, provide.ProvideDir)
 		}
 	}
 }
