@@ -67,20 +67,38 @@ func buildRemotely(state *core.BuildState, target *core.BuildTarget, worker, msg
 // ProvideParse sends a request to a subprocess to derive pseudo-contents of a BUILD file from
 // a directory (e.g. they may infer it from file contents).
 // If the provider cannot infer anything, they will return an empty string.
-func ProvideParse(state *core.BuildState, worker string, dir string) (string, error) {
+func ProvideParse(state *core.BuildState, worker, dir string, args ...string) (string, error) {
 	w, err := getOrStartWorker(state, worker)
 	if err != nil {
 		return "", err
 	}
 	w.requests <- &Request{
-		Rule: dir,
+		Rule:    dir,
+		Options: args,
 	}
 	ch := make(chan *Response, 1)
 	w.responseMutex.Lock()
 	w.responses[dir] = ch
 	w.responseMutex.Unlock()
 	response := <-ch
+	if !response.Success {
+		return fmt.Errorf("Failed to infer BUILD file for %s: %s", dir, strings.Join(response.Messages, ", "))
+	}
 	return response.BuildFile, nil
+}
+
+// GetProviderPath returns the path for a build provider.
+func GetProviderPath(state *core.BuildState, name string, dependor core.BuildLabel) (string, error) {
+	p, present := state.Config.Provider[name]
+	if !present {
+		return "", fmt.Errorf("Unknown build provider %s", name)
+	}
+	t := state.WaitForBuiltTarget(p.Target, dependor)
+	outs := t.Outputs()
+	if !t.IsBinary || len(outs) != 1 {
+		return "", fmt.Errorf("Cannot use %s as build provider %s, it must be a binary with exactly 1 output.", p.Target, name)
+	}
+	return path.Join(t.OutDir(), outs[0]), nil
 }
 
 // EnsureWorkerStarted ensures that a worker server is started and has responded saying it's ready.
