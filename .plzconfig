@@ -40,7 +40,7 @@ defaultimage = thoughtmachine/please_test:v2
 allowlocalfallback = false
 
 [provider "go"]
-target = //test/go_provider
+target = //tools/go_provider
 path = //test/go_provider/...
 
 [alias "plz"]
