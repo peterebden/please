@@ -1,10 +1,7 @@
 package provide
 
 import (
-	"fmt"
-	"go/scanner"
-	"go/token"
-	"io/ioutil"
+	"cmd/go/internal/modfile"
 	"strings"
 	"sync"
 	"text/template"
@@ -20,19 +17,20 @@ var mutex sync.Mutex
 
 // ParseMod parses a go.mod file into a series of modules.
 func ParseMod(filename string) ([]Module, error) {
-	// We have to parse this ourselves, there is no publicly visible parser for these files :(
-	p := parser{}
-	require, replace, exclude, err := p.ParseAll(filename)
+	f, err := modfile.ParseLax(filename, nil, nil)
+	if err != nil {
+		return nil, err
+	}
 	mutex.Lock()
 	defer mutex.Unlock()
-	for k, v := range replace {
-		replacements[k] = v
+	for _, repl := range f.Replace {
+		replacements[Module(repl.Old)] = Module(repl.New)
 	}
-	for _, excl := range exclude {
-		replacements[excl] = Module{}
+	for _, excl := range f.Exclude {
+		replacements[Module(excl.Mod)] = Module{}
 	}
 	ret := make([]Module, len(f.Require))
-	for _, mod := range require {
+	for i, req := range f.Require {
 		mod := Module(req.Mod)
 		if repl, present := replacements[mod]; present {
 			if repl.Path != "" {
@@ -67,41 +65,3 @@ go_module(
 )
 {{ end }}
 `))
-
-type parser struct {
-	s scanner.Scanner
-}
-
-func (p *parser) ParseAll(filename string) (require []Module, replace map[Module]Module, exclude []Module, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("%s", r)
-		}
-	}()
-	b, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return
-	}
-	fs := token.NewFileSet()
-	f := fs.AddFile(filename, 0, 0)
-	p.s.Init(f, b, nil, 0)
-	for {
-		if pos, tok, lit := s.Scan(); tok == token.EOF {
-			break
-		} else if lit == "module" {
-			p.parseOne()
-		} else if lit == "require" {
-			require = p.parseList()
-		} else if lit == "replace" {
-			replace = p.parseMap()
-		} else if lit == "exclude" {
-			exclude = p.parseList()
-		} else {
-			err = fmt.Errorf("Unknown statement in file: %s", lit)
-		}
-	}
-}
-
-func (p *parser) parseOne() string {
-
-}
