@@ -1,10 +1,11 @@
 package provide
 
 import (
-	"cmd/go/internal/modfile"
 	"strings"
 	"sync"
 	"text/template"
+
+	"github.com/thought-machine/please/third_party/go/vendor/modfile"
 )
 
 // A Module represents a single Go module.
