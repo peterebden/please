@@ -63,7 +63,7 @@ def subinclude(target:str, hash:str=None):
 def load(target:str, names:str=None):
     pass
 def subrepo(name:str, dep:str='', path:str=None, config:str=None, bazel_compat:bool=False,
-            provider:str=None):
+            provider:str=None) -> str:
     pass
 def invoke_provider(provider:str, args:list=[]):
     pass

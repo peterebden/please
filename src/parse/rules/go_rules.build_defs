@@ -492,7 +492,7 @@ def go_mod(src:str='go.mod', deps:list=None, visibility:list=None):
 
 
 def go_module(name:str, path:str, version:str, hashes:list=None, test_only:bool=False,
-              deps:list=None):
+              deps:list=[], visibility:list=None):
     """Defines a rule to download a single Go module.
 
     Args:
@@ -502,6 +502,7 @@ def go_module(name:str, path:str, version:str, hashes:list=None, test_only:bool=
       hashes: List of hashes to verify the downloaded source against.
       test_only: If True, this can only be used by test rules.
       deps: Any additional dependencies
+      visibility: Visibility of the rule.
     """
     get_rule, _ = _go_get_download(
         name = name,
@@ -510,12 +511,16 @@ def go_module(name:str, path:str, version:str, hashes:list=None, test_only:bool=
         hashes = hashes,
         test_only = test_only,
         revision = version,
-        deps = deps,
     )
-    subrepo(
+    sr = subrepo(
         name = name,
-        deps = get_rule,
+        dep = get_rule,
         provider = 'go',
+    )
+    return filegroup(
+        name = name,
+        deps = deps + [sr + "//:mod"],
+        visibility = visibility,
     )
 
 
@@ -629,7 +634,7 @@ def go_get(name:str, get:str|list, repo:str='', deps:list=[], exported_deps:list
 
 def _go_get_download(name:str, tag:str, get:str, repo:str='', patch:str=None, hashes:list=None,
                      test_only:bool&testonly=False, revision:str=None, strip:list=None,
-                     labels:list=[]):
+                     labels:list=[], deps:list=None):
     if hashes and not revision:
         log.warning("You shouldn't specify hashes on go_get without specifying revision as well")
     labels = [f'go_get:{get}@{revision}' if revision else f'go_get:{get}']
@@ -684,6 +689,7 @@ def _go_get_download(name:str, tag:str, get:str, repo:str='', patch:str=None, ha
         labels = labels + ['link:plz-out/go'],
         hashes = hashes,
         sandbox = False,
+        deps = deps,
     ), getroot
 
 

@@ -11,6 +11,7 @@ require (
 	github.com/karrick/godirwalk v1.7.8
 	github.com/peterebden/go-cli-init v1.0.0
 	github.com/pkg/xattr v0.4.0
+	github.com/stretchr/testify v1.2.2
 	github.com/texttheater/golang-levenshtein v0.0.0-20180516184445-d188e65d659e
 	golang.org/x/crypto v0.0.0-20190103213133-ff983b9c42bc
 	golang.org/x/sync v0.0.0-20181221193216-37e7f081c4d4

@@ -743,7 +743,7 @@ func subrepo(s *scope, args []pyObject) pyObject {
 		Target: target,
 		State:  state,
 	})
-	return None
+	return pyString("@" + name)
 }
 
 // invokeProvider implements the invoke_provider builtin that allows delegating part
