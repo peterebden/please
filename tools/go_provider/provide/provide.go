@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"path"
+	"sort"
 	"strings"
 	"text/template"
 )
@@ -17,7 +18,13 @@ func ProvideDir(dir string) (string, error) {
 	pkgs, err := parser.ParseDir(fs, dir, nil, parser.ImportsOnly)
 	if err != nil {
 		return "", err
-	} else if err := tmpl.Execute(&b, pkgs); err != nil {
+	}
+	// Name the targets after the directory, not the package name which is not predictable.
+	for _, pkg := range pkgs {
+		pkg.Name = path.Base(dir)
+		break
+	}
+	if err := tmpl.Execute(&b, pkgs); err != nil {
 		return "", err
 	}
 	return b.String(), nil
@@ -31,26 +38,28 @@ var tmpl = template.Must(template.New("build").Funcs(template.FuncMap{
 				ret = append(ret, path.Base(name))
 			}
 		}
+		sort.Strings(ret)
 		return ret
 	},
 }).Parse(`
 {{ range $pkgName, $pkg := . }}
 go_library(
-    name = "{{ $pkgName }}",
+    name = "{{ $pkg.Name }}",
     srcs = [
-        {{ range filter $pkg.Files false }}
+        {{- range filter $pkg.Files false }}
         "{{ . }}",
-        {{ end }}
+        {{- end }}
     ],
+    visibility = ["PUBLIC"],
 )
 
 {{ if filter $pkg.Files true }}
 go_test(
     name = "{{ $pkgName }}_test",
     srcs = [
-        {{ range filter $pkg.Files true }}
+        {{- range filter $pkg.Files true }}
         "{{ . }}",
-        {{ end }}
+        {{- end }}
     ],
     deps = [":{{ $pkgName }}"],
 )

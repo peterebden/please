@@ -340,7 +340,7 @@ func providePackage(state *core.BuildState, pkg *core.Package) (bool, error) {
 		dir := pkg.SourceRoot()
 		resp, err := worker.ProvideParse(state, w, dir, nil)
 		if err != nil {
-			return false, fmt.Errorf("Failed to start build provider %s: %s", name, err)
+			return false, fmt.Errorf("Failed to run build provider %s: %s", name, err)
 		} else if resp != "" {
 			log.Debug("Received BUILD file from %s provider for %s: %s", name, dir, resp)
 			if err := state.Parser.ParseReader(state, pkg, strings.NewReader(resp)); err != nil {

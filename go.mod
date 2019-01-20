@@ -1,6 +1,7 @@
 module github.com/thought-machine/please
 
 require (
+	github.com/Songmu/prompter v0.0.0-20181014095714-d227c68538bd
 	github.com/Workiva/go-datastructures v1.0.50
 	github.com/coreos/go-semver v0.2.0
 	github.com/djherbis/atime v1.0.0
@@ -9,6 +10,7 @@ require (
 	github.com/hashicorp/go-multierror v1.0.0
 	github.com/jessevdk/go-flags v1.4.0
 	github.com/karrick/godirwalk v1.7.8
+	github.com/mattn/go-isatty v0.0.4 // indirect
 	github.com/peterebden/go-cli-init v1.0.0
 	github.com/pkg/xattr v0.4.0
 	github.com/stretchr/testify v1.2.2

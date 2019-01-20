@@ -29,6 +29,7 @@ func provideFile(ch chan<- *Response, rule, arg string, f func(string) (string, 
 	resp := &Response{
 		Rule:      rule,
 		BuildFile: contents,
+		Success:   err == nil,
 	}
 	if err != nil {
 		resp.Messages = []string{err.Error()}
