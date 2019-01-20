@@ -3,12 +3,15 @@ package provide
 import (
 	"io/ioutil"
 	"path"
+	"regexp"
 	"strings"
 	"sync"
 	"text/template"
 
 	"github.com/thought-machine/please/third_party/go/vendor/modfile"
 )
+
+var versionRegex = regexp.MustCompile("v[0-9].0.0-[0-9]{14}-([0-9a-f]+)")
 
 // A Module represents a single Go module.
 type Module struct {
@@ -64,11 +67,8 @@ func ProvideMod(filename string) (string, error) {
 var modTmpl = template.Must(template.New("build").Funcs(template.FuncMap{
 	"name": func(in string) string { return path.Base(in) },
 	"version": func(in string) string {
-		if strings.HasPrefix(in, "v0.0.0") {
-			// This is a pseudo-version, get the commit hash at the end.
-			if idx := strings.LastIndexByte(in, '-'); idx != -1 {
-				return in[idx+1:]
-			}
+		if match := versionRegex.FindStringSubmatch(in); match != nil {
+			return match[1]
 		}
 		// In some cases versions are suffixed. We need to lose that suffix.
 		return strings.TrimSuffix(in, "+incompatible")

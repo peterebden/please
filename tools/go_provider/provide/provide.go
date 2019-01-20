@@ -55,7 +55,7 @@ go_library(
 
 {{ if filter $pkg.Files true }}
 go_test(
-    name = "{{ $pkgName }}_test",
+    name = "{{ $pkg.Name }}_test",
     srcs = [
         {{- range filter $pkg.Files true }}
         "{{ . }}",
