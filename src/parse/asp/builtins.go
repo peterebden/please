@@ -718,7 +718,9 @@ func subrepo(s *scope, args []pyObject) pyObject {
 	if dep != "" {
 		// N.B. The target must be already registered on this package.
 		target = s.pkg.TargetOrDie(core.ParseBuildLabelContext(dep, s.pkg).Name)
-		root = path.Join(target.OutDir(), name)
+		outs := target.Outputs()
+		s.Assert(len(outs) == 1, "Dependency %s for subrepo %s must have exactly one output", dep, name)
+		root = path.Join(target.OutDir(), outs[0])
 	} else if args[2] != None {
 		root = string(args[2].(pyString))
 	}

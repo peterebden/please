@@ -516,6 +516,7 @@ def go_module(name:str, path:str, version:str, hashes:list=None, test_only:bool=
         name = name,
         dep = get_rule,
         provider = 'go',
+        path = 'src/' + path,
     )
     return filegroup(
         name = name,
