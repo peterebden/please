@@ -38,6 +38,11 @@ var OriginalTarget = BuildLabel{PackageName: "", Name: "_ORIGINAL"}
 
 // String returns a string representation of this build label.
 func (label BuildLabel) String() string {
+	if label == BuildLabelStdin {
+		return "<stdin>"
+	} else if label == OriginalTarget {
+		return "<command-line>"
+	}
 	s := "//" + label.PackageName
 	if label.Subrepo != "" {
 		s = "@" + label.Subrepo + s

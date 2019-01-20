@@ -38,6 +38,10 @@ func Parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, inc
 }
 
 func parse(tid int, state *core.BuildState, label, dependor core.BuildLabel, include, exclude []string, forSubinclude bool) error {
+	if label.Subrepo != "" && state.ThisRepoOnly && dependor != core.OriginalTarget {
+		log.Info("Not parsing into subrepo for %s (pass --subrepos to parse it too)", label)
+		return nil
+	}
 	// See if something else has parsed this package first.
 	pkg := state.WaitForPackage(label)
 	if pkg != nil {
