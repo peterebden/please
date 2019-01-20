@@ -14,7 +14,7 @@ import (
 
 type Request struct {
 	Rule    string   `json:"rule"`
-	Options []string `json:"options"`
+	Options []string `json:"opts"`
 }
 
 type Response struct {

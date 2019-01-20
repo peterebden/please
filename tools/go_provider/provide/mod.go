@@ -1,6 +1,7 @@
 package provide
 
 import (
+	"io/ioutil"
 	"strings"
 	"sync"
 	"text/template"
@@ -18,7 +19,11 @@ var mutex sync.Mutex
 
 // ParseMod parses a go.mod file into a series of modules.
 func ParseMod(filename string) ([]Module, error) {
-	f, err := modfile.ParseLax(filename, nil, nil)
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	f, err := modfile.ParseLax(filename, data, nil)
 	if err != nil {
 		return nil, err
 	}

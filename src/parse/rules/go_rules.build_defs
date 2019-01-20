@@ -488,7 +488,7 @@ def go_mod(src:str='go.mod', deps:list=None, visibility:list=None):
       deps: Any additional dependencies
       visibility: Visibility of the rule.
     """
-    invoke_provider('go', ['mod', src])
+    invoke_provider('go', ['mod', join_path(package_name(), src)])
 
 
 def go_module(name:str, path:str, version:str, hashes:list=None, test_only:bool=False,
