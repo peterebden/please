@@ -63,12 +63,22 @@ func ProvideMod(filename string) (string, error) {
 
 var modTmpl = template.Must(template.New("build").Funcs(template.FuncMap{
 	"name": func(in string) string { return path.Base(in) },
+	"version": func(in string) string {
+		if strings.HasPrefix(in, "v0.0.0") {
+			// This is a pseudo-version, get the commit hash at the end.
+			if idx := strings.LastIndexByte(in, '-'); idx != -1 {
+				return in[idx+1:]
+			}
+		}
+		// In some cases versions are suffixed. We need to lose that suffix.
+		return strings.TrimSuffix(in, "+incompatible")
+	},
 }).Parse(`
 {{ range . }}
 go_module(
     name = "{{ name .Path }}",
     path = "{{ .Path }}",
-    version = "{{ .Version }}",
+    version = "{{ version .Version }}",
 )
 {{ end }}
 `))
