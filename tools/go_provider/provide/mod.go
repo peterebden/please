@@ -2,6 +2,7 @@ package provide
 
 import (
 	"io/ioutil"
+	"path"
 	"strings"
 	"sync"
 	"text/template"
@@ -61,11 +62,11 @@ func ProvideMod(filename string) (string, error) {
 }
 
 var modTmpl = template.Must(template.New("build").Funcs(template.FuncMap{
-	"name": func(in string) string { return strings.Replace(in, "/", "_", -1) },
+	"name": func(in string) string { return path.Base(in) },
 }).Parse(`
 {{ range . }}
 go_module(
-    name = "{{ name . }}",
+    name = "{{ name .Path }}",
     path = "{{ .Path }}",
     version = "{{ .Version }}",
 )
