@@ -438,10 +438,6 @@ func modulePathMajor(path string) (string, error) {
 	return major, nil
 }
 
-func (f *File) Format() ([]byte, error) {
-	return Format(f.Syntax), nil
-}
-
 // Cleanup cleans up the file f after any edit operations.
 // To avoid quadratic behavior, modifications like DropRequire
 // clear the entry but do not remove it from the slice.
