@@ -512,6 +512,7 @@ def go_module(name:str, path:str, version:str, hashes:list=None, test_only:bool=
         test_only = test_only,
         revision = version,
         fallback = False,
+        prefix = '',
     )
     sr = subrepo(
         name = name,
@@ -637,29 +638,29 @@ def go_get(name:str, get:str|list, repo:str='', deps:list=[], exported_deps:list
 
 def _go_get_download(name:str, tag:str, get:str, repo:str='', patch:str=None, hashes:list=None,
                      test_only:bool&testonly=False, revision:str=None, strip:list=None,
-                     fallback:bool=True, labels:list=[], deps:list=None):
+                     fallback:bool=True, prefix:str='src/', labels:list=[], deps:list=None):
     if hashes and not revision:
         log.warning("You shouldn't specify hashes on go_get without specifying revision as well")
     labels = [f'go_get:{get}@{revision}' if revision else f'go_get:{get}']
     getroot = get[:-4] if get.endswith('/...') else get
-    subdir = 'src/' + getroot
+    subdir = prefix + getroot
 
     # Some special optimisation for github, which lets us download zipfiles at a particular sha instead of
     # cloning the whole repo. Obviously that is a lot faster than cloning entire repos.
     if repo.startswith('github.com') and revision:
-        cmd, get_deps, tools = _go_github_repo_cmd(name, getroot, repo, revision)
+        cmd, get_deps, tools = _go_github_repo_cmd(name, getroot, repo, revision, prefix)
     elif get.startswith('github.com') and revision:
-        cmd, get_deps, tools = _go_github_repo_cmd(name, getroot, getroot, revision)
+        cmd, get_deps, tools = _go_github_repo_cmd(name, getroot, getroot, revision, prefix)
     elif get.startswith('golang.org/x/') and revision and not repo:
         # We know about these guys...
-        cmd, get_deps, tools = _go_github_repo_cmd(name, getroot, 'github.com/golang/' + getroot[len('golang.org/x/'):], revision)
+        cmd, get_deps, tools = _go_github_repo_cmd(name, getroot, 'github.com/golang/' + getroot[len('golang.org/x/'):], revision, prefix)
     else:
         get_deps = []
         if not fallback:
             repo = 'https://' + get
         if repo:
             # we've been told exactly where to get the source from.
-            cmd = [f'git clone {repo} src/{getroot}']
+            cmd = [f'git clone {repo} {prefix}/{getroot}']
         else:
             # Ultimate fallback to go get.
             # This has some more restrictions than the above (e.g. go get won't fetch a directory
@@ -698,7 +699,7 @@ def _go_get_download(name:str, tag:str, get:str, repo:str='', patch:str=None, ha
     ), getroot
 
 
-def _go_github_repo_cmd(name, get, repo, revision):
+def _go_github_repo_cmd(name, get, repo, revision, prefix):
     """Returns a partial command to fetch a Go repo from Github."""
     parts = get.split('/')
     out = '/'.join(parts[:3])
@@ -715,9 +716,9 @@ def _go_github_repo_cmd(name, get, repo, revision):
         out = name + '.zip',
     )
     return [
-        'rm -rf src/' + out,
+        f'rm -rf {prefix}{out}',
         '$TOOL x $SRCS_GET',
-        f'mv {dest}*/ src/{out}',
+        f'mv {dest}*/ {prefix}{out}',
     ], [remote_rule], [CONFIG.JARCAT_TOOL]
 
 
