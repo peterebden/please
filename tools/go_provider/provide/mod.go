@@ -18,6 +18,7 @@ type Module struct {
 	Path, Version string
 }
 
+var modules = map[string]struct{}{}
 var replacements = map[Module]Module{}
 var mutex sync.Mutex
 
@@ -39,15 +40,17 @@ func ParseMod(filename string) ([]Module, error) {
 	for _, excl := range f.Exclude {
 		replacements[Module(excl.Mod)] = Module{}
 	}
-	ret := make([]Module, len(f.Require))
-	for i, req := range f.Require {
+	ret := make([]Module, 0, len(f.Require))
+	for _, req := range f.Require {
 		mod := Module(req.Mod)
 		if repl, present := replacements[mod]; present {
 			if repl.Path != "" {
-				ret[i] = repl
+				ret = append(ret, repl)
+				modules[repl.Path] = struct{}{}
 			}
 		} else {
-			ret[i] = mod
+			ret = append(ret, mod)
+			modules[mod.Path] = struct{}{}
 		}
 	}
 	return ret, nil
