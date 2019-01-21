@@ -116,11 +116,7 @@ func activateTarget(state *core.BuildState, pkg *core.Package, label, dependor c
 				return nil
 			}
 		}
-		msg := fmt.Sprintf("Parsed build file %s but it doesn't contain target %s", pkg.Filename, label.Name)
-		if dependor != core.OriginalTarget {
-			msg += fmt.Sprintf(" (depended on by %s)", dependor)
-		}
-		return fmt.Errorf(msg + suggestTargets(pkg, label, dependor))
+		return &missingTargetError{pkg: pkg, label: label, dependor: dependor}
 	}
 	if state.ParsePackageOnly && !forSubinclude {
 		return nil // Some kinds of query don't need a full recursive parse.
@@ -347,6 +343,7 @@ func providePackage(state *core.BuildState, pkg *core.Package) (bool, error) {
 			return false, fmt.Errorf("Failed to run build provider %s: %s", name, err)
 		} else if resp != "" {
 			log.Debug("Received BUILD file from %s provider for %s: %s", name, dir, resp)
+			pkg.InferredBuildFile = resp
 			if err := state.Parser.ParseReader(state, pkg, strings.NewReader(resp)); err != nil {
 				return false, err
 			}
@@ -364,4 +361,30 @@ func shouldProvide(paths []core.BuildLabel, label core.BuildLabel) bool {
 		}
 	}
 	return false
+}
+
+// A missingTargetError is the type returned for a target that was requested in a package but
+// turned out not to exist.
+type missingTargetError struct {
+	pkg             *core.Package
+	label, dependor core.BuildLabel
+}
+
+func (e *missingTargetError) Error() string {
+	msg := e.ShortError()
+	if e.pkg.InferredBuildFile != "" {
+		msg += "\nInferred BUILD file:\n" + e.pkg.InferredBuildFile + "\n"
+	}
+	return msg + suggestTargets(e.pkg, e.label, e.dependor)
+}
+
+func (e *missingTargetError) ShortError() string {
+	msg := fmt.Sprintf("Parsed build file %s but it doesn't contain target %s", e.pkg.Filename, e.label.Name)
+	if e.pkg.InferredBuildFile != "" {
+		msg = fmt.Sprintf("Inferred build information for %s but it doesn't contain target %s", e.pkg.SourceRoot(), e.label.Name)
+	}
+	if e.dependor != core.OriginalTarget {
+		msg += fmt.Sprintf(" (depended on by %s)", e.dependor)
+	}
+	return msg
 }

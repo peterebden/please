@@ -36,6 +36,8 @@ type Package struct {
 	// It would be sort of conceptually nice if they ran simultaneously but it'd
 	// be far too hard to ensure consistency in any case where they can interact with one another.
 	buildCallbackMutex sync.Mutex
+	// The inferred BUILD file for the package, if we got it from a provider.
+	InferredBuildFile string
 }
 
 // NewPackage constructs a new package with the given name.
