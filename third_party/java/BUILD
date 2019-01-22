@@ -47,3 +47,9 @@ maven_jar(
     id = "build.please:javac-worker:13.1.10",
     deps = [":gson"],
 )
+
+maven_jar(
+    name = "guava",
+    id = "com.google.guava:guava:27.0.1-jre",
+    hashes = ["f90dfb3bca1e717ab839b67011ed0d1b98f28fff"],
+)
