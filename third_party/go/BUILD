@@ -636,6 +636,7 @@ go_get(
     name = "ar",
     get = "github.com/peterebden/ar",
     revision = "a0ae3a11a518fb9559c95ed151ec07865b31980b",
+    hashes = ["1f03cc221822eee4939df7e54b0cde0205026665"],
 )
 
 go_get(
