@@ -50,6 +50,6 @@ maven_jar(
 
 maven_jar(
     name = "guava",
-    id = "com.google.guava:guava:27.0.1-jre",
     hashes = ["f90dfb3bca1e717ab839b67011ed0d1b98f28fff"],
+    id = "com.google.guava:guava:27.0.1-jre",
 )

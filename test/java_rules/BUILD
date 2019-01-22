@@ -20,6 +20,7 @@ maven_jar(
     classifier_sources_override = "test",
     hash = "223eff0a4419ea839742a123199cfd609bf7249e",
     id = "ch.qos.logback:logback-core:1.1.3",
+    licences = ["Eclipse Public License 1.0"],
     test_only = True,
 )
 

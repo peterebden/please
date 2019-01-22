@@ -394,7 +394,11 @@ func (f *postBuildFunction) Call(target *core.BuildTarget, output string) error 
 	s := f.f.scope.NewPackagedScope(f.f.scope.state.Graph.PackageOrDie(target.Label))
 	s.Callback = true
 	s.Set(f.f.args[0], pyString(target.Label.Name))
-	s.Set(f.f.args[1], fromStringList(strings.Split(strings.TrimSpace(output), "\n")))
+	l := strings.Split(strings.TrimSpace(output), "\n")
+	if len(l) == 1 && l[0] == "" {
+		l = nil
+	}
+	s.Set(f.f.args[1], fromStringList(l))
 	return annotateCallbackError(s, target, s.interpreter.interpretStatements(s, f.f.code))
 }
 
