@@ -231,3 +231,12 @@ pip_library(
     name = "infoauth",
     version = "1.4",
 )
+
+pip_library(
+    name = "termcolor",
+    outs = ["termcolor.py"],
+    hashes = [
+        "sha1: cf5d429e49955e7c3e89758195d112eca7d3aab6",
+    ],
+    version = "1.1.0",
+)
