@@ -226,3 +226,8 @@ pip_library(
     zip_safe = False,
     deps = [":numpy"],
 )
+
+pip_library(
+    name = "infoauth",
+    version = "1.4",
+)
