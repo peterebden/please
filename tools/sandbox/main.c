@@ -18,46 +18,8 @@
 #include <net/if.h>
 #include <sys/ioctl.h>
 #include <sys/mount.h>
-#include <sys/prctl.h>
+#include <sys/stat.h>
 #include <sys/types.h>
-
-// TODO(peterebden): Remove the following once our build machine gets updated...
-#ifndef MS_LAZYTIME
-#define MS_LAZYTIME	(1<<25)
-#endif
-
-// drop_root is ported more or less directly from Chrome's chrome-sandbox helper.
-// It simply drops us back to whatever user invoked us originally (i.e. before suid
-// got involved).
-int drop_root() {
-    if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0)) {
-        perror("prctl(PR_SET_DUMPABLE)");
-        return 1;
-    }
-    if (prctl(PR_GET_DUMPABLE, 0, 0, 0, 0)) {
-        perror("Still dumpable after prctl(PR_SET_DUMPABLE)");
-        return 1;
-    }
-    gid_t rgid, egid, sgid;
-    if (getresgid(&rgid, &egid, &sgid)) {
-        perror("getresgid");
-        return 1;
-    }
-    if (setresgid(rgid, rgid, rgid)) {
-        perror("setresgid");
-        return 1;
-    }
-    uid_t ruid, euid, suid;
-    if (getresuid(&ruid, &euid, &suid)) {
-        perror("getresuid");
-        return 1;
-    }
-    if (setresuid(ruid, ruid, ruid)) {
-        perror("setresuid");
-        return 1;
-    }
-    return 0;
-}
 
 // lo_up brings up the loopback interface in the new network namespace.
 // By default the namespace is created with lo but it is down.
@@ -87,6 +49,40 @@ int lo_up() {
     return 0;
 }
 
+// deny_groups disables the ability to call setgroups(2). This is required
+// before we can successfully write to gid_map in map_ids.
+int deny_groups() {
+    FILE* f = fopen("/proc/self/setgroups", "w");
+    if (!f) {
+        perror("fopen /proc/self/setgroups");
+        return 1;
+    }
+    if (fputs("deny\n", f) < 0) {
+        perror("fputs");
+        return 1;
+    }
+    return fclose(f);
+}
+
+// map_ids maps the user id or group id inside the namespace to those outside.
+// Without this we fail to create directories in the tmpfs with an EOVERFLOW.
+int map_ids(int out_id, const char* path) {
+    FILE* f = fopen(path, "w");
+    if (!f) {
+        perror("fopen");
+        return 1;
+    }
+    if (fprintf(f, "%d %d 1\n", out_id, out_id) < 0) {
+        perror("fprintf");
+        return 1;
+    }
+    if (fclose(f) != 0) {
+        perror("fclose");
+        return 1;
+    }
+    return 0;
+}
+
 // mount_tmp mounts a tmpfs on /tmp for the tests to muck about in.
 int mount_tmp() {
     // Remounting / as private is necessary so that the tmpfs mount isn't visible to anyone else.
@@ -102,21 +98,55 @@ int mount_tmp() {
     return setenv("TMPDIR", "/tmp", 1);
 }
 
+// mount_test bind mounts the test directory to
+int mount_test() {
+    const char* d = "/tmp/plz_sandbox";
+    const char* dir = getenv("TEST_DIR");
+    if (!dir) {
+        fputs("TEST_DIR not set, will not bind-mount to /tmp/test\n", stderr);
+        return 0;
+    }
+    if (mkdir(d, S_IRWXU) != 0) {
+        perror("mkdir /tmp/test");
+        return 1;
+    }
+    if (mount(dir, d, "", MS_BIND, NULL) != 0) {
+        perror("bind mount");
+        return 1;
+    }
+    if (setenv("TEST_DIR", d, 1) != 0 ||
+        setenv("TMP_DIR", d, 1) != 0 ||
+        setenv("HOME", d, 1) != 0) {
+        perror("setenv");
+        return 1;
+    }
+    return chdir(d);
+}
+
 // contain separates the process into new namespaces to sandbox it.
 int contain(char* argv[]) {
-    if (unshare(CLONE_NEWNET | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWNS) != 0) {
+    const uid_t uid = getuid();
+    const uid_t gid = getgid();
+    if (unshare(CLONE_NEWUSER | CLONE_NEWNET | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWNS) != 0) {
         perror("unshare");
         fputs("Your user doesn't seem to have enough permissions to call unshare(2).\n", stderr);
-        fputs("plz_sandbox normally needs to be installed setuid root in order to work.\n", stderr);
+        fputs("please_sandbox requires support for user namespaces (usually >= Linux 3.10)\n", stderr);
+        return 1;
+    }
+    if (deny_groups() != 0) {
+      return 1;
+    }
+    if (map_ids(uid, "/proc/self/uid_map") != 0 ||
+        map_ids(gid, "/proc/self/gid_map") != 0) {
         return 1;
     }
     if (mount_tmp() != 0) {
-      return 1;
-    }
-    if (lo_up() != 0) {
         return 1;
     }
-    if (drop_root() != 0) {
+    if (mount_test() != 0) {
+        return 1;
+    }
+    if (lo_up() != 0) {
         return 1;
     }
     return execvp(argv[0], argv);

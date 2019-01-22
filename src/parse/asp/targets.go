@@ -93,7 +93,7 @@ func createTarget(s *scope, args []pyObject) *core.BuildTarget {
 		if timeout := args[25]; timeout != nil {
 			target.TestTimeout = time.Duration(timeout.(pyInt)) * time.Second
 		}
-		target.TestSandbox = isTruthy(21)
+		target.TestSandbox = isTruthy(21) && !target.Containerise
 		target.NoTestOutput = isTruthy(22)
 	}
 	return target
@@ -332,7 +332,7 @@ func parseSource(s *scope, src string, systemAllowed, tool bool) core.BuildInput
 		return core.SystemFileLabel{Path: src}
 	} else if tool {
 		// "go" as a source is interpreted as a file, as a tool it's interpreted as something on the PATH.
-		return core.SystemPathLabel{Name: src, Path: s.state.Config.Build.Path}
+		return core.SystemPathLabel{Name: src, Path: s.state.Config.Path()}
 	}
 	// Make sure it's not the actual build file.
 	for _, filename := range s.state.Config.Parse.BuildFileName {

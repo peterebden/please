@@ -99,25 +99,15 @@ func ReadConfigFiles(filenames []string, profile string) (*Configuration, error)
 	// Set default values for slices. These add rather than overwriting so we can't set
 	// them upfront as we would with other config values.
 	if usingBazelWorkspace {
-		setDefault(&config.Parse.BuildFileName, []string{"BUILD.bazel", "BUILD"})
+		setDefault(&config.Parse.BuildFileName, []string{"BUILD.bazel", "BUILD", "BUILD.plz"})
 	} else {
-		setDefault(&config.Parse.BuildFileName, []string{"BUILD"})
+		setDefault(&config.Parse.BuildFileName, []string{"BUILD", "BUILD.plz"})
 	}
 	setBuildPath(&config.Build.Path, config.Build.PassEnv)
 	setDefault(&config.Build.PassEnv, []string{})
 	setDefault(&config.Cover.FileExtension, []string{".go", ".py", ".java", ".js", ".cc", ".h", ".c"})
 	setDefault(&config.Cover.ExcludeExtension, []string{".pb.go", "_pb2.py", ".pb.cc", ".pb.h", "_test.py", "_test.go", "_pb.go", "_bindata.go", "_test_main.cc"})
 	setDefault(&config.Proto.Language, []string{"cc", "py", "java", "go", "js"})
-
-	// Default values for these guys depend on config.Please.Location.
-	defaultPath(&config.Go.BuildIDTool, config.Please.Location, "go_buildid_replacer")
-	defaultPath(&config.Go.TestTool, config.Please.Location, "please_go_test")
-	defaultPath(&config.Go.FilterTool, config.Please.Location, "please_go_filter")
-	defaultPath(&config.Python.PexTool, config.Please.Location, "please_pex")
-	defaultPath(&config.Java.JavacWorker, config.Please.Location, "javac_worker")
-	defaultPath(&config.Java.JarCatTool, config.Please.Location, "jarcat")
-	defaultPath(&config.Java.PleaseMavenTool, config.Please.Location, "please_maven")
-	defaultPath(&config.Java.JUnitRunner, config.Please.Location, "junit_runner.jar")
 
 	// Default values for these guys depend on config.Java.JavaHome if that's been set.
 	if config.Java.JavaHome != "" {
@@ -228,11 +218,16 @@ func DefaultConfiguration() *Configuration {
 	config.Docker.RemoveTimeout = cli.Duration(20 * time.Second)
 	config.Go.GoTool = "go"
 	config.Go.CgoCCTool = "gcc"
+	config.Go.BuildIDTool = "go_buildid_replacer"
+	config.Go.TestTool = "please_go_test"
+	config.Go.FilterTool = "please_go_filter"
 	config.Go.GoPath = "$TMP_DIR:$TMP_DIR/src:$TMP_DIR/$PKG_DIR:$TMP_DIR/third_party/go:$TMP_DIR/third_party/"
 	config.Python.PipTool = "pip3"
+	config.Python.PexTool = "please_pex"
 	config.Python.DefaultInterpreter = "python3"
 	config.Python.TestRunner = "unittest"
 	config.Python.UsePyPI = true
+
 	// Annoyingly pip on OSX doesn't seem to work with this flag (you get the dreaded
 	// "must supply either home or prefix/exec-prefix" error). Goodness knows why *adding* this
 	// flag - which otherwise seems exactly what we want - provokes that error, but the logic
@@ -247,6 +242,10 @@ func DefaultConfiguration() *Configuration {
 	config.Java.DefaultMavenRepo = []cli.URL{"https://repo1.maven.org/maven2"}
 	config.Java.JavacFlags = "-Werror -Xlint:-options" // bootstrap class path warnings are pervasive without this.
 	config.Java.JlinkTool = "jlink"
+	config.Java.JavacWorker = "javac_worker"
+	config.Java.JarCatTool = "jarcat"
+	config.Java.PleaseMavenTool = "please_maven"
+	config.Java.JUnitRunner = "junit_runner.jar"
 	config.Java.JavaHome = ""
 	config.Cpp.CCTool = "gcc"
 	config.Cpp.CppTool = "g++"
@@ -320,7 +319,7 @@ type Configuration struct {
 		Config            string       `help:"The build config to use when one is not chosen on the command line. Defaults to opt." example:"opt | dbg"`
 		FallbackConfig    string       `help:"The build config to use when one is chosen and a required target does not have one by the same name. Also defaults to opt." example:"opt | dbg"`
 		Lang              string       `help:"Sets the language passed to build rules when building. This can be important for some tools (although hopefully not many) - we've mostly observed it with Sass."`
-		Sandbox           bool         `help:"True to sandbox individual build actions, which isolates them using namespaces. Only works on Linux and requires please_sandbox to be installed separately." var:"BUILD_SANDBOX"`
+		Sandbox           bool         `help:"True to sandbox individual build actions, which isolates them from network access and some aspects of the filesystem. Currently only works on Linux." var:"BUILD_SANDBOX"`
 		PleaseSandboxTool string       `help:"The location of the please_sandbox tool to use."`
 		Nonce             string       `help:"This is an arbitrary string that is added to the hash of every build target. It provides a way to force a rebuild of everything when it's changed.\nWe will bump the default of this whenever we think it's required - although it's been a pretty long time now and we hope that'll continue."`
 		PassEnv           []string     `help:"A list of environment variables to pass from the current environment to build rules. For example\n\nPassEnv = HTTP_PROXY\n\nwould copy your HTTP_PROXY environment variable to the build env for any rules."`
@@ -360,7 +359,7 @@ type Configuration struct {
 	Test               struct {
 		Timeout          cli.Duration `help:"Default timeout applied to all tests. Can be overridden on a per-rule basis."`
 		DefaultContainer string       `help:"Sets the default type of containerisation to use for tests that are given container = True.\nCurrently the only available option is 'docker', we expect to add support for more engines in future." options:"none,docker"`
-		Sandbox          bool         `help:"True to sandbox individual tests, which isolates them using namespaces. Somewhat experimental, only works on Linux and requires please_sandbox to be installed separately." var:"TEST_SANDBOX"`
+		Sandbox          bool         `help:"True to sandbox individual tests, which isolates them from network access, IPC and some aspects of the filesystem. Currently only works on Linux." var:"TEST_SANDBOX"`
 		DisableCoverage  []string     `help:"Disables coverage for tests that have any of these labels spcified."`
 	}
 	Cover struct {
@@ -457,7 +456,8 @@ type Configuration struct {
 	Aliases  map[string]string `help:"It is possible to define aliases for new commands in your .plzconfig file. These are essentially string-string replacements of the command line, for example 'deploy = run //tools:deployer --' makes 'plz deploy' run a particular tool."`
 	Alias    map[string]*Alias `help:"Allows defining alias replacements with more detail than the [aliases] section. Otherwise follows the same process, i.e. performs replacements of command strings."`
 	Provider map[string]*struct {
-		Target BuildLabel `help:"The in-repo target to build this provider."`
+		Target BuildLabel   `help:"The in-repo target to build this provider."`
+		Path   []BuildLabel `help:"The paths that this provider should operate for."`
 	} `help:"Allows configuring BUILD file providers, which are subprocesses that know how to provide the contents of a BUILD file when none exists. For example, a Go provider might infer the contents of a BUILD file from the Go source files directly."`
 	Bazel struct {
 		Compatibility bool `help:"Activates limited Bazel compatibility mode. When this is active several rule arguments are available under different names (e.g. compiler_flags -> copts etc), the WORKSPACE file is interpreted, Makefile-style replacements like $< and $@ are made in genrule commands, etc.\nNote that Skylark is not generally supported and many aspects of compatibility are fairly superficial; it's unlikely this will work for complex setups of either tool." var:"BAZEL_COMPATIBILITY"`
@@ -477,8 +477,8 @@ type Alias struct {
 }
 
 type storedBuildEnv struct {
-	Env  []string
-	Once sync.Once
+	Env, Path []string
+	Once      sync.Once
 }
 
 // Hash returns a hash of the parts of this configuration that affect building targets in general.
@@ -497,7 +497,7 @@ func (config *Configuration) Hash() []byte {
 	for _, l := range config.Licences.Reject {
 		h.Write([]byte(l))
 	}
-	for _, env := range config.GetBuildEnv() {
+	for _, env := range config.getBuildEnv(false) {
 		h.Write([]byte(env))
 	}
 	return h.Sum(nil)
@@ -516,35 +516,70 @@ func (config *Configuration) ContainerisationHash() []byte {
 // GetBuildEnv returns the build environment configured for this config object.
 func (config *Configuration) GetBuildEnv() []string {
 	config.buildEnvStored.Once.Do(func() {
-		env := []string{
-			// Need to know these for certain rules.
-			"ARCH=" + config.Build.Arch.Arch,
-			"OS=" + config.Build.Arch.OS,
-			// These are slightly modified forms that are more convenient for some things.
-			"XARCH=" + config.Build.Arch.XArch(),
-			"XOS=" + config.Build.Arch.XOS(),
-			// It's easier to just make these available for Go-based rules.
-			"GOARCH=" + config.Build.Arch.GoArch(),
-			"GOOS=" + config.Build.Arch.OS,
-		}
-
-		// from the BuildEnv config keyword
-		for k, v := range config.BuildEnv {
-			pair := strings.Replace(strings.ToUpper(k), "-", "_", -1) + "=" + v
-			env = append(env, pair)
-		}
-
-		// from the user's environment based on the PassEnv config keyword
-		for _, k := range config.Build.PassEnv {
-			if v, isSet := os.LookupEnv(k); isSet {
-				env = append(env, k+"="+v)
+		config.buildEnvStored.Env = config.getBuildEnv(true)
+		for _, e := range config.buildEnvStored.Env {
+			if strings.HasPrefix(e, "PATH=") {
+				config.buildEnvStored.Path = strings.Split(strings.TrimPrefix(e, "PATH="), ":")
 			}
 		}
-
-		sort.Strings(env)
-		config.buildEnvStored.Env = env
 	})
 	return config.buildEnvStored.Env
+}
+
+// Path returns the slice of strings corresponding to the PATH env var.
+func (config *Configuration) Path() []string {
+	config.GetBuildEnv() // ensure it is initialised
+	return config.buildEnvStored.Path
+}
+
+func (config *Configuration) getBuildEnv(expanded bool) []string {
+	maybeExpandHomePath := func(s string) string {
+		if !expanded {
+			return s
+		}
+		return ExpandHomePath(s)
+	}
+
+	env := []string{
+		// Need to know these for certain rules.
+		"ARCH=" + config.Build.Arch.Arch,
+		"OS=" + config.Build.Arch.OS,
+		// These are slightly modified forms that are more convenient for some things.
+		"XARCH=" + config.Build.Arch.XArch(),
+		"XOS=" + config.Build.Arch.XOS(),
+		// It's easier to just make these available for Go-based rules.
+		"GOARCH=" + config.Build.Arch.GoArch(),
+		"GOOS=" + config.Build.Arch.OS,
+	}
+
+	// from the BuildEnv config keyword
+	for k, v := range config.BuildEnv {
+		pair := strings.Replace(strings.ToUpper(k), "-", "_", -1) + "=" + v
+		env = append(env, pair)
+	}
+
+	// from the user's environment based on the PassEnv config keyword
+	path := false
+	for _, k := range config.Build.PassEnv {
+		if v, isSet := os.LookupEnv(k); isSet {
+			if k == "PATH" {
+				// plz's install location always needs to be on the path.
+				v = maybeExpandHomePath(config.Please.Location) + ":" + v
+				path = true
+			}
+			env = append(env, k+"="+v)
+		}
+	}
+	if !path {
+		// Use a restricted PATH; it'd be easier for the user if we pass it through
+		// but really external environment variables shouldn't affect this.
+		// The only concession is that ~ is expanded as the user's home directory
+		// in PATH entries.
+		env = append(env, "PATH="+maybeExpandHomePath(strings.Join(append([]string{config.Please.Location}, config.Build.Path...), ":")))
+	}
+
+	sort.Strings(env)
+	return env
 }
 
 // TagsToFields returns a map of string represent the properties of CONFIG object to the config Structfield

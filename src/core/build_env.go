@@ -17,14 +17,10 @@ type BuildEnv []string
 // GeneralBuildEnvironment creates the shell env vars used for a command, not based
 // on any specific target etc.
 func GeneralBuildEnvironment(config *Configuration) BuildEnv {
+	// TODO(peterebden): why is this not just config.GetBuildEnv()?
 	env := BuildEnv{
 		// Need this for certain tools, for example sass
 		"LANG=" + config.Build.Lang,
-		// Use a restricted PATH; it'd be easier for the user if we pass it through
-		// but really external environment variables shouldn't affect this.
-		// The only concession is that ~ is expanded as the user's home directory
-		// in PATH entries.
-		"PATH=" + ExpandHomePath(strings.Join(config.Build.Path, ":")),
 		// Expose the requested build config. We might also want to expose
 		// the command that's actually running (although typically this is more useful,
 		// because targets using this want to avoid defining different commands).
@@ -130,10 +126,15 @@ func TestEnvironment(state *BuildState, target *BuildTarget, testDir string) Bui
 		env = append(env, "HOME="+testDir)
 	}
 	if state.NeedCoverage && !target.HasAnyLabel(state.Config.Test.DisableCoverage) {
-		env = append(env, "COVERAGE=true", "COVERAGE_FILE="+path.Join(testDir, "test.coverage"))
+		env = append(env, "COVERAGE=true", "COVERAGE_FILE=test.coverage")
 	}
 	if len(target.Outputs()) > 0 {
-		env = append(env, "TEST="+path.Join(testDir, target.Outputs()[0]))
+		// Bit of a hack; ideally we would be unaware of the sandbox here.
+		if target.TestSandbox {
+			env = append(env, "TEST="+path.Join(SandboxDir, target.Outputs()[0]))
+		} else {
+			env = append(env, "TEST="+path.Join(testDir, target.Outputs()[0]))
+		}
 	}
 	if len(target.Data) > 0 {
 		env = append(env, "DATA="+strings.Join(target.AllData(state.Graph), " "))

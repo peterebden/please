@@ -27,6 +27,9 @@ const BinDir string = "plz-out/bin"
 // DefaultBuildingDescription is the default description for targets when they're building.
 const DefaultBuildingDescription = "Building..."
 
+// SandboxDir is the directory that sandboxed actions are run in.
+const SandboxDir = "/tmp/plz_sandbox"
+
 // Suffixes for temporary directories
 const buildDirSuffix = "._build"
 const testDirSuffix = "._test"

@@ -58,7 +58,7 @@ func TestConfigSlicesOverwrite(t *testing.T) {
 	// This should be completely overwritten by the config file
 	assert.Equal(t, []string{"/sbin"}, config.Build.Path)
 	// This should still get the defaults.
-	assert.Equal(t, []string{"BUILD"}, config.Parse.BuildFileName)
+	assert.Equal(t, []string{"BUILD", "BUILD.plz"}, config.Parse.BuildFileName)
 }
 
 func TestConfigOverrideString(t *testing.T) {
@@ -234,6 +234,7 @@ func TestBuildEnvSection(t *testing.T) {
 		"GOARCH=" + runtime.GOARCH,
 		"GOOS=" + runtime.GOOS,
 		"OS=" + runtime.GOOS,
+		"PATH=" + os.Getenv("TMP_DIR") + "/.please:/usr/local/bin:/usr/bin:/bin",
 		"XARCH=x86_64",
 		"XOS=" + xos(),
 	}
@@ -254,7 +255,7 @@ func TestPassEnv(t *testing.T) {
 		"GOARCH=" + runtime.GOARCH,
 		"GOOS=" + runtime.GOOS,
 		"OS=" + runtime.GOOS,
-		"PATH=" + os.Getenv("PATH"),
+		"PATH=" + os.Getenv("TMP_DIR") + "/.please:" + os.Getenv("PATH"),
 		"XARCH=x86_64",
 		"XOS=" + xos(),
 	}

@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -251,16 +250,33 @@ func ExecWithTimeoutShell(state *BuildState, target *BuildTarget, dir string, en
 
 // ExecWithTimeoutShellStdStreams is as ExecWithTimeoutShell but optionally attaches stdin to the subprocess.
 func ExecWithTimeoutShellStdStreams(state *BuildState, target *BuildTarget, dir string, env []string, timeout time.Duration, defaultTimeout cli.Duration, showOutput bool, cmd string, sandbox, attachStdStreams bool, msg string) ([]byte, []byte, error) {
-	c := append([]string{"bash", "-u", "-o", "pipefail", "-c"}, cmd)
-	// Runtime check is a little ugly, but we know this only works on Linux right now.
-	if sandbox && runtime.GOOS == "linux" {
-		tool, err := LookPath(state.Config.Build.PleaseSandboxTool, state.Config.Build.Path)
+	c := append([]string{"bash", "--noprofile", "--norc", "-u", "-o", "pipefail", "-c"}, cmd)
+	if sandbox {
+		cmd, err := SandboxCommand(state, c)
 		if err != nil {
 			return nil, nil, err
 		}
-		c = append([]string{tool}, c...)
+		c = cmd
 	}
 	return ExecWithTimeout(target, dir, env, timeout, defaultTimeout, showOutput, attachStdStreams, c, msg)
+}
+
+// SandboxCommand applies a sandbox to the given command.
+func SandboxCommand(state *BuildState, cmd []string) ([]string, error) {
+	tool, err := LookBuildPath(state.Config.Build.PleaseSandboxTool, state.Config)
+	if err != nil {
+		return nil, err
+	}
+	return append([]string{tool}, cmd...), nil
+}
+
+// MustSandboxCommand is like SandboxCommand but dies on errors.
+func MustSandboxCommand(state *BuildState, cmd []string) []string {
+	c, err := SandboxCommand(state, cmd)
+	if err != nil {
+		log.Fatalf("%s", err)
+	}
+	return c
 }
 
 // ExecWithTimeoutSimple runs an external command with a timeout.
@@ -578,6 +594,11 @@ func LookPath(filename string, paths []string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("%s not found in PATH %s", filename, strings.Join(paths, ":"))
+}
+
+// LookBuildPath is like LookPath but takes the config's build path into account.
+func LookBuildPath(filename string, config *Configuration) (string, error) {
+	return LookPath(filename, append([]string{ExpandHomePath(config.Please.Location)}, config.Build.Path...))
 }
 
 // AsyncDeleteDir deletes a directory asynchronously.

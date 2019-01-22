@@ -5,11 +5,6 @@ pextool = //tools/please_pex
 moduledir = third_party.python
 
 [parse]
-; This is a hack to handle operating systems with case-insensitive file systems.
-; I don't want to rename my package so we have one slightly differently named build file
-; in this project.
-buildfilename = BUILD
-buildfilename = BUILD.plz
 ; Make this generally available
 preloadbuilddefs = build_defs/go_bindata.build_defs
 
@@ -46,6 +41,18 @@ allowlocalfallback = false
 
 [provider "go"]
 target = //test/go_provider
+path = //test/go_provider/...
+
+[alias "plz"]
+desc = Builds & runs the version of plz within this repo.
+cmd = run //src:please --
+subcommand = test
+subcommand = build
+positionallabels = true
+
+[alias "buildify"]
+desc = Runs buildifier, a BUILD file autoformatter.
+cmd = run //src:please -p -- run -p //third_party/go:buildifier --
 
 [licences]
 accept = MIT
@@ -62,3 +69,5 @@ accept = The Apache Software License, Version 2.0
 accept = PSF
 accept = ASL
 accept = Artistic License
+# Not really a licence, but Bazel projects commonly describe things this way.
+accept = notice
