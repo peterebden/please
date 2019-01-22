@@ -520,10 +520,9 @@ def go_module(name:str, path:str, version:str, hashes:list=None, test_only:bool=
         provider = 'go',
         path = 'src/' + path,
     )
-    _, _, modname = path.rpartition('/')
     return filegroup(
         name = name,
-        exported_deps = deps + [f'{sr}//:{modname}'],
+        exported_deps = deps + [f'{sr}//:mod'],
         visibility = visibility,
     )
 

@@ -46,14 +46,30 @@ func ParseMod(filename string) ([]Module, error) {
 		if repl, present := replacements[mod]; present {
 			if repl.Path != "" {
 				ret = append(ret, repl)
-				modules[repl.Path] = struct{}{}
+				addModule(filename, repl.Path)
 			}
 		} else {
 			ret = append(ret, mod)
-			modules[mod.Path] = struct{}{}
+			addModule(filename, mod.Path)
 		}
 	}
 	return ret, nil
+}
+
+// addModule marks a module as known. It takes a few guesses at possible locations.
+func addModule(filename, mod string) {
+	dir := path.Dir(filename)
+	modules[mod] = struct{}{}
+	modules[path.Join(dir, mod)] = struct{}{}
+	modules[path.Join("plz-out/gen", dir, mod)] = struct{}{}
+}
+
+// isModule returns true if the given module is known.
+func isModule(mod string) bool {
+	mutex.Lock()
+	defer mutex.Unlock()
+	_, present := modules[mod]
+	return present
 }
 
 // Provide converts a go.mod file into a BUILD file.

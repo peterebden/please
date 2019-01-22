@@ -5,8 +5,9 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"log"
+	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"text/template"
@@ -25,10 +26,48 @@ func ProvideDir(dir string) (string, error) {
 		pkg.Name = path.Base(dir)
 		break
 	}
-	if err := tmpl.Execute(&b, pkgs); err != nil {
+	data := struct {
+		Pkgs map[string]*ast.Package
+		Deps []string
+	}{
+		Pkgs: pkgs,
+	}
+	if isModule(dir) {
+		deps, err := findDeps(dir)
+		if err != nil {
+			return "", err
+		}
+		data.Deps = deps
+	}
+	if err := tmpl.Execute(&b, data); err != nil {
 		return "", err
 	}
 	return b.String(), nil
+}
+
+// findDeps finds all the dependencies of a top-level module, i.e. all the subdirectories.
+func findDeps(dir string) ([]string, error) {
+	files := map[string]bool{}
+	ret := []string{}
+	if err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		} else if !info.IsDir() && strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "test.go") {
+			p := filepath.Dir(path[len(dir)+1:])
+			if p == "." || p == "/" {
+				p = ":" + filepath.Base(dir)
+			}
+			if !files[p] {
+				files[p] = true
+				ret = append(ret, "//"+p)
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	sort.Strings(ret)
+	return ret, nil
 }
 
 var tmpl = template.Must(template.New("build").Funcs(template.FuncMap{
@@ -43,7 +82,20 @@ var tmpl = template.Must(template.New("build").Funcs(template.FuncMap{
 		return ret
 	},
 }).Parse(`
-{{ range $pkgName, $pkg := . }}
+{{ if .Deps }}
+filegroup(
+    name = "mod",
+    deps = [
+        {{- range .Deps }}
+        "{{ . }}",
+        {{- end}}
+    ],
+    output_is_complete = False,
+    visibility = ["PUBLIC"],
+)
+{{ end }}
+
+{{ range $pkgName, $pkg := .Pkgs }}
 go_library(
     name = "{{ $pkg.Name }}",
     srcs = [
