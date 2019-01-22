@@ -1,0 +1,3 @@
+[build]
+remotefsurl = 127.0.0.1:9945
+remoteurl = 127.0.0.1:9922
