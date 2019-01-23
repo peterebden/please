@@ -279,10 +279,19 @@ func (r *Ring) FindReplicas(hash uint64, n int, current string) ([]string, []cpb
 	}
 	names := make([]string, 0, n)
 	clients := make([]cpb.ElanClient, 0, n)
-	for idx := r.find(hash); len(names) < n; idx = (idx + 1) % len(r.segments) {
+	for idx := r.find(hash); idx < len(r.segments) && len(names) < n; idx++ {
 		if name := r.segments[idx].Name; name != current && !contains(names, name) {
 			names = append(names, name)
 			clients = append(clients, r.segments[idx].Client)
+		}
+	}
+	if len(names) < n {
+		// Didn't find enough. Check the first n in case we fell off the end.
+		for i := 0; i < n; i++ {
+			if name := r.segments[i].Name; name != current && !contains(names, name) {
+				names = append(names, name)
+				clients = append(clients, r.segments[i].Client)
+			}
 		}
 	}
 	return names, clients
