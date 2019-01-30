@@ -204,6 +204,13 @@ var opts struct {
 	Init struct {
 		Dir                cli.Filepath `long:"dir" description:"Directory to create config in" default:"."`
 		BazelCompatibility bool         `long:"bazel_compat" description:"Initialises config for Bazel compatibility mode."`
+		Config             struct {
+			User  bool `short:"u" long:"user" description:"Modifies the user-level config file"`
+			Local bool `short:"l" long:"local" description:"Modifies the local config file (.plzconfig.local)"`
+			Args  struct {
+				Options ConfigOverrides `positional-arg-name:"config" required:"true" description:"Attributes to set"`
+			} `positional-args:"true" required:"true"`
+		} `command:"config" description:"Initialises specific attributes of config files"`
 	} `command:"init" description:"Initialises a .plzconfig file in the current directory"`
 
 	Gc struct {
@@ -255,6 +262,7 @@ var opts struct {
 	Query struct {
 		Deps struct {
 			Unique bool `long:"unique" short:"u" description:"Only output each dependency once"`
+			Hidden bool `long:"hidden" short:"h" description:"Output internal / hidden dependencies too"`
 			Level  int  `long:"level" default:"-1" description:"levels of the dependencies to retrieve."`
 			Args   struct {
 				Targets []core.BuildLabel `positional-arg-name:"targets" description:"Targets to query" required:"true"`
@@ -264,7 +272,7 @@ var opts struct {
 			Args struct {
 				Targets []core.BuildLabel `positional-arg-name:"targets" description:"Targets to query" required:"true"`
 			} `positional-args:"true" required:"true"`
-		} `command:"reverseDeps" alias:"revdeps" description:"Queries all the reverse dependencies of a target."`
+		} `command:"revdeps" alias:"reverseDeps" description:"Queries all the reverse dependencies of a target."`
 		SomePath struct {
 			Args struct {
 				Target1 core.BuildLabel `positional-arg-name:"target1" description:"First build target" required:"true"`
@@ -477,6 +485,16 @@ var buildFunctions = map[string]func() bool{
 		utils.InitConfig(string(opts.Init.Dir), opts.Init.BazelCompatibility)
 		return true
 	},
+	"config": func() bool {
+		if opts.Init.Config.User {
+			utils.InitConfigFile(core.ExpandHomePath(core.UserConfigFileName), opts.Init.Config.Args.Options)
+		} else if opts.Init.Config.Local {
+			utils.InitConfigFile(core.LocalConfigFileName, opts.Init.Config.Args.Options)
+		} else {
+			utils.InitConfigFile(core.ConfigFileName, opts.Init.Config.Args.Options)
+		}
+		return true
+	},
 	"export": func() bool {
 		success, state := runBuild(opts.Export.Args.Targets, false, false)
 		if success {
@@ -505,12 +523,12 @@ var buildFunctions = map[string]func() bool{
 	},
 	"deps": func() bool {
 		return runQuery(true, opts.Query.Deps.Args.Targets, func(state *core.BuildState) {
-			query.Deps(state, state.ExpandOriginalTargets(), opts.Query.Deps.Unique, opts.Query.Deps.Level)
+			query.Deps(state, state.ExpandOriginalTargets(), opts.Query.Deps.Unique, opts.Query.Deps.Hidden, opts.Query.Deps.Level)
 		})
 	},
-	"reverseDeps": func() bool {
-		return runQuery(false, opts.Query.ReverseDeps.Args.Targets, func(state *core.BuildState) {
-			query.ReverseDeps(state, state.ExpandOriginalTargets())
+	"revdeps": func() bool {
+		return runQuery(true, core.WholeGraph, func(state *core.BuildState) {
+			query.ReverseDeps(state, state.ExpandLabels(opts.Query.ReverseDeps.Args.Targets))
 		})
 	},
 	"somepath": func() bool {
