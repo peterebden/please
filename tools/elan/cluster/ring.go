@@ -294,6 +294,7 @@ func (r *Ring) FindReplicas(hash uint64, n int, current string) ([]string, []cpb
 			}
 		}
 	}
+	log.Debug("Found %d replicas for %x: %s", len(names), hash, names)
 	return names, clients
 }
 

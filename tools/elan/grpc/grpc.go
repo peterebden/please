@@ -271,12 +271,12 @@ func (s *server) ClusterInfo(ctx context.Context, req *cpb.ClusterInfoRequest) (
 	if err := s.ring.Verify(); err != nil {
 		return &cpb.ClusterInfoResponse{
 			Msg:   err.Error(),
-			Nodes: s.info.Node,
+			Nodes: s.ring.Export(),
 		}, nil
 	}
 	return &cpb.ClusterInfoResponse{
 		Healthy: true,
-		Nodes:   s.info.Node,
+		Nodes:   s.ring.Export(),
 	}, nil
 }
 
