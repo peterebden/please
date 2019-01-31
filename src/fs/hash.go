@@ -2,6 +2,7 @@ package fs
 
 import (
 	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"hash"
 	"io"
@@ -84,7 +85,8 @@ func (hasher *PathHasher) MoveHash(oldPath, newPath string, copy bool) {
 // SetHash is used to directly set a hash for a path.
 // This is used for remote files where we download them & therefore know the hash as they come in.
 // TODO(peterebden): We should probably use this more for things like caches and so forth...
-func (hasher *PathHasher) SetHash(path string, hash []byte) {
+func (hasher *PathHasher) SetHash(path string, hash Hash) {
+	log.Debug("Setting hash for %s to %s", path, hash)
 	hasher.mutex.Lock()
 	hasher.memo[path] = hash
 	hasher.mutex.Unlock()
@@ -158,4 +160,12 @@ func (hasher *PathHasher) ensureRelative(path string) string {
 		return strings.TrimLeft(strings.TrimPrefix(path, hasher.root), "/")
 	}
 	return path
+}
+
+// A Hash represents a file hash, it is just like a slice of bytes but knows how to print itself.
+type Hash []byte
+
+// String implements the fmt.Stringer interface
+func (h Hash) String() string {
+	return hex.EncodeToString(h)
 }

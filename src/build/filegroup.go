@@ -11,7 +11,6 @@
 package build
 
 import (
-	"encoding/base64"
 	"os"
 	"path"
 	"sync"
@@ -75,11 +74,8 @@ func buildFilegroup(state *core.BuildState, target *core.BuildTarget) error {
 	if err := prepareDirectory(target.OutDir(), false); err != nil {
 		return err
 	}
-	outDir := target.OutDir()
-	localSources := target.AllLocalSourcePaths(state.Graph)
-	for i, source := range target.AllFullSourcePaths(state.Graph) {
-		out, _ := filegroupOutputPath(state, target, outDir, localSources[i], source)
-		if err := theFilegroupBuilder.Build(state, target, source, out); err != nil {
+	for _, path := range target.FilegroupPaths(state, false) {
+		if err := theFilegroupBuilder.Build(state, target, path.Src, path.Tmp); err != nil {
 			return err
 		}
 	}
@@ -90,7 +86,7 @@ func buildFilegroup(state *core.BuildState, target *core.BuildTarget) error {
 		// Errors are deliberately ignored.
 		if pkg := state.Graph.PackageByLabel(target.Label); pkg == nil || !pkg.HasOutput("__init__.py") {
 			// Don't create this if someone else is going to create this in the package.
-			createInitPy(outDir)
+			createInitPy(target.OutDir())
 		}
 	}
 	return nil
@@ -99,11 +95,9 @@ func buildFilegroup(state *core.BuildState, target *core.BuildTarget) error {
 // copyFilegroupHashes copies the hashes of the inputs of this filegroup to their outputs.
 // This is a small optimisation to ensure we don't need to recalculate them unnecessarily.
 func copyFilegroupHashes(state *core.BuildState, target *core.BuildTarget) {
-	outDir := target.OutDir()
-	localSources := target.AllLocalSourcePaths(state.Graph)
-	for i, source := range target.AllFullSourcePaths(state.Graph) {
-		if out, _ := filegroupOutputPath(state, target, outDir, localSources[i], source); out != source {
-			state.PathHasher.MoveHash(source, out, true)
+	for _, path := range target.FilegroupPaths(state, false) {
+		if path.Src != path.Tmp {
+			state.PathHasher.MoveHash(path.Src, path.Tmp, true)
 		}
 	}
 }
@@ -111,28 +105,9 @@ func copyFilegroupHashes(state *core.BuildState, target *core.BuildTarget) {
 // updateHashFilegroupPaths sets the output paths on a hash_filegroup rule.
 // Unlike normal filegroups, hash filegroups can't calculate these themselves very readily.
 func updateHashFilegroupPaths(state *core.BuildState, target *core.BuildTarget) {
-	outDir := target.OutDir()
-	localSources := target.AllLocalSourcePaths(state.Graph)
-	for i, source := range target.AllFullSourcePaths(state.Graph) {
-		_, relOut := filegroupOutputPath(state, target, outDir, localSources[i], source)
-		target.AddOutput(relOut)
+	for _, path := range target.FilegroupPaths(state, true) {
+		target.AddOutput(path.Tmp)
 	}
-}
-
-// filegroupOutputPath returns the output path for a single filegroup source.
-func filegroupOutputPath(state *core.BuildState, target *core.BuildTarget, outDir, source, full string) (string, string) {
-	if !target.IsHashFilegroup {
-		return path.Join(outDir, source), source
-	}
-	// Hash filegroups have a hash embedded into the output name.
-	ext := path.Ext(source)
-	before := source[:len(source)-len(ext)]
-	hash, err := state.PathHasher.Hash(full, false)
-	if err != nil {
-		panic(err)
-	}
-	out := before + "-" + base64.RawURLEncoding.EncodeToString(hash) + ext
-	return path.Join(outDir, out), out
 }
 
 func createInitPy(dir string) {

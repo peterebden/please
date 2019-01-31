@@ -639,6 +639,38 @@ func TestShouldIncludeManual(t *testing.T) {
 	assert.False(t, target.ShouldInclude([]string{"a"}, nil))
 }
 
+func TestFilegroupPaths(t *testing.T) {
+	state := NewDefaultBuildState()
+	target := makeTarget("//src/core:target1", "")
+	target.IsFilegroup = true
+	addFilegroupSource(target, "test.txt")
+	assert.Equal(t, []SourcePair{{
+		Src: "src/core/test.txt",
+		Tmp: "plz-out/gen/src/core/test.txt",
+	}}, target.FilegroupPaths(state, false))
+	assert.Equal(t, []SourcePair{{
+		Src: "src/core/test.txt",
+		Tmp: "test.txt",
+	}}, target.FilegroupPaths(state, true))
+}
+
+func TestHashFilegroupPaths(t *testing.T) {
+	state := NewDefaultBuildState()
+	target := makeTarget("//src/core/test_data:target1", "")
+	target.IsFilegroup = true
+	target.IsHashFilegroup = true
+	addFilegroupSource(target, "test.txt")
+	// The hash here is calculated empirically - it doesn't really matter precisely what value it takes.
+	assert.Equal(t, []SourcePair{{
+		Src: "src/core/test_data/test.txt",
+		Tmp: "plz-out/gen/src/core/test_data/test-2jmj7l5rSw0yVb_vlWAYkK_YBwk.txt",
+	}}, target.FilegroupPaths(state, false))
+	assert.Equal(t, []SourcePair{{
+		Src: "src/core/test_data/test.txt",
+		Tmp: "test-2jmj7l5rSw0yVb_vlWAYkK_YBwk.txt",
+	}}, target.FilegroupPaths(state, true))
+}
+
 func makeTarget(label, visibility string, deps ...*BuildTarget) *BuildTarget {
 	target := NewBuildTarget(ParseBuildLabel(label, ""))
 	if visibility == "PUBLIC" {

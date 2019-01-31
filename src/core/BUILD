@@ -76,6 +76,7 @@ go_test(
 go_test(
     name = "build_target_test",
     srcs = ["build_target_test.go"],
+    data = ["test_data"],
     deps = [
         ":core",
         "//third_party/go:testify",

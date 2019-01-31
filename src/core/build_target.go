@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path"
@@ -1159,6 +1160,37 @@ func (target *BuildTarget) Parent(graph *BuildGraph) *BuildTarget {
 // HasParent returns true if the target has a parent rule that's not itself.
 func (target *BuildTarget) HasParent() bool {
 	return target.Label.HasParent()
+}
+
+// FilegroupPaths returns a slice of pairs of input / output paths for a filegroup target.
+// If 'relative' is true then the output path doesn't include the plz-out/gen or the package.
+func (target *BuildTarget) FilegroupPaths(state *BuildState, relative bool) []SourcePair {
+	ret := []SourcePair{}
+	outDir := target.OutDir()
+	localSources := target.AllLocalSourcePaths(state.Graph)
+	for i, source := range target.AllFullSourcePaths(state.Graph) {
+		out := target.filegroupOutputPath(state, localSources[i], source)
+		if !relative {
+			out = path.Join(outDir, out)
+		}
+		ret = append(ret, SourcePair{Src: source, Tmp: out})
+	}
+	return ret
+}
+
+// filegroupOutputPath returns the output path for a single filegroup source.
+func (target *BuildTarget) filegroupOutputPath(state *BuildState, source, full string) string {
+	if !target.IsHashFilegroup {
+		return source
+	}
+	// Hash filegroups have a hash embedded into the output name.
+	ext := path.Ext(source)
+	before := source[:len(source)-len(ext)]
+	hash, err := state.PathHasher.Hash(full, false)
+	if err != nil {
+		panic(err) // Bit ugh. Maybe should do smthn better here
+	}
+	return before + "-" + base64.RawURLEncoding.EncodeToString(hash) + ext
 }
 
 // BuildTargets makes a slice of build targets sortable by their labels.

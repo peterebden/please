@@ -224,13 +224,9 @@ func (w *worker) collectOutputs(req *pb.RemoteTaskRequest) ([]*pb.Fileset, error
 	}
 	files := make([]*pb.Fileset, len(req.Outputs))
 	for i, out := range req.Outputs {
-		hash, err := w.hasher.UncachedHash(path.Join(w.Dir, out))
-		if err != nil {
-			return nil, err
-		}
 		files[i] = &pb.Fileset{
 			Filenames: []string{out},
-			Hash:      hash,
+			Hash:      req.Hash,
 		}
 	}
 	return files, nil
