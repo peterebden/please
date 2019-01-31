@@ -202,8 +202,12 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		}
 	}
 	if state.IsRemote(tid) {
+		log.Debug("Dispatching %s to remote worker for build...", target.Label)
 		state.LogBuildResult(tid, target.Label, core.TargetBuilding, target.BuildingDescription)
 		if err := remote.Build(tid, state, target, cacheKey); err != nil {
+			if state.Config.Build.RemoteOnly {
+				return fmt.Errorf("Failed to build %s remotely: %s", target.Label, err)
+			}
 			// TODO(peterebden): Re-add this code once the remote service is more reliable.
 			// if !remote.IsRetryableLocally(err) {
 			// 	return err

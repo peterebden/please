@@ -44,7 +44,11 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, config *
 	parses, builds, tests := state.TaskQueues()
 	for i := 0; i < state.NumWorkers; i++ {
 		go func(tid int) {
-			doTasks(tid, state, parses, builds, tests, state.Include, state.Exclude)
+			if state.Config.Build.RemoteOnly {
+				doTasks(tid, state, parses, nil, nil, state.Include, state.Exclude)
+			} else {
+				doTasks(tid, state, parses, builds, tests, state.Include, state.Exclude)
+			}
 			wg.Done()
 		}(i)
 	}

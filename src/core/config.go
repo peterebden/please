@@ -331,6 +331,7 @@ type Configuration struct {
 		RemoteURL         string       `help:"URL of the remote worker server. Setting this enables submitting build tasks to them to be run remotely. Must also set RemoteFSURL if this is."`
 		NumRemoteWorkers  int          `help:"The number of remote test workers to start (in addition to normal worker threads)"`
 		RemoteFSURL       []string     `help:"URL of the remote artifact filesystem."`
+		RemoteOnly        bool         `help:"Disables local build workers completely, will only build things remotely."`
 	}
 	BuildConfig map[string]string `help:"A section of arbitrary key-value properties that are made available in the BUILD language. These are often useful for writing custom rules that need some configurable property.\n\n[buildconfig]\nandroid-tools-version = 23.0.2\n\nFor example, the above can be accessed as CONFIG.ANDROID_TOOLS_VERSION."`
 	BuildEnv    map[string]string `help:"A set of extra environment variables to define for build rules. For example:\n\n[buildenv]\nsecret-passphrase = 12345\n\nThis would become SECRET_PASSPHRASE for any rules. These can be useful for passing secrets into custom rules; any variables containing SECRET or PASSWORD won't be logged.\n\nIt's also useful if you'd like internal tools to honour some external variable."`
