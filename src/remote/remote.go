@@ -102,6 +102,18 @@ func Build(tid int, state *core.BuildState, target *core.BuildTarget, hash []byt
 	return nil
 }
 
+// BuildFilegroup is a special case of the above for "building" a filegroup (which doesn't
+// require an actual "build" action, but may require some files to be recorded remotely).
+func BuildFilegroup(state *core.BuildState, target *core.BuildTarget) error {
+	dir := target.ShortOutDir()
+	for _, src := range target.FilegroupPaths(state, true) {
+		if out := path.Join(dir, src.Tmp); out != src.Src {
+			panic("BuildFilegroup: not implemented")
+		}
+	}
+	return nil
+}
+
 // recordHashes records a set of hashes once we've built a target.
 func recordHashes(state *core.BuildState, target *core.BuildTarget, resp *pb.RemoteTaskResponse) {
 	outDir := target.OutDir()

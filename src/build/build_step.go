@@ -135,7 +135,15 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 	}
 	oldOutputHash, outputHashErr := OutputHash(state, target)
 	if target.IsFilegroup {
-		log.Debug("Building %s...", target.Label)
+		if state.IsRemote(tid) {
+			if err := remote.BuildFilegroup(state, target); err != nil {
+				return err
+			}
+			// TODO(peterebden): how do we determine the "unchanged" state in the remote case?
+			target.SetState(core.Built)
+			state.LogBuildResult(tid, target.Label, core.TargetBuiltRemotely, "Built remotely")
+			return nil
+		}
 		if err := buildFilegroup(state, target); err != nil {
 			return err
 		} else if newOutputHash, err := calculateAndCheckRuleHash(state, target); err != nil {
