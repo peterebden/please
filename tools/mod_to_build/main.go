@@ -50,6 +50,7 @@ var opts = struct {
 	Usage     string
 	Verbosity cli.Verbosity     `short:"v" long:"verbosity" default:"notice" description:"Verbosity of output (higher number = more output)"`
 	Names     map[string]string `short:"n" long:"name" description:"Mapping of package path -> name of build target to generate. Allows overriding given choices."`
+	Exclude   []string          `short:"e" long:"exclude" description:"Package paths to exclude"`
 }{
 	Usage: `
 mod_to_build is a simple tool for converting 'go mod' output to a BUILD file.
@@ -105,6 +106,16 @@ func determineRepo(modpath string) string {
 	return strings.TrimPrefix(parts[2], "https://") // This is basically implicit later.
 }
 
+func isExcluded(pkg string) bool {
+	pkg, _ = split(pkg, '@', false)
+	for _, e := range opts.Exclude {
+		if e == pkg {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	cli.ParseFlagsOrDie("mod_to_build", &opts)
 	cli.InitLogging(opts.Verbosity)
@@ -150,9 +161,11 @@ func main() {
 
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		pkg, dep := split(line, ' ', true)
-		m := getMod(pkg)
-		d := getMod(dep)
-		m.Deps = append(m.Deps, d.Name)
+		if !isExcluded(pkg) && !isExcluded(dep) {
+			m := getMod(pkg)
+			d := getMod(dep)
+			m.Deps = append(m.Deps, d.Name)
+		}
 	}
 
 	if err := tmpl.Execute(os.Stdout, mods); err != nil {

@@ -1,17 +1,16 @@
 package(gopath = "$TMP_DIR/third_party/go_mod")
 
 go_module(
-    name = "go",
-    path = "cloud.google.com/go",
-    repo = "code.googlesource.com/gocloud",
-    version = "v0.26.0",
-)
-
-go_module(
     name = "go-docker",
     path = "docker.io/go-docker",
     repo = "github.com/docker/go-docker",
     version = "v1.0.0",
+)
+
+go_module(
+    name = "depth",
+    path = "github.com/KyleBanks/depth",
+    version = "v1.2.1",
 )
 
 go_module(
@@ -276,6 +275,7 @@ go_module(
     version = "d188e65d659e",
 )
 
+
 go_module(
     name = "xz",
     path = "github.com/ulikunitz/xz",
@@ -315,7 +315,7 @@ go_module(
 go_module(
     name = "sys",
     path = "golang.org/x/sys",
-    version = "49385e6e1522",
+    version = "eda9bb28ed51",
 )
 
 go_module(
@@ -331,13 +331,6 @@ go_module(
 )
 
 go_module(
-    name = "appengine",
-    path = "google.golang.org/appengine",
-    repo = "github.com/golang/appengine",
-    version = "v1.1.0",
-)
-
-go_module(
     name = "genproto",
     path = "google.golang.org/genproto",
     repo = "github.com/google/go-genproto",
@@ -350,7 +343,6 @@ go_module(
     repo = "github.com/grpc/grpc-go",
     version = "v1.18.0",
     deps = [
-        ":go",
         ":misspell",
         ":glog",
         ":mock",
@@ -363,7 +355,6 @@ go_module(
         ":sys",
         ":text",
         ":tools",
-        ":appengine",
         ":genproto",
         ":go_tools",
     ],
@@ -393,3 +384,4 @@ go_module(
     repo = "github.com/dominikh/go-tools",
     version = "88497007e858",
 )
+
