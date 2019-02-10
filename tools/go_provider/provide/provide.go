@@ -43,16 +43,17 @@ var tmpl = template.Must(template.New("build").Funcs(template.FuncMap{
 	},
 }).Parse(`
 {{ range $pkgName, $pkg := . }}
+{{ with filter $pkg.Files false }}
 go_library(
     name = "{{ $pkg.Name }}",
     srcs = [
-        {{- range filter $pkg.Files false }}
+        {{- range . }}
         "{{ . }}",
         {{- end }}
     ],
     visibility = ["PUBLIC"],
 )
-
+{{ end }}
 {{ with filter $pkg.Files true }}
 go_test(
     name = "{{ $pkg.Name }}_test",
