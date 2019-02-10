@@ -53,11 +53,11 @@ go_library(
     visibility = ["PUBLIC"],
 )
 
-{{ if filter $pkg.Files true }}
+{{ with filter $pkg.Files true }}
 go_test(
     name = "{{ $pkg.Name }}_test",
     srcs = [
-        {{- range filter $pkg.Files true }}
+        {{- range . }}
         "{{ . }}",
         {{- end }}
     ],
