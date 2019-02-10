@@ -20,9 +20,13 @@ func ProvideDir(dir string) (string, error) {
 		return "", err
 	}
 	// Name the targets after the directory, not the package name which is not predictable.
-	for _, pkg := range pkgs {
-		pkg.Name = path.Base(dir)
-		break
+	for pkgName, pkg := range pkgs {
+		if strings.HasSuffix(pkgName, "_test") {
+			delete(pkgs, pkgName)
+		} else {
+			pkg.Name = path.Base(dir)
+			break
+		}
 	}
 	if err := tmpl.Execute(&b, pkgs); err != nil {
 		return "", err
