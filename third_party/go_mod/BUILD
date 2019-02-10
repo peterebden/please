@@ -276,7 +276,6 @@ go_module(
     version = "d188e65d659e",
 )
 
-
 go_module(
     name = "xz",
     path = "github.com/ulikunitz/xz",
@@ -394,4 +393,3 @@ go_module(
     repo = "github.com/dominikh/go-tools",
     version = "88497007e858",
 )
-
