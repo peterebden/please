@@ -6,6 +6,7 @@ require (
 	github.com/Workiva/go-datastructures v1.0.50
 	github.com/bazelbuild/buildtools v0.0.0-20190228125936-4bcdbd1064fc
 	github.com/coreos/go-semver v0.2.0
+	github.com/davecgh/go-spew v1.1.1
 	github.com/djherbis/atime v1.0.0
 	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/docker/go-connections v0.4.0 // indirect

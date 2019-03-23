@@ -19,6 +19,7 @@ go_binary(
         "//src/cli",
         "//src/core",
         "//src/parse/asp",
+        "//src/parse/asp/compiler",
         "//third_party/go:logging",
     ],
 )

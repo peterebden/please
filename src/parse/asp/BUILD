@@ -2,10 +2,7 @@ go_library(
     name = "asp",
     srcs = glob(
         ["*.go"],
-        exclude = [
-            "*_test.go",
-            "*.bindata.go",
-        ],
+        exclude = ["*_test.go"],
     ),
     visibility = ["PUBLIC"],
     deps = [
