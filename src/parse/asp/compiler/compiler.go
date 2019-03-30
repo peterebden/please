@@ -167,6 +167,7 @@ func (c *compiler) CompileStatements(stmts []*asp.Statement) {
 
 func (c *compiler) compileFunc(def *asp.FuncDef) {
 	// Here we generate a specialised function implementation that accepts concrete argument types.
+	c.Emitln("")
 	c.Emitfi("// %s_ is the specialised implementation of %s\n", def.Name, def.Name)
 	c.Emitfi("%s_ := func(s_ *Scope", def.Name)
 	for _, arg := range def.Arguments {
@@ -181,17 +182,16 @@ func (c *compiler) compileFunc(def *asp.FuncDef) {
 	c.CompileStatements(def.Statements)
 	c.locals = locals
 	c.Emitln("}")
-	c.Emitln("")
 
 	// This is the generic function that can be called from other asp code.
 	c.Emitfi("// %s is the generic implementation that can be called from other asp code\n", def.Name)
 	c.Emitfi(`s_.Set("%s", NewFunc("%s", s_,`, def.Name, def.Name)
 	c.Emitf("\n")
-	c.compileFunctionArgs(def.Arguments, def.Return)
 	c.Indent()
+	c.compileFunctionArgs(def.Arguments, def.Return)
 	c.Emitfi("func (s *scope, args []PyObject) PyObject {\n")
 	c.Indent()
-	c.Emitfi("return %s_(s\n", def.Name)
+	c.Emitfi("return %s_(s_,\n", def.Name)
 	c.Indent()
 	for i, arg := range def.Arguments {
 		if len(arg.Type) == 1 {
@@ -533,7 +533,7 @@ func (c *compiler) compileCall(name string, call *asp.Call) {
 	// We need to call the arguments in definition order, but they don't have to be passed that way.
 	args := map[string]asp.CallArgument{}
 	for i, arg := range call.Arguments {
-		if arg.Name == "" {
+		if arg.Name != "" {
 			args[arg.Name] = arg
 		} else {
 			args[f.Arguments[i].Name] = arg

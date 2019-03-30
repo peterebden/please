@@ -27,7 +27,7 @@ genrule(
     srcs = ["builtins.build_defs"],
     outs = [
         "types.go",
-        "builtins.go",
+        "rules.go",
     ],
     cmd = "$TOOL -g $SRCS",
     tools = ["//src/parse/asp/main:compiler"],
