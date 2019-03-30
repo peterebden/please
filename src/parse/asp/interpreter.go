@@ -261,6 +261,11 @@ func (s *scope) LocalLookup(name string) pyObject {
 	return s.locals[name]
 }
 
+// ConfigStr returns a config property as a string.
+func (s *scope) ConfigStr(name string) string {
+	return s.config.MustGet(name).String()
+}
+
 // Set sets the given variable in this scope.
 func (s *scope) Set(name string, value pyObject) {
 	s.locals[name] = value
