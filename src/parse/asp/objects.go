@@ -199,9 +199,9 @@ func (s pyString) Operator(operator Operator, operand pyObject) pyObject {
 			l2[i] = v
 		}
 		return pyString(fmt.Sprintf(string(s), l2...))
-	case In:
+	case Contains:
 		return newPyBool(strings.Contains(string(s), string(s2)))
-	case NotIn:
+	case DoesntContain:
 		return newPyBool(!strings.Contains(string(s), string(s2)))
 	case Index:
 		return pyString(s[pyIndex(s, operand, false)])
@@ -242,13 +242,13 @@ func (l pyList) Operator(operator Operator, operand pyObject) pyObject {
 			panic("Cannot add list and " + operand.Type())
 		}
 		return append(l, l2...)
-	case In, NotIn:
+	case Contains, DoesntContain:
 		for _, item := range l {
 			if item == operand {
-				return newPyBool(operator == In)
+				return newPyBool(operator == Contains)
 			}
 		}
-		return newPyBool(operator == NotIn)
+		return newPyBool(operator == DoesntContain)
 	case Index:
 		return l[pyIndex(l, operand, false)]
 	case LessThan:
@@ -319,12 +319,12 @@ func (d pyDict) Property(name string) pyObject {
 }
 
 func (d pyDict) Operator(operator Operator, operand pyObject) pyObject {
-	if operator == In || operator == NotIn {
+	if operator == Contains || operator == DoesntContain {
 		if s, ok := operand.(pyString); ok {
 			_, present := d[string(s)]
-			return newPyBool(present == (operator == In))
+			return newPyBool(present == (operator == Contains))
 		}
-		return newPyBool(operator == NotIn)
+		return newPyBool(operator == DoesntContain)
 	} else if operator == Index {
 		s, ok := operand.(pyString)
 		if !ok {
@@ -666,9 +666,9 @@ func (c *pyConfig) Operator(operator Operator, operand pyObject) pyObject {
 	if !ok {
 		panic("config keys must be strings")
 	}
-	if operator == In || operator == NotIn {
+	if operator == Contains || operator == DoesntContain {
 		v := c.Get(string(s), nil)
-		if (v != nil) == (operator == In) {
+		if (v != nil) == (operator == Contains) {
 			return True
 		}
 		return False

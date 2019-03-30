@@ -288,8 +288,12 @@ const (
 	Or = '|'
 	// Is implements type identity.
 	Is = '≡'
-	// Index is used in the parser, but not when parsing code.
+	// Index is used in the interpreter, but not when parsing code.
 	Index = '['
+	// Contains is also used internally only.
+	Contains = '∋'
+	// DoesntContain is also used internally only.
+	DoesntContain = '∌'
 )
 
 // String implements the fmt.Stringer interface. It is not especially efficient and is

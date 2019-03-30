@@ -432,9 +432,10 @@ func (s *scope) interpretExpression(expr *Expression) pyObject {
 			b1, isBool1 := obj.(pyBool)
 			b2, isBool2 := s.interpretExpression(op.Expr).(pyBool)
 			obj = newPyBool(isBool1 && isBool2 && b1 == b2)
-		case In, NotIn:
-			// the implementation of in is defined by the right-hand side, not the left.
-			obj = s.interpretExpression(op.Expr).Operator(op.Op, obj)
+		case In:
+			obj = s.interpretExpression(op.Expr).Operator(Contains, obj)
+		case NotIn:
+			obj = s.interpretExpression(op.Expr).Operator(DoesntContain, obj)
 		default:
 			obj = obj.Operator(op.Op, s.interpretExpression(op.Expr))
 		}
