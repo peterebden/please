@@ -4,7 +4,7 @@ genrule(
     name = "builtin_rules",
     srcs = build_defs,
     outs = [build_def + ".gob" for build_def in build_defs],
-    cmd = "$TOOL -o $TMP_DIR $SRCS",
+    cmd = "$TOOL $SRCS",
     tools = ["//src/parse/asp/main:compiler"],
 )
 
@@ -20,4 +20,15 @@ go_library(
         "//src/parse/...",
         "//tools/build_langserver/...",
     ],
+)
+
+genrule(
+    name = "compiled_rules",
+    srcs = ["builtins.build_defs"],
+    outs = [
+        "types.go",
+        "builtins.go",
+    ],
+    cmd = "$TOOL -g $SRCS",
+    tools = ["//src/parse/asp/main:compiler"],
 )

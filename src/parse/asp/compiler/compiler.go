@@ -176,7 +176,9 @@ func (c *compiler) compileFunc(def *asp.FuncDef) {
 		}
 	}
 	c.Emitf(") {\n")
+	locals := c.overrideLocals(def.Arguments, true)
 	c.CompileStatements(def.Statements)
+	c.locals = locals
 	c.Emitln("}")
 	c.Emitln("")
 
@@ -270,7 +272,9 @@ func (c *compiler) compileFor(f *asp.ForStatement) {
 			c.Emitfi("    %s = %s[%d]\n", name, x, i)
 		}
 	}
+	locals := c.overrideLocalNames(f.Names)
 	c.CompileStatements(f.Statements)
+	c.locals = locals
 	c.Emitln("}")
 }
 
@@ -294,6 +298,7 @@ func (c *compiler) compileIdentStatement(ident *asp.IdentStatement) {
 		for _, name := range ident.Unpack.Names {
 			c.Emitf(", %s", name)
 		}
+		c.overrideLocalNames(ident.Unpack.Names)
 		c.Emitf(" = ")
 		c.compileExpr(ident.Unpack.Expr)
 		c.Emitf("\n")
@@ -355,6 +360,13 @@ func (c *compiler) compileExpr(expr *asp.Expression) {
 }
 
 func (c *compiler) compileIdentExpr(expr *asp.IdentExpr) {
+	// Specialisation for the config object.
+	// This implies users can't override it with a local var - that is also generally true in
+	// the interpreter though.
+	if expr.Name == "CONFIG" && len(expr.Action) == 1 && expr.Action[0].Property != nil {
+		c.Emitf(`s_.ConfigStr("%s")`, expr.Action[0].Property.Name)
+		return
+	}
 	c.compileVar(expr.Name)
 	for _, action := range expr.Action {
 		if action.Property != nil {
@@ -456,7 +468,7 @@ func (c *compiler) compileLambda(l *asp.Lambda) {
 	c.Emitfi("func (s_ *scope, args_ []PyObject) PyObject {\n")
 	c.Indent()
 	c.Emitf("return ")
-	locals := c.overrideLocals(l.Arguments)
+	locals := c.overrideLocals(l.Arguments, false)
 	c.compileExpr(&l.Expr)
 	c.locals = locals
 	c.Unindent()
@@ -510,14 +522,40 @@ func (c *compiler) compileCall(name string, call *asp.Call) {
 }
 
 // overrideLocals maps a set of local variable names to argument indices.
-func (c *compiler) overrideLocals(args []asp.Argument) map[string]local {
+func (c *compiler) overrideLocals(args []asp.Argument, named bool) map[string]local {
 	locals := c.locals
 	c.locals = make(map[string]local, len(locals)+len(args))
 	for k, v := range locals {
 		c.locals[k] = v
 	}
 	for i, arg := range args {
-		c.locals[arg.Name] = local{GenName: fmt.Sprintf("args_[%d]", i), Type: "object"}
+		if !named {
+			// Unnamed variables can't be typed (because they're coming from a []pyObject)
+			c.setLocal(arg.Name, fmt.Sprintf("args_[%d]", i), "object")
+		} else if len(arg.Type) == 1 {
+			c.setLocal(arg.Name, arg.Name, arg.Type[0])
+		} else {
+			c.setLocal(arg.Name, arg.Name, "object")
+		}
 	}
 	return locals
+}
+
+// overrideLocalNames maps a set of local names to argument indices.
+// TODO(peterebden): General TODO here about adding typing information.
+func (c *compiler) overrideLocalNames(names []string) map[string]local {
+	locals := c.locals
+	c.locals = make(map[string]local, len(locals)+len(names))
+	for k, v := range locals {
+		c.locals[k] = v
+	}
+	for _, name := range names {
+		c.setLocal(name, name, "object")
+	}
+	return locals
+}
+
+// setLocal sets a single local variable.
+func (c *compiler) setLocal(name, genName, typ string) {
+	c.locals[name] = local{GenName: genName, Type: typ}
 }
