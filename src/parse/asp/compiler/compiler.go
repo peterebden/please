@@ -132,6 +132,7 @@ func (c *compiler) CompileStatements(stmts []*asp.Statement) {
 		c.pos = stmt.Pos
 		if stmt.FuncDef != nil {
 			c.compileFunc(stmt.FuncDef)
+			c.setLocal(stmt.FuncDef.Name, stmt.FuncDef.Name, "func")
 		} else if stmt.If != nil {
 			c.compileIf(stmt.If)
 		} else if stmt.For != nil {
@@ -298,12 +299,22 @@ func (c *compiler) compileIdentStatement(ident *asp.IdentStatement) {
 		for _, name := range ident.Unpack.Names {
 			c.Emitf(", %s", name)
 		}
-		c.overrideLocalNames(ident.Unpack.Names)
+		c.overrideLocalNames(append(ident.Unpack.Names, ident.Name))
 		c.Emitf(" = ")
 		c.compileExpr(ident.Unpack.Expr)
 		c.Emitf("\n")
 	} else if ident.Action != nil {
-		c.compileIdentExpr(ident.Action.Property)
+		if ident.Action.Property != nil {
+			c.compileIdentExpr(ident.Action.Property)
+		} else if ident.Action.Call != nil {
+			c.compileCall(ident.Name, ident.Action.Call)
+		} else if ident.Action.Assign != nil {
+			c.Emitfi("%s = ", ident.Name)
+			c.compileExpr(ident.Action.Assign)
+		} else if ident.Action.AugAssign != nil {
+			c.Emitfi("%s += ", ident.Name)
+			c.compileExpr(ident.Action.AugAssign)
+		}
 		c.Emitf("\n")
 	}
 }
@@ -364,6 +375,16 @@ func (c *compiler) compileOp(op asp.OpExpression) {
 		c.Emitf(".Operator(%s, ", op.Op)
 		c.compileExpr(op.Expr)
 		c.Emitf(")")
+	case asp.Add, asp.Subtract, asp.LessThan, asp.GreaterThan:
+		c.Emitf(" %c ", op.Op)
+		c.compileExpr(op.Expr)
+	case asp.LessThanOrEqual:
+		c.Emitf(" <= ")
+		c.compileExpr(op.Expr)
+	case asp.GreaterThanOrEqual:
+		c.Emitf(" >= ")
+		c.compileExpr(op.Expr)
+
 	default:
 		c.Error("Unimplemented operation %s", op.Op)
 	}
