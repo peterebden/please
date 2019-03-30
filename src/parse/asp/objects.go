@@ -69,6 +69,12 @@ func (b pyBool) Property(name string) pyObject {
 }
 
 func (b pyBool) Operator(operator Operator, operand pyObject) pyObject {
+	switch operator {
+	case In:
+		return operand.Operator(Contains, b)
+	case NotIn:
+		return operand.Operator(DoesntContain, b)
+	}
 	panic(fmt.Sprintf("operator %s not implemented on type bool", operator))
 }
 
@@ -136,7 +142,9 @@ func (i pyInt) Operator(operator Operator, operand pyObject) pyObject {
 	case Modulo:
 		return i % i2
 	case In:
-		panic("bad operator: 'in' int")
+		return operand.Operator(Contains, i)
+	case NotIn:
+		return operand.Operator(DoesntContain, i)
 	}
 	panic("unknown operator")
 }
@@ -203,6 +211,10 @@ func (s pyString) Operator(operator Operator, operand pyObject) pyObject {
 		return newPyBool(strings.Contains(string(s), string(s2)))
 	case DoesntContain:
 		return newPyBool(!strings.Contains(string(s), string(s2)))
+	case In:
+		return newPyBool(strings.Contains(string(s2), string(s)))
+	case NotIn:
+		return newPyBool(!strings.Contains(string(s2), string(s)))
 	case Index:
 		return pyString(s[pyIndex(s, operand, false)])
 	}

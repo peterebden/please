@@ -342,21 +342,32 @@ func (c *compiler) compileExpr(expr *asp.Expression) {
 		c.compileValueExpr(expr.Val)
 	}
 	for _, op := range expr.Op {
-		switch op.Op {
-		case asp.And:
-			c.Emitp("(", " && ")
-		case asp.Or:
-			c.Emitp("(", " || ")
-		case asp.Equal:
-			c.Emitp("(", " == ")
-		case asp.NotEqual:
-			c.Emitp("(", " != ")
-		default:
-			c.Error("Unimplemented operation %s", op.Op)
-		}
+		c.compileOp(op)
+	}
+}
+
+func (c *compiler) compileOp(op asp.OpExpression) {
+	switch op.Op {
+	case asp.And:
+		c.Emitp("(", " && ")
+		defer c.Emitf(")")
+	case asp.Or:
+		c.Emitp("(", " || ")
+		defer c.Emitf(")")
+	case asp.Equal:
+		c.Emitp("(", " == ")
+		defer c.Emitf(")")
+	case asp.NotEqual:
+		c.Emitp("(", " != ")
+		defer c.Emitf(")")
+	case asp.In, asp.NotIn:
+		c.Emitf(".Operator(%s, ", op.Op)
 		c.compileExpr(op.Expr)
 		c.Emitf(")")
+	default:
+		c.Error("Unimplemented operation %s", op.Op)
 	}
+	c.compileExpr(op.Expr)
 }
 
 func (c *compiler) compileIdentExpr(expr *asp.IdentExpr) {
