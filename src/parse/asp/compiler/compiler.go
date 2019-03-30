@@ -68,6 +68,7 @@ func Compile(statements []*asp.Statement) (b []byte, err error) {
 type compiler struct {
 	w         *bytes.Buffer
 	indent    string
+	pos       asp.Position
 	functions map[string]*asp.FuncDef
 	locals    map[string]local
 }
@@ -79,13 +80,13 @@ type local struct {
 	Type string
 }
 
-func (c *compiler) Error(pos asp.Position, msg string, args ...interface{}) {
-	panic(fmt.Errorf("%s:%d:%d: %s", pos.Filename, pos.Line, pos.Column, fmt.Sprintf(msg, args...)))
+func (c *compiler) Error(msg string, args ...interface{}) {
+	panic(fmt.Errorf("%s: %s", c.pos, fmt.Sprintf(msg, args...)))
 }
 
-func (c *compiler) Assert(condition bool, pos asp.Position, msg string, args ...interface{}) {
+func (c *compiler) Assert(condition bool, msg string, args ...interface{}) {
 	if !condition {
-		c.Error(pos, msg, args...)
+		c.Error(msg, args...)
 	}
 }
 
@@ -121,13 +122,14 @@ func (c *compiler) Emitp(pre, post string, args ...interface{}) {
 	w.WriteString(pre)
 	w.Write(c.w.Bytes())
 	c.w = w
-	c.Emitf(pos, args...)
+	c.Emitf(post, args...)
 }
 
 func (c *compiler) CompileStatements(stmts []*asp.Statement) {
 	c.Indent()
 	defer c.Unindent()
 	for _, stmt := range stmts {
+		c.pos = stmt.Pos
 		if stmt.FuncDef != nil {
 			c.compileFunc(stmt.FuncDef)
 		} else if stmt.If != nil {
@@ -152,12 +154,12 @@ func (c *compiler) CompileStatements(stmts []*asp.Statement) {
 		} else if stmt.Ident != nil {
 			c.compileIdentStatement(stmt.Ident)
 		} else if stmt.Literal != nil {
-			c.Error(stmt.Pos, "Expression has no effect")
+			c.Error("Expression has no effect")
 		} else if stmt.Pass {
 		} else if stmt.Continue {
 			c.Emitln("continue")
 		} else {
-			c.Error(stmt.Pos, "Unhandled statement")
+			c.Error("Unhandled statement")
 		}
 	}
 }
@@ -315,6 +317,7 @@ func (c *compiler) compileExprs(exprs []*asp.Expression) {
 }
 
 func (c *compiler) compileExpr(expr *asp.Expression) {
+	c.pos = expr.Pos
 	// At various points we may need to prepend to the buffer.
 	w := c.w
 	c.w = &bytes.Buffer{}
@@ -344,7 +347,7 @@ func (c *compiler) compileExpr(expr *asp.Expression) {
 		case asp.NotEqual:
 			c.Emitp("(", " != ")
 		default:
-			c.Error(expr.Pos, "Unimplemented operation %s", op.Op)
+			c.Error("Unimplemented operation %s", op.Op)
 		}
 		c.compileExpr(op.Expr)
 		c.Emitf(")")
@@ -352,19 +355,24 @@ func (c *compiler) compileExpr(expr *asp.Expression) {
 }
 
 func (c *compiler) compileIdentExpr(expr *asp.IdentExpr) {
-	// Look up the name in our locals list.
-	if local, present := c.locals[expr.Name]; present {
-		c.Emitf("%s", local.GenName)
-	} else {
-		log.Warning("Unknown local variable '%s' at %s", expr.Name, expr.Pos)
-		c.Emitf("%s", expr.Name)
-	}
+	c.compileVar(expr.Name)
 	for _, action := range expr.Action {
 		if action.Property != nil {
 			c.Emitf(".Property(%s)", action.Property.Name)
 		} else {
-			c.compileCall(expr.Pos, expr.Name, action.Call)
+			c.compileCall(expr.Name, action.Call)
 		}
+	}
+}
+
+// compileVar compiles a variable lookup by name.
+// This is less simple than one might think - it can get overridden in various ways.
+func (c *compiler) compileVar(name string) {
+	if local, present := c.locals[name]; present {
+		c.Emitf("%s", local.GenName)
+	} else {
+		log.Warning("Unknown local variable '%s' at %s", name, c.pos)
+		c.Emitf("%s", name)
 	}
 }
 
@@ -392,7 +400,11 @@ func (c *compiler) compileValueExpr(val *asp.ValueExpression) {
 	} else if val.Property != nil {
 		c.Emitf(`.Property("%s")`, val.Property.Name)
 	} else if val.Call != nil {
-		c.compileCall(val.Call)
+		// TODO(peterebden): Obviously need to sort out <unknown>. We probably need to be able to
+		//                   identify operations on builtins
+		c.compileCall("<unknown>", val.Call)
+	} else {
+		c.Assert(false, "Unhandled expression")
 	}
 }
 
@@ -422,10 +434,10 @@ func (c *compiler) compileList(l *asp.List) {
 func (c *compiler) compileDict(d *asp.Dict) {
 	c.Assert(d.Comprehension == nil, "Comprehensions not yet supported")
 	c.Emitf("pyDict{")
-	for _, item := range l.Items {
-		c.compileExpr(item.Key)
+	for _, item := range d.Items {
+		c.compileExpr(&item.Key)
 		c.Emitf(": ")
-		c.compileExpr(item.Value)
+		c.compileExpr(&item.Value)
 		c.Emitf(", ")
 	}
 	c.Emitf("}")
@@ -445,7 +457,7 @@ func (c *compiler) compileLambda(l *asp.Lambda) {
 	c.Indent()
 	c.Emitf("return ")
 	locals := c.overrideLocals(l.Arguments)
-	c.compileExpr(l.Expr)
+	c.compileExpr(&l.Expr)
 	c.locals = locals
 	c.Unindent()
 	c.Emitf("}")
@@ -459,20 +471,20 @@ func (c *compiler) compileSlice(s *asp.Slice) {
 		// a name for the object to get its length (although it might be possible eventually if
 		// we wrapped it up in a little function - which may be a good idea since one could have
 		// an arbitrary expression that resolved to a negative number.
-		c.assert(s.Start.Val.Int == nil || s.Start.Val.Int >= 0, s.Start.Pos, "Negative slice indices aren't supported")
+		c.Assert(s.Start.Val.Int == nil || s.Start.Val.Int.Int >= 0, "Negative slice indices aren't supported")
 		c.compileExpr(s.Start)
 	}
 	c.Emitf(":")
 	if s.End != nil {
-		c.assert(s.End.Val.Int == nil || s.End.Val.Int >= 0, s.End.Pos, "Negative slice indices aren't supported")
+		c.Assert(s.End.Val.Int == nil || s.End.Val.Int.Int >= 0, "Negative slice indices aren't supported")
 		c.compileExpr(s.End)
 	}
 	c.Emitf("]")
 }
 
-func (c *compiler) compileCall(pos asp.Position, name string, call *asp.Call) {
+func (c *compiler) compileCall(name string, call *asp.Call) {
 	f, present := c.functions[name]
-	c.Assert(present, pos, "Unknown function %s, cannot specialise", name)
+	c.Assert(present, "Unknown function %s, cannot specialise", name)
 	c.Emitf(".(*Func).Call(s_")
 	// We need to call the arguments in definition order, but they don't have to be passed that way.
 	args := map[string]asp.CallArgument{}
@@ -491,7 +503,7 @@ func (c *compiler) compileCall(pos asp.Position, name string, call *asp.Call) {
 		} else if arg.Value != nil {
 			c.compileExpr(arg.Value)
 		} else {
-			c.Error(pos, "Missing required argument %s to %s", arg.Name, name)
+			c.Error("Missing required argument %s to %s", arg.Name, name)
 		}
 	}
 	c.Emitf(")")
@@ -500,7 +512,7 @@ func (c *compiler) compileCall(pos asp.Position, name string, call *asp.Call) {
 // overrideLocals maps a set of local variable names to argument indices.
 func (c *compiler) overrideLocals(args []asp.Argument) map[string]local {
 	locals := c.locals
-	c.locals = make(map[string]local{}, len(locals)+len(args))
+	c.locals = make(map[string]local, len(locals)+len(args))
 	for k, v := range locals {
 		c.locals[k] = v
 	}
