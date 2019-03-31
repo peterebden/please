@@ -572,8 +572,7 @@ func (c *compiler) compileCall(name string, call *asp.Call) {
 		}
 	}
 	for _, arg := range f.Arguments {
-		c.Emitf(",\n")
-		c.Emitfi("")
+		c.Emitf(",")
 		if callarg, present := args[arg.Name]; present {
 			c.compileExpr(&callarg.Value)
 		} else if arg.Value != nil {
