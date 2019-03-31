@@ -6,6 +6,7 @@ package compiler
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"gopkg.in/op/go-logging.v1"
@@ -454,7 +455,7 @@ func (c *compiler) compileVar(name string) {
 
 func (c *compiler) compileValueExpr(val *asp.ValueExpression) {
 	if val.String != "" {
-		c.Emitf("%s", val.String)
+		c.Emitf("%s", strconv.Quote(val.String[1:len(val.String)-1]))
 	} else if val.FString != nil {
 		c.compileFString(val.FString)
 	} else if val.Int != nil {
