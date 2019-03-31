@@ -32,3 +32,8 @@ genrule(
     cmd = "$TOOL -g $SRCS",
     tools = ["//src/parse/asp/main:compiler"],
 )
+
+go_library(
+    name = "compiled_compiled_rules",
+    srcs = [":compiled_rules"],
+)

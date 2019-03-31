@@ -708,24 +708,32 @@ func (s *scope) Constant(expr *Expression) pyObject {
 	// but it's rare that people would write something of that nature in this language.
 	if expr.Optimised != nil && expr.Optimised.Constant != nil {
 		return expr.Optimised.Constant
-	} else if expr.Val == nil || expr.Val.Slice != nil || expr.Val.Property != nil || expr.Val.Call != nil || expr.Op != nil || expr.If != nil {
-		return nil
-	} else if expr.Val.Bool != "" || expr.Val.String != "" || expr.Val.Int != nil {
+	} else if IsConstant(expr) {
 		return s.interpretValueExpression(expr.Val)
+	}
+	return nil
+}
+
+// IsConstant returns true if the given expression describes a constant.
+func IsConstant(expr *Expression) bool {
+	if expr.Val == nil || expr.Val.Slice != nil || expr.Val.Property != nil || expr.Val.Call != nil || expr.Op != nil || expr.If != nil {
+		return false
+	} else if expr.Val.Bool != "" || expr.Val.String != "" || expr.Val.Int != nil {
+		return true
 	} else if expr.Val.List != nil && expr.Val.List.Comprehension == nil {
 		// Lists can be constant if all their elements are also.
 		for _, v := range expr.Val.List.Values {
-			if s.Constant(v) == nil {
-				return nil
+			if !IsConstant(v) {
+				return false
 			}
 		}
-		return s.interpretValueExpression(expr.Val)
+		return true
 	}
 	// N.B. dicts are not optimised to constants currently because they are mutable (because Go maps have
 	//      pointer semantics). It might be nice to be able to do that later but it is probably not critical -
 	//      we might also be able to do a more aggressive pass in cases where we know we're passing a constant
 	//      to a builtin that won't modify it (e.g. calling build_rule with a constant dict).
-	return nil
+	return false
 }
 
 // pkgFilename returns the filename of the current package, or the empty string if there is none.

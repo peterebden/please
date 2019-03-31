@@ -36,6 +36,9 @@ var NewFunc = asp.NewFunc
 var True = asp.True
 var False = asp.False
 var None = asp.None
+
+type Expression = asp.Expression
+type OptimisedExpression = asp.OptimisedExpression
 `
 
 // Compile compiles a single input.
@@ -219,12 +222,26 @@ func (c *compiler) compileFunctionArgs(args []asp.Argument, returnType string) {
 		c.Emitf(`"%s": %d,`, arg.Name, i)
 	}
 	c.Emitf("},\n")
+	c.Emitfi("[]*Expression{")
+	for _, arg := range args {
+		if prop := c.configProperty(arg.Value); prop != "" {
+			// TODO(peterebden): We're not supposed to be creating OptimisedExpressions here...
+			c.Emitf(`&Expression{Optimised:&OptimisedExpression{Config:"%s"}},`, prop)
+		} else {
+			c.Emitf("nil,")
+		}
+	}
+	c.Emitf("},\n")
 	c.Emitfi("[]PyObject{")
 	for _, arg := range args {
 		if arg.Value == nil {
-			c.Emitf("nil, ")
-		} else {
+			c.Emitf("nil,")
+		} else if asp.IsConstant(arg.Value) {
 			c.compileExpr(arg.Value)
+			c.Emitf(",")
+		} else {
+			c.Assert(c.configProperty(arg.Value) != "", "Non-constant function argument default cannot be compiled")
+			c.Emitf("nil,")
 		}
 	}
 	c.Emitf("},\n")
@@ -239,6 +256,21 @@ func (c *compiler) compileFunctionArgs(args []asp.Argument, returnType string) {
 	c.Emitf("},\n")
 	c.Emitfi(`"%s",`, returnType)
 	c.Emitf("\n")
+}
+
+// configProperty returns the config property being looked up in an expression, if there is one.
+func (c *compiler) configProperty(expr *asp.Expression) string {
+	if expr != nil && expr.Val != nil && expr.Val.Ident != nil {
+		return c.configPropertyIdent(expr.Val.Ident)
+	}
+	return ""
+}
+
+func (c *compiler) configPropertyIdent(expr *asp.IdentExpr) string {
+	if expr.Name == "CONFIG" && len(expr.Action) == 1 && expr.Action[0].Property != nil {
+		return expr.Action[0].Property.Name
+	}
+	return ""
 }
 
 func (c *compiler) compileIf(ifs *asp.IfStatement) {
@@ -395,8 +427,8 @@ func (c *compiler) compileIdentExpr(expr *asp.IdentExpr) {
 	// Specialisation for the config object.
 	// This implies users can't override it with a local var - that is also generally true in
 	// the interpreter though.
-	if expr.Name == "CONFIG" && len(expr.Action) == 1 && expr.Action[0].Property != nil {
-		c.Emitf(`s_.ConfigStr("%s")`, expr.Action[0].Property.Name)
+	if prop := c.configPropertyIdent(expr); prop != "" {
+		c.Emitf(`s_.ConfigStr("%s")`, prop)
 		return
 	}
 	c.compileVar(expr.Name)

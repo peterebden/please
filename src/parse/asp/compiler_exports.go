@@ -16,13 +16,14 @@ type Scope = scope
 type NativeFunc func(*Scope, []PyObject) PyObject
 
 // NewFunc creates a new Func instance
-func NewFunc(name string, scope *scope, args []string, argIndices map[string]int, defaults []PyObject, types [][]string, returnType string, nativeCode NativeFunc) *PyFunc {
+func NewFunc(name string, scope *scope, args []string, argIndices map[string]int, defaults []*Expression, constants []PyObject, types [][]string, returnType string, nativeCode NativeFunc) *PyFunc {
 	return &pyFunc{
 		name:       name,
 		scope:      scope,
 		args:       args,
 		argIndices: argIndices,
-		constants:  defaults,
+		defaults:   defaults,
+		constants:  constants,
 		types:      types,
 		nativeCode: nativeCode,
 		returnType: returnType,
