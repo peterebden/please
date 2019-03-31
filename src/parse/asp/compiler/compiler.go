@@ -23,24 +23,32 @@ package rules
 
 import "github.com/thought-machine/please/src/parse/asp"
 
-type Object = asp.PyObject
-type Bool = asp.PyBool
-type Int = asp.PyInt
-type Str = asp.PyString
-type List = asp.PyList
-type Dict = asp.PyDict
-type Func = asp.PyFunc
-type Function = asp.PyFunc
-type Config = asp.PyConfig
-type Scope = asp.Scope
+type (
+    Object = asp.PyObject
+    Bool = asp.PyBool
+    Int = asp.PyInt
+    Str = asp.PyString
+    List = asp.PyList
+    Dict = asp.PyDict
+    Func = asp.PyFunc
+    Function = asp.PyFunc
+    Config = asp.PyConfig
+    Scope = asp.Scope
+    Expression = asp.Expression
+    OptimisedExpression = asp.OptimisedExpression
+)
 
-var NewFunc = asp.NewFunc
-var True = asp.True
-var False = asp.False
-var None = asp.None
+var (
+    NewFunc = asp.NewFunc
+    True = asp.True
+    False = asp.False
+    None = asp.None
+)
 
-type Expression = asp.Expression
-type OptimisedExpression = asp.OptimisedExpression
+const (
+    In = asp.In
+    NotIn = asp.NotIn
+)
 `
 
 // Compile compiles a single input.
@@ -270,12 +278,12 @@ func (c *compiler) configPropertyIdent(expr *asp.IdentExpr) string {
 func (c *compiler) compileIf(ifs *asp.IfStatement) {
 	c.Emitfi("if ")
 	c.compileExpr(&ifs.Condition)
-	c.Emitf(" {\n")
+	c.Emitf(".IsTruthy() {\n")
 	c.CompileStatements(ifs.Statements)
 	for _, elif := range ifs.Elif {
 		c.Emitfi("} else if ")
 		c.compileExpr(&elif.Condition)
-		c.Emitf(" {\n")
+		c.Emitf(".IsTruthy() {\n")
 		c.CompileStatements(elif.Statements)
 	}
 	if len(ifs.ElseStatements) > 0 {
@@ -400,7 +408,7 @@ func (c *compiler) compileOp(op asp.OpExpression) {
 		c.Emitp("(", " != ")
 		defer c.Emitf(")")
 	case asp.In, asp.NotIn:
-		c.Emitf(".Operator(%s, ", op.Op)
+		c.Emitf(".Operator(%s, ", strings.Title(op.Op.String()))
 		c.compileExpr(op.Expr)
 		c.Emitf(")")
 	case asp.Add, asp.Subtract, asp.LessThan, asp.GreaterThan:
@@ -493,7 +501,7 @@ func (c *compiler) compileFString(f *asp.FString) {
 
 func (c *compiler) compileList(l *asp.List) {
 	c.Assert(l.Comprehension == nil, "Comprehensions not yet supported")
-	c.Emitf("pyList{")
+	c.Emitf("List{")
 	for _, v := range l.Values {
 		c.compileExpr(v)
 		c.Emitf(", ")
@@ -503,7 +511,7 @@ func (c *compiler) compileList(l *asp.List) {
 
 func (c *compiler) compileDict(d *asp.Dict) {
 	c.Assert(d.Comprehension == nil, "Comprehensions not yet supported")
-	c.Emitf("pyDict{")
+	c.Emitf("Dict{")
 	for _, item := range d.Items {
 		c.compileExpr(&item.Key)
 		c.Emitf(": ")
@@ -660,6 +668,8 @@ func (c *compiler) typeName(typ string) string {
 		return "Object"
 	} else if typ == "func" || typ == "function" {
 		return "*Func" // Functions are always passed by pointer
+	} else if typ == "config" {
+		return "*Config" // Similarly config.
 	}
 	return strings.Title(typ)
 }
