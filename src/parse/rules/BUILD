@@ -36,4 +36,5 @@ genrule(
 go_library(
     name = "compiled_compiled_rules",
     srcs = [":compiled_rules"],
+    deps = ["//src/parse/asp"],
 )

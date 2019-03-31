@@ -136,7 +136,6 @@ func (c *compiler) CompileStatements(stmts []*asp.Statement) {
 		c.pos = stmt.Pos
 		if stmt.FuncDef != nil {
 			c.compileFunc(stmt.FuncDef)
-			c.setLocal(stmt.FuncDef.Name, stmt.FuncDef.Name, "func")
 		} else if stmt.If != nil {
 			c.compileIf(stmt.If)
 		} else if stmt.For != nil {
@@ -152,7 +151,7 @@ func (c *compiler) CompileStatements(stmts []*asp.Statement) {
 		} else if stmt.Assert != nil {
 			c.compileIf(&asp.IfStatement{
 				Condition: *stmt.Assert.Expr,
-				Statements: []*asp.Statement{
+				ElseStatements: []*asp.Statement{
 					&asp.Statement{Raise: &asp.Expression{Val: &asp.ValueExpression{String: stmt.Assert.Message}}},
 				},
 			})
@@ -187,6 +186,7 @@ func (c *compiler) compileFunc(def *asp.FuncDef) {
 	c.CompileStatements(def.Statements)
 	c.locals = locals
 	c.Emitln("}")
+	c.setLocal(def.Name, def.Name+"_", "func")
 
 	// This is the generic function that can be called from other asp code.
 	c.Emitfi("// %s is the generic implementation that can be called from other asp code\n", def.Name)
@@ -315,38 +315,40 @@ func (c *compiler) compileFor(f *asp.ForStatement) {
 
 func (c *compiler) compileIdentStatement(ident *asp.IdentStatement) {
 	if ident.Index != nil {
-		c.Emitfi("%s[", ident.Name)
+		c.Emitfi("%s[", c.local(ident.Name))
 		c.compileExpr(ident.Index.Expr)
 		c.Emitf("] = ")
 		if ident.Index.Assign != nil {
 			c.compileExpr(ident.Index.Assign)
 			c.Emitf("\n")
 		} else {
-			c.Emitfi("%s[", ident.Name)
+			c.Emitfi("%s[", c.local(ident.Name))
 			c.compileExpr(ident.Index.Expr)
 			c.Emitf("] + ")
 			c.compileExpr(ident.Index.AugAssign)
 			c.Emitf("\n")
 		}
 	} else if ident.Unpack != nil {
-		c.Emitf("%s", ident.Name)
-		for _, name := range ident.Unpack.Names {
-			c.Emitf(", %s", name)
-		}
 		c.overrideLocalNames(append(ident.Unpack.Names, ident.Name))
+		c.Emitfi("%s", c.local(ident.Name))
+		for _, name := range ident.Unpack.Names {
+			c.Emitf(", %s", c.local(name))
+		}
 		c.Emitf(" = ")
 		c.compileExpr(ident.Unpack.Expr)
 		c.Emitf("\n")
 	} else if ident.Action != nil {
 		if ident.Action.Property != nil {
+			c.Emitfi("")
 			c.compileIdentExpr(ident.Action.Property)
 		} else if ident.Action.Call != nil {
+			c.Emitfi("%s", c.local(ident.Name))
 			c.compileCall(ident.Name, ident.Action.Call)
 		} else if ident.Action.Assign != nil {
-			c.Emitfi("%s = ", ident.Name)
+			c.Emitfi("%s = ", c.newLocal(ident.Name))
 			c.compileExpr(ident.Action.Assign)
 		} else if ident.Action.AugAssign != nil {
-			c.Emitfi("%s += ", ident.Name)
+			c.Emitfi("%s += ", c.local(ident.Name))
 			c.compileExpr(ident.Action.AugAssign)
 		}
 		c.Emitf("\n")
@@ -650,4 +652,12 @@ func (c *compiler) local(name string) string {
 	l, present := c.locals[name]
 	c.Assert(present, "Unknown local variable %s", name)
 	return l.GenName
+}
+
+// newLocal looks up a local variable name, or creates a new one if not defined.
+func (c *compiler) newLocal(name string) string {
+	if l, present := c.locals[name]; present {
+		return l.GenName
+	}
+	return c.setLocal(name, name, "object")
 }
