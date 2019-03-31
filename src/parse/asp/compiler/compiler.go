@@ -172,17 +172,18 @@ func (c *compiler) CompileStatements(stmts []*asp.Statement) {
 func (c *compiler) compileFunc(def *asp.FuncDef) {
 	// Here we generate a specialised function implementation that accepts concrete argument types.
 	c.Emitln("")
+	locals := c.overrideLocals(def.Arguments, true)
 	c.Emitfi("// %s_ is the specialised implementation of %s\n", def.Name, def.Name)
 	c.Emitfi("%s_ := func(s_ *Scope", def.Name)
 	for _, arg := range def.Arguments {
+		name := c.local(arg.Name) // This handles Go reserved keywords.
 		if len(arg.Type) == 1 {
-			c.Emitf(", %s %s", arg.Name, arg.Type[0]) // Special case where the type is certain.
+			c.Emitf(", %s %s", name, arg.Type[0]) // Special case where the type is certain.
 		} else {
-			c.Emitf(", %s Object", arg.Name)
+			c.Emitf(", %s Object", name)
 		}
 	}
 	c.Emitf(") {\n")
-	locals := c.overrideLocals(def.Arguments, true)
 	c.CompileStatements(def.Statements)
 	c.locals = locals
 	c.Emitln("}")
@@ -417,11 +418,9 @@ func (c *compiler) compileOp(op asp.OpExpression) {
 	case asp.GreaterThanOrEqual:
 		c.Emitf(" >= ")
 		c.compileExpr(op.Expr)
-
 	default:
 		c.Error("Unimplemented operation %s", op.Op)
 	}
-	c.compileExpr(op.Expr)
 }
 
 func (c *compiler) compileIdentExpr(expr *asp.IdentExpr) {
@@ -620,7 +619,36 @@ func (c *compiler) overrideLocalNames(names []string) map[string]local {
 	return locals
 }
 
-// setLocal sets a single local variable.
-func (c *compiler) setLocal(name, genName, typ string) {
+// setLocal sets a single local variable. It accounts for Go reserved words and returns the
+// generated name that will actually be used.
+func (c *compiler) setLocal(name, genName, typ string) string {
+	// For convenience we only record things here that are not also keywords in asp.
+	keywords := map[string]bool{
+		"case":        true,
+		"const":       true,
+		"chan":        true,
+		"default":     true,
+		"defer":       true,
+		"fallthrough": true,
+		"func":        true,
+		"go":          true,
+		"interface":   true,
+		"map":         true,
+		"package":     true,
+		"range":       true,
+		"struct":      true,
+		"switch":      true,
+	}
+	if keywords[genName] {
+		genName += "Var"
+	}
 	c.locals[name] = local{GenName: genName, Type: typ}
+	return genName
+}
+
+// local looks up a local variable name.
+func (c *compiler) local(name string) string {
+	l, present := c.locals[name]
+	c.Assert(present, "Unknown local variable %s", name)
+	return l.GenName
 }
