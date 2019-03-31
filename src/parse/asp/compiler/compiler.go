@@ -26,10 +26,11 @@ import "github.com/thought-machine/please/src/parse/asp"
 type Object = asp.PyObject
 type Bool = asp.PyBool
 type Int = asp.PyInt
-type String = asp.PyString
+type Str = asp.PyString
 type List = asp.PyList
 type Dict = asp.PyDict
 type Func = asp.PyFunc
+type Function = asp.PyFunc
 type Config = asp.PyConfig
 type Scope = asp.Scope
 
@@ -63,7 +64,7 @@ func Compile(statements []*asp.Statement) (b []byte, err error) {
 	}
 	c.Emitln("package rules")
 	c.Emitln("")
-	c.Emitln("func Rules(s *Scope) {")
+	c.Emitln("func Rules(s_ *Scope) {")
 	c.CompileStatements(statements)
 	c.Emitln("}")
 	return c.w.Bytes(), nil
@@ -175,14 +176,9 @@ func (c *compiler) compileFunc(def *asp.FuncDef) {
 	c.Emitfi("// %s_ is the specialised implementation of %s\n", def.Name, def.Name)
 	c.Emitfi("%s_ := func(s_ *Scope", def.Name)
 	for _, arg := range def.Arguments {
-		name := c.local(arg.Name) // This handles Go reserved keywords.
-		if len(arg.Type) == 1 {
-			c.Emitf(", %s %s", name, arg.Type[0]) // Special case where the type is certain.
-		} else {
-			c.Emitf(", %s Object", name)
-		}
+		c.Emitf(", %s %s", c.local(arg.Name), c.typeNames(arg.Type))
 	}
-	c.Emitf(") {\n")
+	c.Emitf(") %s {\n", c.typeName(def.Return))
 	c.CompileStatements(def.Statements)
 	c.locals = locals
 	c.Emitln("}")
@@ -194,16 +190,12 @@ func (c *compiler) compileFunc(def *asp.FuncDef) {
 	c.Emitf("\n")
 	c.Indent()
 	c.compileFunctionArgs(def.Arguments, def.Return)
-	c.Emitfi("func (s *scope, args []PyObject) PyObject {\n")
+	c.Emitfi("func (s_ *Scope, args []Object) Object {\n")
 	c.Indent()
 	c.Emitfi("return %s_(s_,\n", def.Name)
 	c.Indent()
 	for i, arg := range def.Arguments {
-		if len(arg.Type) == 1 {
-			c.Emitfi("args[%d].(%s%s),\n", i, strings.ToUpper(arg.Type[0][:1]), arg.Type[0][1:])
-		} else {
-			c.Emitfi("args[%d],\n", i)
-		}
+		c.Emitfi("args[%d].(%s),\n", i, c.typeNames(arg.Type))
 	}
 	c.Unindent()
 	c.Emitfi(")\n")
@@ -234,7 +226,7 @@ func (c *compiler) compileFunctionArgs(args []asp.Argument, returnType string) {
 		}
 	}
 	c.Emitf("},\n")
-	c.Emitfi("[]PyObject{")
+	c.Emitfi("[]Object{")
 	for _, arg := range args {
 		if arg.Value == nil {
 			c.Emitf("nil,")
@@ -456,11 +448,11 @@ func (c *compiler) compileVar(name string) {
 
 func (c *compiler) compileValueExpr(val *asp.ValueExpression) {
 	if val.String != "" {
-		c.Emitf("%s", strconv.Quote(val.String[1:len(val.String)-1]))
+		c.Emitf("Str(%s)", strconv.Quote(val.String[1:len(val.String)-1]))
 	} else if val.FString != nil {
 		c.compileFString(val.FString)
 	} else if val.Int != nil {
-		c.Emitf("%d", val.Int.Int)
+		c.Emitf("Int(%d)", val.Int.Int)
 	} else if val.Bool != "" {
 		c.Emitf("%s", val.Bool)
 	} else if val.List != nil {
@@ -488,7 +480,7 @@ func (c *compiler) compileValueExpr(val *asp.ValueExpression) {
 
 func (c *compiler) compileFString(f *asp.FString) {
 	for _, v := range f.Vars {
-		c.Emitf(`"%s" + `, v.Prefix)
+		c.Emitf(`Str("%s") + `, v.Prefix)
 		if v.Var != "" {
 			c.compileVar(v.Var)
 		} else {
@@ -496,7 +488,7 @@ func (c *compiler) compileFString(f *asp.FString) {
 		}
 		c.Emitf(" + ")
 	}
-	c.Emitf(`"%s"`, f.Suffix)
+	c.Emitf(`Str("%s")`, f.Suffix)
 }
 
 func (c *compiler) compileList(l *asp.List) {
@@ -531,7 +523,7 @@ func (c *compiler) compileLambda(l *asp.Lambda) {
 	//      and we are creating them pretty dynamically here.
 	c.Emitf(`NewFunc("<lambda>", s_, \n`)
 	c.compileFunctionArgs(l.Arguments, "")
-	c.Emitfi("func (s_ *scope, args_ []PyObject) PyObject {\n")
+	c.Emitfi("func (s_ *scope, args_ []Object) Object {\n")
 	c.Indent()
 	c.Emitf("return ")
 	locals := c.overrideLocals(l.Arguments, false)
@@ -660,4 +652,22 @@ func (c *compiler) newLocal(name string) string {
 		return l.GenName
 	}
 	return c.setLocal(name, name, "object")
+}
+
+// typeName returns the name we use for a type.
+func (c *compiler) typeName(typ string) string {
+	if typ == "" {
+		return "Object"
+	} else if typ == "func" || typ == "function" {
+		return "*Func" // Functions are always passed by pointer
+	}
+	return strings.Title(typ)
+}
+
+// typeNames is like typeName but when there are multiple options.
+func (c *compiler) typeNames(typs []string) string {
+	if len(typs) == 1 {
+		return c.typeName(typs[0])
+	}
+	return "Object"
 }
