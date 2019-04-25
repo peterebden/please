@@ -479,6 +479,44 @@ def cgo_test(name:str, srcs:list, data:list=None, deps:list=None, visibility:lis
     )
 
 
+def go_module(name:str, path:str, version:str, repo:str=None, hashes:list=None, test_only:bool=False,
+              deps:list=[], visibility:list=None):
+    """Defines a rule to download a single Go module.
+
+    Args:
+      name: Name of the rule
+      path: Path to module (as specified in go.mod file)
+      version: Version of the module
+      repo: Repository to download from. Not usually necessary except when vanity imports need
+            to be turned into a "real" download path.
+      hashes: List of hashes to verify the downloaded source against.
+      test_only: If True, this can only be used by test rules.
+      deps: Any additional dependencies
+      visibility: Visibility of the rule.
+    """
+    get_rule, _ = _go_get_download(
+        name = name,
+        tag = 'get',
+        get = path,
+        repo = repo,
+        hashes = hashes,
+        test_only = test_only,
+        revision = version,
+        fallback = False,
+        infer_build = True,
+    )
+    sr = subrepo(
+        name = name,
+        dep = get_rule,
+        path = 'src/' + path,
+    )
+    return filegroup(
+        name = name,
+        exported_deps = deps + [f'{sr}//:mod'],
+        visibility = visibility,
+    )
+
+
 def go_get(name:str, get:str|list, repo:str='', deps:list=[], exported_deps:list=None,
            visibility:list=None, patch:str=None, binary:bool=False, test_only:bool&testonly=False,
            install:list=None, revision:str|list=None, strip:list=None, hashes:list=None,
@@ -589,7 +627,7 @@ def go_get(name:str, get:str|list, repo:str='', deps:list=[], exported_deps:list
 
 def _go_get_download(name:str, tag:str, get:str, repo:str='', patch:str=None, hashes:list=None,
                      test_only:bool&testonly=False, revision:str=None, strip:list=None,
-                     labels:list=[]):
+                     fallback:bool=True, labels:list=[], deps:list=None, infer_build:bool=False):
     if hashes and not revision:
         log.warning("You shouldn't specify hashes on go_get without specifying revision as well")
     labels = [f'go_get:{get}@{revision}' if revision else f'go_get:{get}']
@@ -599,7 +637,7 @@ def _go_get_download(name:str, tag:str, get:str, repo:str='', patch:str=None, ha
     # Some special optimisation for github, which lets us download zipfiles at a particular sha instead of
     # cloning the whole repo. Obviously that is a lot faster than cloning entire repos.
     if repo.startswith('github.com') and revision:
-            cmd, get_deps, tools = _go_github_repo_cmd(name, getroot, repo, revision)
+        cmd, get_deps, tools = _go_github_repo_cmd(name, getroot, repo, revision)
     elif get.startswith('github.com') and revision:
         cmd, get_deps, tools = _go_github_repo_cmd(name, getroot, getroot, revision)
     elif get.startswith('golang.org/x/') and revision and not repo:
@@ -609,9 +647,12 @@ def _go_get_download(name:str, tag:str, get:str, repo:str='', patch:str=None, ha
         cmd, get_deps, tools = _go_github_repo_cmd(name, getroot, 'github.com/grpc/grpc-go' + getroot[len('google.golang.org/grpc'):], revision)
     else:
         get_deps = []
+        if not fallback and not repo:
+            repo = 'https://' + get
         if repo:
             # we've been told exactly where to get the source from.
             cmd = [f'git clone --branch {revision} --depth=1 --shallow-submodules --no-tags {repo} src/{getroot}']
+            tools = {}
         else:
             # Ultimate fallback to go get.
             # This has some more restrictions than the above (e.g. go get won't fetch a directory
@@ -621,15 +662,19 @@ def _go_get_download(name:str, tag:str, get:str, repo:str='', patch:str=None, ha
                 'export GOPATH="$TMP_DIR" GO111MODULE="off"',
                 '$TOOL get -d ' + get,
             ]
+            tools = [CONFIG.GO_TOOL]
         if revision:
             # Annoyingly -C does not work on git checkout :(
             cmd += [f'(cd {subdir} && git checkout -q {revision})']
         cmd += ['find . -name .git | xargs rm -rf']
-        tools = [CONFIG.GO_TOOL]
+        tools = []
     if patch:
         cmd += [f'patch -s -d {subdir} -p1 < $TMP_DIR/$SRCS_PATCH']
     if strip:
         cmd += [f'rm -rf {subdir}/{s}' for s in strip]
+    if infer_build:
+        tools['provide'] = CONFIG.GO_PROVIDE_TOOL
+        cmd += [f'$TOOLS_PROVIDE {getroot} $OUT ' + ' '.join(deps)]
     return build_rule(
         name = name,
         tag = tag,
@@ -646,6 +691,7 @@ def _go_get_download(name:str, tag:str, get:str, repo:str='', patch:str=None, ha
         labels = labels + ['link:plz-out/go'],
         hashes = hashes,
         sandbox = False,
+        deps = deps,
     ), getroot
 
 
@@ -667,9 +713,9 @@ def _go_github_repo_cmd(name, get, repo, revision):
     )
     return [
         'rm -rf src/' + out,
-        '$TOOL x $SRCS_GET',
+        '$TOOLS_JARCAT x $SRCS_GET',
         f'mv {dest}*/ src/{out}',
-    ], [remote_rule], [CONFIG.JARCAT_TOOL]
+    ], [remote_rule], {'jarcat': [CONFIG.JARCAT_TOOL]}
 
 
 def _replace_test_package(name, output, static, definitions, cgo):

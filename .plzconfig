@@ -17,6 +17,7 @@ keep = //package:all
 buildidtool = //tools/go_buildid_replacer
 filtertool = //tools/please_go_filter
 testtool = //tools/please_go_test
+providetool = //tools/please_go_provide
 importpath = github.com/thought-machine/please
 
 [cpp]
