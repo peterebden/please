@@ -479,8 +479,8 @@ def cgo_test(name:str, srcs:list, data:list=None, deps:list=None, visibility:lis
     )
 
 
-def go_module(name:str, path:str, version:str, repo:str=None, hashes:list=None, test_only:bool=False,
-              deps:list=[], visibility:list=None):
+def go_module(name:str, path:str, version:str, repo:str=None, hashes:list=None, binary:bool=False,
+              test_only:bool=False, deps:list=[], visibility:list=None):
     """Defines a rule to download a single Go module.
 
     Args:
@@ -490,6 +490,7 @@ def go_module(name:str, path:str, version:str, repo:str=None, hashes:list=None, 
       repo: Repository to download from. Not usually necessary except when vanity imports need
             to be turned into a "real" download path.
       hashes: List of hashes to verify the downloaded source against.
+      binary: If True, will output a binary from
       test_only: If True, this can only be used by test rules.
       deps: Any additional dependencies
       visibility: Visibility of the rule.
@@ -510,9 +511,17 @@ def go_module(name:str, path:str, version:str, repo:str=None, hashes:list=None, 
         dep = get_rule,
         path = 'src/' + path,
     )
+    if binary:
+        return filegroup(
+            name = name,
+            srcs = [f'{sr}//:_bin'],
+            exported_deps = deps,
+            visibility = visibility,
+            binary = True,
+        )
     return filegroup(
         name = name,
-        exported_deps = deps + [f'{sr}//:mod'],
+        exported_deps = deps + [f'{sr}//:_mod'],
         visibility = visibility,
     )
 
