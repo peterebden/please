@@ -16,7 +16,7 @@ func main() {
 	if len(os.Args) < 3 {
 		log.Fatalf("Usage: %s <import path> <directory> [//dependency1 //dependency2 ...]", os.Args[0])
 	}
-	if err := provide.Write(os.Args[1], os.Args[2], os.Args[2:]); err != nil {
+	if err := provide.Write(os.Args[1], os.Args[2], os.Args[3:]); err != nil {
 		log.Fatalf("Failed to write BUILD files: %s", err)
 	}
 }

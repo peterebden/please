@@ -6,8 +6,8 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path"
 	"path/filepath"
-	"sort"
 	"strings"
 	"text/template"
 )
@@ -43,19 +43,21 @@ func nonTestOnly(info os.FileInfo) bool {
 	return !strings.HasSuffix(info.Name(), "_test.go")
 }
 
-var tmpl = template.Must(template.New("build").Parse(`
+var tmpl = template.Must(template.New("build").Funcs(template.FuncMap{
+	"basename": func(s string) string { return path.Base(s) },
+}).Parse(`
 {{ range $pkgName, $pkg := .Pkgs }}
 go_library(
     name = "{{ $pkg.Name }}",
     srcs = [
-        {{- range . }}
-        "{{ . }}",
+        {{- range $src, $file := $pkg.Files }}
+        "{{ basename $src }}",
         {{- end }}
     ],
-    {{- if .Deps }}
+    {{- if $.Deps }}
     deps = [
-        {{- range .Deps }}
-        "
+        {{- range $.Deps }}
+        "{{ . }}",
         {{- end }}
     ],
     {{- end }}
