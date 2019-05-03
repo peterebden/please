@@ -14,29 +14,49 @@ import (
 
 // Write writes BUILD files for all directories under the given path.
 func Write(importPath, dir string, deps []string) error {
-	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	provides := map[string]string{}
+	if err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
-		} else if !info.IsDir() {
+		} else if !info.IsDir() || path == dir {
 			return nil
 		}
-		fs := token.NewFileSet()
-		pkgs, err := parser.ParseDir(fs, path, nonTestOnly, parser.ImportsOnly)
-		if err != nil {
-			return err
-		}
-		f, err := os.Create(filepath.Join(path, "BUILD"))
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		return tmpl.Execute(f, pkgInfo{Pkgs: pkgs, Deps: deps})
-	})
+		return write(importPath, path[len(dir):], path, deps, provides)
+	}); err != nil {
+		return err
+	}
+	return write(importPath, "", dir, deps, provides)
+}
+
+// write writes a single BUILD file.
+func write(rootImportPath, pkgName, dir string, deps []string, provides map[string]string) error {
+	fs := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fs, dir, nonTestOnly, parser.ImportsOnly)
+	if err != nil {
+		return err
+	}
+	for _, pkg := range pkgs {
+		provides[path.Join(rootImportPath, pkgName)] = "//" + pkgName + ":" + pkg.Name
+	}
+	f, err := os.Create(path.Join(dir, "BUILD"))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	info := pkgInfo{
+		Pkgs: pkgs,
+		Deps: deps,
+	}
+	if pkgName == "" {
+		info.Provides = provides
+	}
+	return tmpl.Execute(f, info)
 }
 
 type pkgInfo struct {
-	Pkgs map[string]*ast.Package
-	Deps []string
+	Pkgs     map[string]*ast.Package
+	Deps     []string
+	Provides map[string]string
 }
 
 func nonTestOnly(info os.FileInfo) bool {
@@ -61,6 +81,25 @@ go_library(
         {{- end }}
     ],
     {{- end }}
+    {{- if $pkg.Imports }}
+    requires = [
+        {{- range $path, $_ := $pkg.Imports }}
+        "{{ $path }}",
+        {{- end }}
+    ],
+    {{- end }}
+    visibility = ["PUBLIC"],
+)
+{{ end }}
+
+{{ if $.Provides }}
+filegroup(
+    name = "module",
+    provides = {
+        {{- range $k, $v := $.Provides }}
+        "{{ $k }}": "{{ $v }}",
+        {{- end }}
+    },
     visibility = ["PUBLIC"],
 )
 {{ end }}
