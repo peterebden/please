@@ -2,6 +2,7 @@
 package provide
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -22,7 +23,7 @@ func Write(importPath, dir string, deps []string) error {
 		} else if !info.IsDir() || path == dir {
 			return nil
 		}
-		return write(importPath, path[len(dir):], path, deps, provides, binaries)
+		return write(importPath, strings.Trim(path[len(dir):], "/"), path, deps, provides, binaries)
 	}); err != nil {
 		return err
 	}
@@ -34,7 +35,8 @@ func write(rootImportPath, pkgName, dir string, deps []string, provides, binarie
 	fs := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fs, dir, nonTestOnly, parser.ImportsOnly)
 	if err != nil {
-		return err
+		fmt.Fprintf(os.Stderr, "Failed to parse Go files in %s: %s", pkgName, err)
+		return nil // Don't die fatally; otherwise we are at the mercy of any one bad file in any repo.
 	}
 	for _, pkg := range pkgs {
 		m := provides
@@ -49,16 +51,17 @@ func write(rootImportPath, pkgName, dir string, deps []string, provides, binarie
 	}
 	defer f.Close()
 	return tmpl.Execute(f, pkgInfo{
-		Name:     pkgName,
-		Pkgs:     pkgs,
-		Deps:     deps,
-		Provides: provides,
-		Binaries: binaries,
+		Name:       pkgName,
+		ImportPath: rootImportPath,
+		Pkgs:       pkgs,
+		Deps:       deps,
+		Provides:   provides,
+		Binaries:   binaries,
 	})
 }
 
 type pkgInfo struct {
-	Name               string
+	Name, ImportPath   string
 	Pkgs               map[string]*ast.Package
 	Deps               []string
 	Provides, Binaries map[string]string
@@ -71,6 +74,7 @@ func nonTestOnly(info os.FileInfo) bool {
 var tmpl = template.Must(template.New("build").Funcs(template.FuncMap{
 	"basename": func(s string) string { return path.Base(s) },
 }).Parse(`
+package(go_import_path = "{{ .ImportPath }}")
 {{ range $pkgName, $pkg := .Pkgs }}
 {{- if eq $pkgName "main" }}
 go_binary(
@@ -86,7 +90,7 @@ go_library(
     {{- if $.Deps }}
     deps = [
         {{- range $.Deps }}
-        "{{ . }}",
+        "@{{ . }}",
         {{- end }}
     ],
     {{- end }}

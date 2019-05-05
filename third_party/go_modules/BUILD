@@ -6,6 +6,7 @@ package(jarcat_tool = "//tools/jarcat:jarcat_unzip")
 go_module(
     name = "logging",
     path = "gopkg.in/op/go-logging.v1",
+    repo = "github.com/op/go-logging",
     version = "b2cb9fa56473e98db8caba80237377e83fe44db5",
 )
 
