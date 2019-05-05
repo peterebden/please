@@ -739,7 +739,9 @@ func subrepo(s *scope, args []pyObject) pyObject {
 	if dep != "" {
 		// N.B. The target must be already registered on this package.
 		target = s.pkg.TargetOrDie(core.ParseBuildLabelContext(dep, s.pkg).Name)
-		root = path.Join(target.OutDir(), name)
+		outputs := target.FullOutputs()
+		s.NAssert(len(outputs) == 0, "Cannot define a subrepo with a dependency that has no outputs")
+		root = outputs[0] // It's a little unclear what we should do here if there's > 1 output.
 	} else if args[2] != None {
 		root = string(args[2].(pyString))
 	}
