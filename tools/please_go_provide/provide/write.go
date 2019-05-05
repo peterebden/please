@@ -35,15 +35,23 @@ func write(rootImportPath, pkgName, dir string, deps []string, provides, binarie
 	fs := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fs, dir, nonTestOnly, parser.ImportsOnly)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to parse Go files in %s: %s", pkgName, err)
+		fmt.Fprintf(os.Stderr, "Failed to parse Go files in %s: %s\n", pkgName, err)
 		return nil // Don't die fatally; otherwise we are at the mercy of any one bad file in any repo.
 	}
+	localdeps := []string{}
 	for _, pkg := range pkgs {
 		m := provides
 		if pkg.Name == "main" {
 			m = binaries
 		}
 		m[path.Join(rootImportPath, pkgName)] = "//" + pkgName + ":" + pkg.Name
+		for _, file := range pkg.Files {
+			for _, imp := range file.Imports {
+				if p := strings.Trim(imp.Path.Value, `"`); strings.HasPrefix(p, rootImportPath) {
+					localdeps = append(localdeps, "//"+strings.TrimLeft(p[len(rootImportPath):], "/")+":"+path.Base(p))
+				}
+			}
+		}
 	}
 	f, err := os.Create(path.Join(dir, "BUILD"))
 	if err != nil {
@@ -52,19 +60,21 @@ func write(rootImportPath, pkgName, dir string, deps []string, provides, binarie
 	defer f.Close()
 	return tmpl.Execute(f, pkgInfo{
 		Name:       pkgName,
+		Dir:        dir,
 		ImportPath: rootImportPath,
 		Pkgs:       pkgs,
 		Deps:       deps,
+		LocalDeps:  localdeps,
 		Provides:   provides,
 		Binaries:   binaries,
 	})
 }
 
 type pkgInfo struct {
-	Name, ImportPath   string
-	Pkgs               map[string]*ast.Package
-	Deps               []string
-	Provides, Binaries map[string]string
+	Name, ImportPath, Dir string
+	Pkgs                  map[string]*ast.Package
+	Deps, LocalDeps       []string
+	Provides, Binaries    map[string]string
 }
 
 func nonTestOnly(info os.FileInfo) bool {
@@ -76,19 +86,18 @@ var tmpl = template.Must(template.New("build").Funcs(template.FuncMap{
 }).Parse(`
 package(go_import_path = "{{ .ImportPath }}")
 {{ range $pkgName, $pkg := .Pkgs }}
-{{- if eq $pkgName "main" }}
-go_binary(
-{{- else }}
-go_library(
-{{- end }}
-    name = "{{ $pkg.Name }}",
+{{ if eq $pkgName "main" }}go_binary({{ else }}go_library({{ end }}
+    name = "{{ basename $.Dir }}",
     srcs = [
         {{- range $src, $file := $pkg.Files }}
         "{{ basename $src }}",
         {{- end }}
     ],
-    {{- if $.Deps }}
+    {{- if or $.Deps $.LocalDeps }}
     deps = [
+        {{- range $.LocalDeps }}
+        "{{ . }}",
+        {{- end }}
         {{- range $.Deps }}
         "@{{ . }}",
         {{- end }}
