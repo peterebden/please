@@ -23,7 +23,7 @@ go_module(
 
 go_module(
     name = "gcfg",
-    path = "github.com/peterebden/gcfg/...",
+    path = "github.com/peterebden/gcfg",
     version = "v1.3.0",
     deps = [
         ":warnings",
@@ -40,15 +40,13 @@ go_module(
 go_module(
     name = "go-bindata",
     binary = True,
-    path = "github.com/kevinburke/go-bindata/...",
+    path = "github.com/kevinburke/go-bindata",
     version = "46eb4c183bfc1ebb527d9d19bcded39476302eb8",
-    strip = ["testdata"],
 )
 
 go_module(
     name = "go-flags",
     path = "github.com/jessevdk/go-flags",
-    patch = "flags_subcommand.patch",
     version = "v1.4.0",
 )
 
@@ -75,7 +73,7 @@ go_module(
 
 go_module(
     name = "net",
-    path = "golang.org/x/net/...",
+    path = "golang.org/x/net",
     version = "136a25c244d3019482a795d728110278d6ba09a4",
     deps = [
         ":terminal",
@@ -85,7 +83,7 @@ go_module(
 
 go_module(
     name = "text",
-    path = "golang.org/x/text/...",
+    path = "golang.org/x/text",
     version = "4e4a3210bb54bb31f6ab2cdca2edcc0b50c420c1",
     deps = [
         ":tools",
@@ -95,9 +93,6 @@ go_module(
 go_module(
     name = "tools",
     path = "golang.org/x/tools",
-    install = [
-        "cover",
-    ],
     version = "2ae76fd1560b622911f444c1e66b70a857e1de67",
 )
 
@@ -105,35 +100,6 @@ go_module(
     name = "grpc",
     exported_deps = [":net"],
     path = "google.golang.org/grpc",
-    install = [
-        "",
-        "balancer",
-        "balancer/base",
-        "balancer/roundrobin",
-        "codes",
-        "connectivity",
-        "credentials",
-        "encoding",
-        "encoding/gzip",
-        "encoding/proto",
-        "grpclb/grpc_lb_v1/messages",
-        "grpclog",
-        "health",
-        "health/grpc_health_v1",
-        "internal",
-        "keepalive",
-        "metadata",
-        "naming",
-        "peer",
-        "resolver",
-        "resolver/dns",
-        "resolver/passthrough",
-        "stats",
-        "status",
-        "tap",
-        "transport",
-    ],
-    repo = "github.com/grpc/grpc-go",
     version = "v1.10.0",
     deps = [
         ":protobuf",
@@ -151,19 +117,15 @@ go_module(
 
 go_module(
     name = "protobuf",
-    path = "github.com/golang/protobuf/...",
+    path = "github.com/golang/protobuf",
     version = "v1.1.0",
-    strip = [
-        "proto/proto3_proto",
-        "conformance",
-    ],
 )
 
 go_module(
     name = "protoc-gen-go",
     binary = True,
-    path = [],
-    install = ["github.com/golang/protobuf/protoc-gen-go"],
+    version = "v1.1.0",
+    path = "github.com/golang/protobuf/protoc-gen-go",
     deps = [
         ":protobuf",
     ],
@@ -172,7 +134,6 @@ go_module(
 go_module(
     name = "spew",
     path = "github.com/davecgh/go-spew/spew",
-    patch = "spew_omit_empty.patch",
     version = "ecdeabc65495df2dec95d7c4a4c3e021903035e5",
 )
 
@@ -245,7 +206,7 @@ go_module(
 
 go_module(
     name = "prometheus",
-    path = "github.com/prometheus/client_golang/prometheus/...",
+    path = "github.com/prometheus/client_golang/prometheus",
     version = "v0.8.0",
     deps = [
         ":grpc",
@@ -285,9 +246,8 @@ go_module(
 
 go_module(
     name = "procfs",
-    path = "github.com/prometheus/procfs/...",
+    path = "github.com/prometheus/procfs",
     version = "05ee40e3a273f7245e8777337fc7b46e533a9a92",
-    strip = ["fixtures"],  # Test fixture has a symlink to /usr/bin/vim which might not exist
 )
 
 go_module(
@@ -352,7 +312,7 @@ go_module(
 
 go_module(
     name = "go-msgpack",
-    path = "github.com/hashicorp/go-msgpack/...",
+    path = "github.com/hashicorp/go-msgpack",
     version = "fa3f63826f7c23912c15263591e65d54d080b458",
 )
 
@@ -412,7 +372,7 @@ go_module(
 
 go_module(
     name = "dns",
-    path = "github.com/miekg/dns/...",
+    path = "github.com/miekg/dns",
     version = "be5ae6ca7ac994584d2e30167737687f1c1ded8e",
 )
 
@@ -449,7 +409,7 @@ go_module(
 
 go_module(
     name = "openpgp",
-    path = "golang.org/x/crypto/openpgp/...",
+    path = "golang.org/x/crypto/openpgp",
     version = "077efaa604f994162e3307fafe5954640763fc08",
     deps = [":cast5"],
 )
@@ -490,11 +450,6 @@ go_module(
     name = "godirwalk",
     path = "github.com/karrick/godirwalk",
     version = "v1.7.0",
-    strip = [
-        "examples",
-        "testdata",
-        "vendor",
-    ],
     deps = [":errors"],
 )
 
@@ -509,7 +464,7 @@ go_module(
     path = "docker.io/go-docker",
     install = [
         "",
-        "api/...",
+        "api",
     ],
     repo = "github.com/docker/go-docker",
     version = "v1.0.0",
@@ -533,7 +488,6 @@ go_module(
         "digestset",
     ],
     version = "edc3ab29cdff8694dd6feb85cfeb4b5f1b38ed9c",
-    strip = ["vendor"],
     deps = [
         ":go-digest",
         ":net",
@@ -542,7 +496,7 @@ go_module(
 
 go_module(
     name = "go-connections",
-    path = "github.com/docker/go-connections/...",
+    path = "github.com/docker/go-connections",
     version = "v0.3.0",
     deps = [
         ":errors",
@@ -573,7 +527,7 @@ go_module(
     name = "image-spec",
     path = "github.com/opencontainers/image-spec",
     install = [
-        "specs-go/...",
+        "specs-go",
     ],
     version = "v1.0.0",
     deps = [
@@ -590,7 +544,7 @@ go_module(
 
 go_module(
     name = "buildtools",
-    path = "github.com/bazelbuild/buildtools/...",
+    path = "github.com/bazelbuild/buildtools",
     version = "0.19.2",
     deps = [
         ":protobuf",
@@ -617,11 +571,6 @@ go_module(
 go_module(
     name = "xz",
     path = "github.com/ulikunitz/xz",
-    install = [
-        "",
-        "lzma",
-        "internal/...",
-    ],
     version = "v0.5.6",
 )
 
