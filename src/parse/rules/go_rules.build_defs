@@ -528,6 +528,30 @@ def go_module(name:str, path:str, version:str, repo:str=None, hashes:list=None, 
     )
 
 
+def go_module_binary(name:str, src:str, path:str=None, test_only:bool=False, visibility:list=None):
+    """Makes a binary available out of a go_module rule.
+
+    This is mostly useful when you have a module which is consumed as a library & binary, or
+    has multiple binaries within it that you want to use separately.
+
+    Args:
+      name: Name of this rule
+      src: The go_module rule that supplies the binary you want to use.
+      path: The path of the binary to use. This isn't required if there is only one in the
+            repo, but if there's more than one you will likely want it to disambiguate.
+      test_only: If true, this rule can only be used by tests or other test_only rules.
+      visibility: Visibility of the rule.
+    """
+    return filegroup(
+        name = name,
+        srcs = [src],
+        binary = True,
+        requires = [path],
+        test_only = test_only,
+        visibility = visibility,
+    )
+
+
 def go_get(name:str, get:str|list, repo:str='', deps:list=[], exported_deps:list=None,
            visibility:list=None, patch:str=None, binary:bool=False, test_only:bool&testonly=False,
            install:list=None, revision:str|list=None, strip:list=None, hashes:list=None,

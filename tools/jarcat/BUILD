@@ -15,7 +15,7 @@ go_binary(
 go_binary(
     name = "jarcat_unzip",
     srcs = ["unzip_main.go"],
-    visibility = ["//third_party/go:all"],
+    visibility = ["//third_party/..."],
     deps = [
         "//tools/jarcat/unzip",
     ],

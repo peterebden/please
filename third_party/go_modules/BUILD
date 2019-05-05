@@ -121,14 +121,10 @@ go_module(
     version = "v1.1.0",
 )
 
-go_module(
+go_module_binary(
     name = "protoc-gen-go",
-    binary = True,
-    version = "v1.1.0",
+    src = ":protobuf",
     path = "github.com/golang/protobuf/protoc-gen-go",
-    deps = [
-        ":protobuf",
-    ],
 )
 
 go_module(
@@ -140,12 +136,6 @@ go_module(
 go_module(
     name = "testify",
     path = "github.com/stretchr/testify",
-    install = [
-        "assert",
-        "require",
-        "vendor/github.com/davecgh/go-spew/spew",
-        "vendor/github.com/pmezard/go-difflib/difflib",
-    ],
     version = "f390dcf405f7b83c997eac1b06768bb9f44dec18",
     deps = [":spew"],
 )
@@ -222,11 +212,6 @@ go_module(
 go_module(
     name = "prometheus_common",
     path = "github.com/prometheus/common",
-    install = [
-        "expfmt",
-        "model",
-        "internal/bitbucket.org/ww/goautoneg",
-    ],
     version = "c7de2306084e37d54b8be01f3541a8464345e9a5",
     deps = [
         ":pbutil",
@@ -265,11 +250,6 @@ go_module(
 go_module(
     name = "grpc-middleware",
     path = "github.com/grpc-ecosystem/go-grpc-middleware",
-    install = [
-        "retry",
-        "util/metautils",
-        "util/backoffutils",
-    ],
     version = "fa8fef87dcecac0bda02d36abb3c790ab9e0030b",
     deps = [
         ":grpc",
@@ -319,10 +299,6 @@ go_module(
 go_module(
     name = "go-multierror",
     path = "github.com/hashicorp/go-multierror",
-    install = [
-        "",
-        "vendor/github.com/hashicorp/errwrap",
-    ],
     version = "b7773ae218740a7be65057fc60b366a49b538a44",
 )
 
@@ -392,11 +368,6 @@ go_module(
 go_module(
     name = "psutil",
     path = "github.com/shirou/gopsutil",
-    install = [
-        "cpu",
-        "internal/common",
-        "mem",
-    ],
     version = "v2.17.09",
     deps = [":unix"],
 )
@@ -420,29 +391,21 @@ go_module(
     version = "077efaa604f994162e3307fafe5954640763fc08",
 )
 
-go_module(
+go_module_binary(
     name = "go-fuzz-build",
-    binary = True,
-    path = [],
-    install = ["github.com/dvyukov/go-fuzz/go-fuzz-build"],
-    deps = [":go-fuzz-dep"],
+    src = ":go-fuzz-dep",
+    path = "github.com/dvyukov/go-fuzz/go-fuzz-build",
 )
 
-go_module(
+go_module_binary(
     name = "go-fuzz",
-    binary = True,
-    path = [],
-    install = ["github.com/dvyukov/go-fuzz/go-fuzz"],
-    deps = [":go-fuzz-dep"],
+    src = ":go-fuzz-dep",
+    path = "github.com/dvyukov/go-fuzz/go-fuzz",
 )
 
 go_module(
     name = "go-fuzz-dep",
     path = "github.com/dvyukov/go-fuzz",
-    install = [
-        "go-fuzz-dep",
-        "go-fuzz-defs",
-    ],
     version = "445b00a1141b27425541ee8d7dc2f524faf202a9",
 )
 
@@ -462,10 +425,6 @@ go_module(
 go_module(
     name = "docker",
     path = "docker.io/go-docker",
-    install = [
-        "",
-        "api",
-    ],
     repo = "github.com/docker/go-docker",
     version = "v1.0.0",
     deps = [
@@ -483,10 +442,6 @@ go_module(
 go_module(
     name = "docker-distribution",
     path = "github.com/docker/distribution",
-    install = [
-        "reference",
-        "digestset",
-    ],
     version = "edc3ab29cdff8694dd6feb85cfeb4b5f1b38ed9c",
     deps = [
         ":go-digest",
@@ -513,7 +468,6 @@ go_module(
 go_module(
     name = "gogo-protobuf",
     path = "github.com/gogo/protobuf",
-    install = ["proto"],
     version = "v0.4",
 )
 
@@ -526,9 +480,6 @@ go_module(
 go_module(
     name = "image-spec",
     path = "github.com/opencontainers/image-spec",
-    install = [
-        "specs-go",
-    ],
     version = "v1.0.0",
     deps = [
         ":errors",
@@ -543,22 +494,13 @@ go_module(
 )
 
 go_module(
-    name = "buildtools",
-    path = "github.com/bazelbuild/buildtools",
+    name = "buildifier",
+    path = "github.com/bazelbuild/buildtools/buildifier",
+    binary = True,
     version = "0.19.2",
     deps = [
         ":protobuf",
         ":skylark",
-    ],
-)
-
-go_module(
-    name = "buildifier",
-    binary = True,
-    path = [],
-    install = ["github.com/bazelbuild/buildtools/buildifier"],
-    deps = [
-        ":buildtools",
     ],
 )
 
