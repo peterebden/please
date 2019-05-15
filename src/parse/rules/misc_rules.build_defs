@@ -497,3 +497,9 @@ def exports_files(srcs, name='exported_files', visibility=['PUBLIC'], licenses=N
         srcs = srcs,
         visibility = visibility,
     )
+
+
+# More Bazel compat
+native = {
+    'genrule': genrule,
+}

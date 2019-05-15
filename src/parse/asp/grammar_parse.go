@@ -181,6 +181,9 @@ func (p *parser) parseStatement() *Statement {
 	default:
 		if tok.Type == Ident {
 			s.Ident = p.parseIdentStatement()
+		} else if tok.Type == '(' {
+			// Special case for destructuring assignments surrounded by parentheses.
+			s.Ident = p.parseUnpackParens()
 		} else {
 			s.Literal = p.parseExpression()
 		}
@@ -512,6 +515,20 @@ func (p *parser) parseIdentStatement() *IdentStatement {
 		p.initField(&i.Action)
 		i.Action.AugAssign = p.parseExpression()
 	}
+	return i
+}
+
+func (p *parser) parseUnpackParens() *IdentStatement {
+	p.next('(')
+	i := &IdentStatement{
+		Name: p.next(Ident).Value,
+	}
+	p.initField(&i.Unpack)
+	p.next(',')
+	i.Unpack.Names = p.parseIdentList()
+	p.next(')')
+	p.next('=')
+	i.Unpack.Expr = p.parseExpression()
 	return i
 }
 

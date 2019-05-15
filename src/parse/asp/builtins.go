@@ -206,9 +206,19 @@ func tagName(name, tag string) string {
 // bazelLoad implements the load() builtin, which is only available for Bazel compatibility.
 func bazelLoad(s *scope, args []pyObject) pyObject {
 	s.Assert(s.state.Config.Bazel.Compatibility, "load() is only available in Bazel compatibility mode. See `plz help bazel` for more information.")
-	// The argument always looks like a build label, but it is not really one (i.e. there is no BUILD file that defines it).
+	// The argument generally looks like a build label, but it is not really one (i.e. there is no BUILD file that defines it).
 	// We do not support their legacy syntax here (i.e. "/tools/build_rules/build_test" etc).
-	l := core.ParseBuildLabelContext(string(args[0].(pyString)), s.contextPkg)
+	lbl := string(args[0].(pyString))
+	if lbl[0] == ':' && strings.ContainsRune(lbl, '/') {
+		// Not quite sure how this works but it seems to be allowed. For now just special case.
+		filename := path.Join(s.contextPkg.Name, lbl[1:])
+		if s.contextPkg.Subrepo != nil {
+			filename = s.contextPkg.Subrepo.Dir(filename)
+		}
+		s.SetAll(s.interpreter.Subinclude(filename, s.contextPkg), false)
+		return None
+	}
+	l := core.ParseBuildLabelContext(lbl, s.contextPkg)
 	filename := path.Join(l.PackageName, l.Name)
 	if l.Subrepo != "" {
 		subrepo := s.state.Graph.Subrepo(l.Subrepo)
