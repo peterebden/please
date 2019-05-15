@@ -167,10 +167,13 @@ def github_repo(name:str, repo:str, revision:str, build_file:str=None, hashes:st
     """
     org, _, repo = repo.partition('/')
     assert repo, "Must pass a valid Github repo argument, e.g. thought-machine/please"
+    if not strip_prefix:
+        rev = revision.lstrip('v')  # Github does something like this to map v2.2.2 -> gflags-2.2.2 etc.
+        strip_prefix = f'{repo}-{rev}'
     return new_http_archive(
         name = name,
         urls = [f'https://github.com/{org}/{repo}/archive/{revision}.zip'],
-        strip_prefix = strip_prefix or f'{repo}-{revision}',
+        strip_prefix = strip_prefix,
         build_file = build_file,
         hashes = hashes,
         config = config,

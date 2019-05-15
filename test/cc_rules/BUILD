@@ -77,3 +77,9 @@ cc_test(
     srcs = ["cc_multisrc_test.cc"],
     deps = [":multisrc_lib_2"],
 )
+
+cc_test(
+    name = "gflags_test",
+    srcs = ["gflags_test.cc"],
+    deps = ["///third_party/cc/gflags//:gflags"],
+)
