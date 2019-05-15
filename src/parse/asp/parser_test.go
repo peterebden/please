@@ -411,6 +411,19 @@ func TestDestructuringAssignment(t *testing.T) {
 	assert.Equal(t, 19, statements[0].EndPos.Column)
 }
 
+func TestDestructuringAssignmentWithParens(t *testing.T) {
+	statements, err := newParser().parse("src/parse/asp/test_data/destructuring_assign_parens.build")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(statements))
+	assert.NotNil(t, statements[0].Ident)
+	assert.Equal(t, "x", statements[0].Ident.Name)
+	assert.NotNil(t, statements[0].Ident.Unpack)
+	assert.Equal(t, 1, len(statements[0].Ident.Unpack.Names))
+	assert.Equal(t, "y", statements[0].Ident.Unpack.Names[0])
+	assert.NotNil(t, statements[0].Ident.Unpack.Expr)
+	assert.Equal(t, "something", statements[0].Ident.Unpack.Expr.Val.Ident.Name)
+}
+
 func TestMultipleActions(t *testing.T) {
 	statements, err := newParser().parse("src/parse/asp/test_data/multiple_action.build")
 	assert.NoError(t, err)
