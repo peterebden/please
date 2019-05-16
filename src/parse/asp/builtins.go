@@ -66,6 +66,7 @@ func registerBuiltins(s *scope) {
 		"lower":      setNativeCode(s, "lower", strLower),
 	}
 	stringMethods["format"].kwargs = true
+	stringMethods["format"].varargs = true
 	dictMethods = map[string]*pyFunc{
 		"get":        setNativeCode(s, "get", dictGet),
 		"setdefault": s.Lookup("setdefault").(*pyFunc),
@@ -405,11 +406,39 @@ func strRFind(s *scope, args []pyObject) pyObject {
 }
 
 func strFormat(s *scope, args []pyObject) pyObject {
+	var b strings.Builder
 	self := string(args[0].(pyString))
-	for k, v := range s.locals {
-		self = strings.Replace(self, "{"+k+"}", v.String(), -1)
+	argIdx := 1
+	for {
+		idx := strings.IndexByte(self, '{')
+		if idx == -1 {
+			b.WriteString(strings.Replace(self, "}}", "}", -1))
+			break
+		}
+		b.WriteString(strings.Replace(self[:idx], "}}", "}", -1))
+		self = self[idx+1:] // self now starts after the {
+		if len(self) == 0 {
+			break
+		} else if self[0] == '{' {
+			b.WriteRune('{')
+			self = self[1:]
+			continue
+		}
+		idx = strings.IndexByte(self, '}')
+		if idx == -1 {
+			continue
+		}
+		if name := self[:idx]; name == "" {
+			// Template was {}, replace with nth argument.
+			s.Assert(argIdx < len(args), "Not enough arguments for format string")
+			b.WriteString(args[argIdx].String())
+			argIdx++
+		} else {
+			b.WriteString(s.LocalLookup(name).String())
+		}
+		self = self[idx+1:]
 	}
-	return pyString(strings.Replace(strings.Replace(self, "{{", "{", -1), "}}", "}", -1))
+	return pyString(b.String())
 }
 
 func strCount(s *scope, args []pyObject) pyObject {

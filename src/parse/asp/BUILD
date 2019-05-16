@@ -69,3 +69,12 @@ go_test(
         "//third_party/go:testify",
     ],
 )
+
+go_test(
+    name = "builtins_test",
+    srcs = ["builtins_test.go"],
+    deps = [
+        ":asp",
+        "//third_party/go:testify",
+    ],
+)

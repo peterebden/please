@@ -500,6 +500,30 @@ def exports_files(srcs, name='exported_files', visibility=['PUBLIC'], licenses=N
 
 
 # More Bazel compat
+
+def _native_cc_library(name:str, srcs:list=[], hdrs:list=[], deps:list=[],
+                       visibility:list=None, testonly:bool=False, copts:list=[],
+                       linkopts:list=[], includes:list=[], defines:list|dict=[],
+                       alwayslink:bool=False, linkstatic:bool=False, textual_hdrs:list=[],
+                       include_prefix:str='', strip_include_prefix:str=''):
+    return cc_library(
+        name = name,
+        srcs = srcs,
+        hdrs = hdrs,
+        deps = deps,
+        visibility = visibility,
+        test_only = testonly,
+        copts = copts,
+        linkopts = linkopts,
+        includes = includes,
+        defines = defines,
+        alwayslink = alwayslink,
+        linkstatic = linkstatic,
+        textual_hdrs = textual_hdrs,
+    )
+
+
 native = {
+    'cc_library': _native_cc_library,
     'genrule': genrule,
 }

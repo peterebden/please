@@ -559,12 +559,12 @@ func (f *pyFunc) callNative(s *scope, c *Call) pyObject {
 			} else {
 				s.Error("Unknown argument to %s: %s", f.name, a.Name)
 			}
-		} else if i >= len(args) {
+		} else if i := i + offset; i >= len(args) {
 			s.Assert(f.varargs, "Too many arguments to %s", f.name)
 			args = append(args, s.interpretExpression(&a.Value))
 		} else {
 			s.NAssert(f.kwargsonly, "Function %s can only be called with keyword arguments", f.name)
-			args[i+offset] = f.validateType(s, i+offset, &a.Value)
+			args[i] = f.validateType(s, i, &a.Value)
 		}
 	}
 
