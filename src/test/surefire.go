@@ -18,7 +18,7 @@ func CopySurefireXMLFilesToDir(state *core.BuildState, surefireDir string) {
 					if !isDir {
 						if bytes, _ := ioutil.ReadFile(path); looksLikeJUnitXMLTestResults(bytes) {
 							surefireResult := filepath.Join(surefireDir, filepath.Base(path))
-							if err := fs.CopyOrLinkFile(path, surefireResult, 0644, true, true); err != nil {
+							if err := fs.CopyFile(path, surefireResult, 0644); err != nil {
 								log.Errorf("Error linking %s to %s - %s", surefireResult, path, err)
 							}
 						}

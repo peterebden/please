@@ -6,9 +6,9 @@ import (
 	"runtime"
 )
 
-// CopyOrLinkFile either copies or hardlinks a file based on the link argument.
+// copyOrLinkFile either copies or hardlinks a file based on the link argument.
 // Falls back to a copy if link fails and fallback is true.
-func CopyOrLinkFile(from, to string, mode os.FileMode, link, fallback bool) error {
+func copyOrLinkFile(from, to string, mode os.FileMode, link, fallback bool) error {
 	if link {
 		if err := os.Link(from, to); err == nil || !fallback {
 			return err
@@ -51,8 +51,8 @@ func recursiveCopyOrLinkFile(from string, to string, mode os.FileMode, link, fal
 			if isDir {
 				return os.MkdirAll(dest, DirPermissions)
 			}
-			return CopyOrLinkFile(name, dest, mode, link, fallback)
+			return copyOrLinkFile(name, dest, mode, link, fallback)
 		})
 	}
-	return CopyOrLinkFile(from, to, mode, link, fallback)
+	return copyOrLinkFile(from, to, mode, link, fallback)
 }
