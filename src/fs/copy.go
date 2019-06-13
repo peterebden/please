@@ -4,11 +4,21 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"syscall"
 )
 
 // copyOrLinkFile either copies or hardlinks a file based on the link argument.
 // Falls back to a copy if link fails and fallback is true.
 func copyOrLinkFile(from, to string, mode os.FileMode, link, fallback bool) error {
+	if canCow {
+		if err := cowFile(from, to, mode); err == nil {
+			return nil
+		} else if err == syscall.ENOSYS {
+			canCow = false
+		} else {
+			log.Debug("Copy-on-write failed first attempt, disabling: %s", err)
+		}
+	}
 	if link {
 		if err := os.Link(from, to); err == nil || !fallback {
 			return err
