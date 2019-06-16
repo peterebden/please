@@ -156,3 +156,12 @@ go_test(
         "//third_party/go:testify",
     ],
 )
+
+go_test(
+    name = "input_set_test",
+    srcs = ["input_set_test.go"],
+    deps = [
+        ":core",
+        "//third_party/go:testify",
+    ],
+)
