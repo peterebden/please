@@ -230,7 +230,7 @@ func ruleHash(state *core.BuildState, target *core.BuildTarget, runtime bool) []
 	if runtime {
 		// Similarly, we only hash the current command here again.
 		h.Write([]byte(target.GetTestCommand(state)))
-		for _, datum := range target.Data {
+		for _, datum := range target.Data.All() {
 			h.Write([]byte(datum.String()))
 		}
 		hashBool(h, target.Containerise)

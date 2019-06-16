@@ -53,10 +53,23 @@ func (s *InputSet) All() []BuildInput {
 	// Quiet little optimisation; don't make another set & copy if we already have one to hand
 	if len(s.items) == 1 {
 		return s.items[0].Inputs
+	} else if len(s.items) == 0 {
+		return nil
 	}
 	ret := make([]BuildInput, 0, s.Count())
 	for _, i := range s.items {
 		ret = append(ret, i.Inputs...)
+	}
+	return ret
+}
+
+// AllPaths returns all the paths for this set.
+func (s *InputSet) AllPaths(graph *BuildGraph) []string {
+	ret := make([]string, 0, s.Count())
+	for _, item := range s.items {
+		for _, input := range item.Inputs {
+			ret = append(ret, input.Paths(graph)...)
+		}
 	}
 	return ret
 }

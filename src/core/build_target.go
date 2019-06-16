@@ -52,7 +52,7 @@ type BuildTarget struct {
 	// Source files of this rule. Can refer to build rules themselves.
 	Sources InputSet `name:"srcs"`
 	// Data files of this rule. Similar to sources but used at runtime, typically by tests.
-	Data []BuildInput
+	Data InputSet `name:"data"`
 	// Output files of this rule. All are paths relative to this package.
 	outputs []string `name:"outs"`
 	// Named output subsets of this rule. All are paths relative to this package but can be
@@ -784,7 +784,7 @@ func (target *BuildTarget) ProvideFor(other *BuildTarget) []BuildLabel {
 	ret := []BuildLabel{}
 	if target.Provides != nil {
 		// Never do this if the other target has a data dependency on us.
-		for _, data := range other.Data {
+		for _, data := range other.Data.All() {
 			if label := data.Label(); label != nil && *label == target.Label {
 				return []BuildLabel{target.Label}
 			}
@@ -853,7 +853,7 @@ func (target *BuildTarget) AddTool(tool BuildInput) {
 
 // AddDatum adds a new item of data to the target.
 func (target *BuildTarget) AddDatum(datum BuildInput) {
-	target.Data = append(target.Data, datum)
+	target.Data.Add(datum)
 	if label := datum.Label(); label != nil {
 		target.AddDependency(*label)
 		target.dependencyInfo(*label).data = true
@@ -956,7 +956,7 @@ func (target *BuildTarget) AllLocalSources() []string {
 
 // HasSource returns true if this target has the given file as a source (named or not, or data).
 func (target *BuildTarget) HasSource(source string) bool {
-	for _, src := range append(target.AllSources(), target.Data...) {
+	for _, src := range append(target.AllSources(), target.Data.All()...) {
 		if src.String() == source { // Comparison is a bit dodgy tbh
 			return true
 		}
@@ -996,15 +996,6 @@ func (target *BuildTarget) ToolNames() []string {
 // NamedTools returns the tools with the given name.
 func (target *BuildTarget) NamedTools(name string) []BuildInput {
 	return target.namedTools[name]
-}
-
-// AllData returns all the data paths for this target.
-func (target *BuildTarget) AllData(graph *BuildGraph) []string {
-	ret := make([]string, 0, len(target.Data))
-	for _, datum := range target.Data {
-		ret = append(ret, datum.Paths(graph)...)
-	}
-	return ret
 }
 
 // AddDependency adds a dependency to this target. It deduplicates against any existing deps.

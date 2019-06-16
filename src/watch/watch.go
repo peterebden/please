@@ -104,7 +104,7 @@ func startWatching(watcher *fsnotify.Watcher, state *core.BuildState, labels []c
 		for _, source := range target.AllSources() {
 			addSource(watcher, state, source, dirs, files)
 		}
-		for _, datum := range target.Data {
+		for _, datum := range target.Data.All() {
 			addSource(watcher, state, datum, dirs, files)
 		}
 		for _, dep := range target.Dependencies() {

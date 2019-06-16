@@ -262,7 +262,7 @@ func IterRuntimeFiles(graph *BuildGraph, target *BuildTarget, absoluteOuts bool)
 		for _, out := range target.Outputs() {
 			pushOut(path.Join(outDir, out), out)
 		}
-		for _, data := range target.Data {
+		for _, data := range target.Data.All() {
 			fullPaths := data.FullPaths(graph)
 			for i, dataPath := range data.Paths(graph) {
 				pushOut(fullPaths[i], dataPath)
@@ -312,7 +312,7 @@ func IterInputPaths(graph *BuildGraph, target *BuildTarget) <-chan string {
 			}
 
 			// Now yield all the data deps of this rule.
-			for _, data := range target.Data {
+			for _, data := range target.Data.All() {
 				// If the label is nil add any input paths contained here.
 				if label := data.Label(); label == nil {
 					for _, sourcePath := range data.FullPaths(graph) {
