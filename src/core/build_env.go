@@ -87,9 +87,11 @@ func BuildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 		env = append(env, "TOOL="+toolPath(state, target.Tools[0]))
 	}
 	// Named source groups if the target declared any.
-	for name, srcs := range target.NamedSources {
-		paths := target.SourcePaths(state.Graph, srcs)
-		env = append(env, "SRCS_"+strings.ToUpper(name)+"="+strings.Join(paths, " "))
+	if target.Sources.IsNamed() {
+		for _, name := range target.Sources.Names() {
+			paths := target.SourcePaths(state.Graph, target.Sources.Named(name))
+			env = append(env, "SRCS_"+strings.ToUpper(name)+"="+strings.Join(paths, " "))
+		}
 	}
 	// Named output groups similarly.
 	for name, outs := range target.DeclaredNamedOutputs() {

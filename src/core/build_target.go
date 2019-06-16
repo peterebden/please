@@ -50,9 +50,7 @@ type BuildTarget struct {
 	// List of build target patterns that can use this build target.
 	Visibility []BuildLabel
 	// Source files of this rule. Can refer to build rules themselves.
-	Sources []BuildInput `name:"srcs"`
-	// Named source files of this rule; as above but identified by name.
-	NamedSources map[string][]BuildInput `name:"srcs"`
+	Sources InputSet `name:"srcs"`
 	// Data files of this rule. Similar to sources but used at runtime, typically by tests.
 	Data []BuildInput
 	// Output files of this rule. All are paths relative to this package.
@@ -330,8 +328,9 @@ func (target *BuildTarget) AllLocalSourcePaths(graph *BuildGraph) []string {
 type buildPathsFunc func(BuildInput, *BuildGraph) []string
 
 func (target *BuildTarget) allSourcePaths(graph *BuildGraph, full buildPathsFunc) []string {
-	ret := make([]string, 0, len(target.Sources))
-	for _, source := range target.AllSources() {
+	srcs := target.AllSources()
+	ret := make([]string, 0, len(srcs))
+	for _, source := range srcs {
 		ret = append(ret, target.sourcePaths(graph, source, full)...)
 	}
 	return ret
@@ -450,9 +449,10 @@ func (target *BuildTarget) DeclaredOutputNames() []string {
 func (target *BuildTarget) Outputs() []string {
 	var ret []string
 	if target.IsFilegroup && !target.IsHashFilegroup {
-		ret = make([]string, 0, len(target.Sources))
+		srcs := target.Sources.All()
+		ret = make([]string, 0, len(srcs))
 		// Filegroups just re-output their inputs.
-		for _, src := range target.Sources {
+		for _, src := range srcs {
 			if namedLabel, ok := src.(NamedOutputLabel); ok {
 				// Bit of a hack, but this needs different treatment from either of the others.
 				for _, dep := range target.DependenciesFor(namedLabel.BuildLabel) {
@@ -801,22 +801,12 @@ func (target *BuildTarget) ProvideFor(other *BuildTarget) []BuildLabel {
 	return []BuildLabel{target.Label}
 }
 
-// AddSource adds a source to the build target, deduplicating against existing entries.
+// AddSource adds a source to the build target.
 func (target *BuildTarget) AddSource(source BuildInput) {
-	target.Sources = target.addSource(target.Sources, source)
-}
-
-func (target *BuildTarget) addSource(sources []BuildInput, source BuildInput) []BuildInput {
-	for _, src := range sources {
-		if source == src {
-			return sources
-		}
-	}
-	// Add a dependency if this is not just a file.
+	target.Sources.Add(source)
 	if label := source.Label(); label != nil {
 		target.AddMaybeExportedDependency(*label, false, true, false)
 	}
-	return append(sources, source)
 }
 
 // AddSecret adds a secret to the build target, deduplicating against existing entries.
@@ -837,10 +827,9 @@ func (target *BuildTarget) addSecret(secrets []string, secret string) []string {
 // For example, C++ rules add sources tagged as "sources" and "headers" to distinguish
 // two conceptually different kinds of input.
 func (target *BuildTarget) AddNamedSource(name string, source BuildInput) {
-	if target.NamedSources == nil {
-		target.NamedSources = map[string][]BuildInput{name: target.addSource(nil, source)}
-	} else {
-		target.NamedSources[name] = target.addSource(target.NamedSources[name], source)
+	target.Sources.AddNamed(name, source)
+	if label := source.Label(); label != nil {
+		target.AddMaybeExportedDependency(*label, false, true, false)
 	}
 }
 
@@ -950,18 +939,7 @@ func (target *BuildTarget) getCommand(state *BuildState, commands map[string]str
 
 // AllSources returns all the sources of this rule.
 func (target *BuildTarget) AllSources() []BuildInput {
-	ret := target.Sources[:]
-	if target.NamedSources != nil {
-		keys := make([]string, 0, len(target.NamedSources))
-		for k := range target.NamedSources {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			ret = append(ret, target.NamedSources[k]...)
-		}
-	}
-	return ret
+	return target.Sources.All()
 }
 
 // AllLocalSources returns all the "local" sources of this rule, i.e. all sources that are

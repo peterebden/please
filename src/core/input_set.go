@@ -50,6 +50,10 @@ func (s *InputSet) AddAllNamed(name string, inputs []BuildInput) {
 
 // All returns all of the inputs from this set as a single slice.
 func (s *InputSet) All() []BuildInput {
+	// Quiet little optimisation; don't make another set & copy if we already have one to hand
+	if len(s.items) == 1 {
+		return s.items[0].Inputs
+	}
 	ret := make([]BuildInput, 0, s.Count())
 	for _, i := range s.items {
 		ret = append(ret, i.Inputs...)

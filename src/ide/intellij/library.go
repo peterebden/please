@@ -33,9 +33,8 @@ func newLibrary(graph *core.BuildGraph, target *core.BuildTarget) Library {
 	classes := []Content{}
 	javadocs := []Content{}
 	sources := []Content{}
-	for _, dep := range target.Sources {
-		label := dep.Label()
-		if label != nil {
+	for _, dep := range target.AllSources() {
+		if label := dep.Label(); label != nil {
 			depTarget := graph.TargetOrDie(*label)
 
 			if depTarget.HasLabel("maven-sources") {
