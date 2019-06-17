@@ -61,6 +61,7 @@ func buildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 func BuildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 	env := buildEnvironment(state, target)
 	sources := target.AllSourcePaths(state.Graph)
+	tools := target.Tools.All()
 	tmpDir := path.Join(RepoRoot, target.TmpDir())
 	outEnv := target.GetTmpOutputAll(target.Outputs())
 
@@ -70,7 +71,7 @@ func BuildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 		"SRCS="+strings.Join(sources, " "),
 		"OUTS="+strings.Join(outEnv, " "),
 		"HOME="+tmpDir,
-		"TOOLS="+strings.Join(toolPaths(state, target.Tools), " "),
+		"TOOLS="+strings.Join(toolPaths(state, tools), " "),
 		// Set a consistent hash seed for Python. Important for build determinism.
 		"PYTHONHASHSEED=42",
 	)
@@ -83,8 +84,8 @@ func BuildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 		env = append(env, "SRC="+sources[0])
 	}
 	// Similarly, TOOL is only available on rules with a single tool.
-	if len(target.Tools) == 1 {
-		env = append(env, "TOOL="+toolPath(state, target.Tools[0]))
+	if len(tools) == 1 {
+		env = append(env, "TOOL="+toolPath(state, tools[0]))
 	}
 	// Named source groups if the target declared any.
 	if target.Sources.IsNamed() {
@@ -99,8 +100,8 @@ func BuildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 		env = append(env, "OUTS_"+strings.ToUpper(name)+"="+strings.Join(outs, " "))
 	}
 	// Named tools as well.
-	for name, tools := range target.namedTools {
-		env = append(env, "TOOLS_"+strings.ToUpper(name)+"="+strings.Join(toolPaths(state, tools), " "))
+	for _, name := range target.Tools.Names() {
+		env = append(env, "TOOLS_"+strings.ToUpper(name)+"="+strings.Join(toolPaths(state, target.Tools.Named(name)), " "))
 	}
 	// Secrets, again only if they declared any.
 	if len(target.Secrets) > 0 {

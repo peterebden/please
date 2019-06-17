@@ -95,6 +95,9 @@ func (s *InputSet) Count() int {
 
 // Names returns the current set of names in the set.
 func (s *InputSet) Names() []string {
+	if !s.IsNamed() {
+		return nil
+	}
 	ret := make([]string, len(s.items))
 	for i, item := range s.items {
 		ret[i] = item.Name
@@ -105,4 +108,15 @@ func (s *InputSet) Names() []string {
 // IsNamed returns true if this set has named entries in it.
 func (s *InputSet) IsNamed() bool {
 	return len(s.items) > 0 && s.items[0].Name != ""
+}
+
+func (s *InputSet) Contains(input BuildInput) bool {
+	for _, item := range s.items {
+		for _, i := range item.Inputs {
+			if i == input {
+				return true
+			}
+		}
+	}
+	return false
 }

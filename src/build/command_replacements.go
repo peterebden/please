@@ -178,7 +178,7 @@ func replaceWorkerSequence(state *core.BuildState, target *core.BuildTarget, in 
 // sourcesOrTools returns either the tools of a target if runnable is true, otherwise its sources.
 func sourcesOrTools(target *core.BuildTarget, runnable bool) []core.BuildInput {
 	if runnable {
-		return target.Tools
+		return target.Tools.All()
 	}
 	return target.AllSources()
 }

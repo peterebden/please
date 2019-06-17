@@ -33,6 +33,7 @@ func TestAdd(t *testing.T) {
 	assert.Equal(t, []BuildInput(nil), s.Named("test"))
 	assert.Equal(t, []BuildInput{input1, input2, input3}, s.All())
 	assert.False(t, s.IsNamed())
+	assert.Equal(t, 0, len(s.Names()))
 }
 
 func TestAddPanics(t *testing.T) {

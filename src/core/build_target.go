@@ -149,9 +149,7 @@ type BuildTarget struct {
 	RuleHash []byte `name:"exported_deps"` // bit of a hack to call this exported_deps...
 	// Tools that this rule will use, ie. other rules that it may use at build time which are not
 	// copied into its source directory.
-	Tools []BuildInput
-	// Named tools, similar to named sources.
-	namedTools map[string][]BuildInput `name:"tools"`
+	Tools InputSet
 	// Target-specific environment passthroughs.
 	PassEnv *[]string `name:"pass_env"`
 	// Flakiness of test, ie. number of times we will rerun it before giving up. 1 is the default.
@@ -845,7 +843,7 @@ func (target *BuildTarget) AddNamedSecret(name string, secret string) {
 
 // AddTool adds a new tool to the target.
 func (target *BuildTarget) AddTool(tool BuildInput) {
-	target.Tools = append(target.Tools, tool)
+	target.Tools.Add(tool)
 	if label := tool.Label(); label != nil {
 		target.AddDependency(*label)
 	}
@@ -862,11 +860,7 @@ func (target *BuildTarget) AddDatum(datum BuildInput) {
 
 // AddNamedTool adds a new tool to the target.
 func (target *BuildTarget) AddNamedTool(name string, tool BuildInput) {
-	if target.namedTools == nil {
-		target.namedTools = map[string][]BuildInput{name: {tool}}
-	} else {
-		target.namedTools[name] = append(target.namedTools[name], tool)
-	}
+	target.Tools.AddNamed(name, tool)
 	if label := tool.Label(); label != nil {
 		target.AddDependency(*label)
 	}
@@ -972,30 +966,12 @@ func (target *BuildTarget) HasAbsoluteSource(source string) bool {
 
 // AllTools returns all the tools for this rule in some canonical order.
 func (target *BuildTarget) AllTools() []BuildInput {
-	if target.namedTools == nil {
-		return target.Tools // Leave them in input order, that's sufficiently consistent.
-	}
-	tools := make([]BuildInput, len(target.Tools), len(target.Tools)+len(target.namedTools)*2)
-	copy(tools, target.Tools)
-	for _, name := range target.ToolNames() {
-		tools = append(tools, target.namedTools[name]...)
-	}
-	return tools
-}
-
-// ToolNames returns an ordered list of tool names.
-func (target *BuildTarget) ToolNames() []string {
-	ret := make([]string, 0, len(target.namedTools))
-	for name := range target.namedTools {
-		ret = append(ret, name)
-	}
-	sort.Strings(ret)
-	return ret
+	return target.Tools.All()
 }
 
 // NamedTools returns the tools with the given name.
 func (target *BuildTarget) NamedTools(name string) []BuildInput {
-	return target.namedTools[name]
+	return target.Tools.Named(name)
 }
 
 // AddDependency adds a dependency to this target. It deduplicates against any existing deps.
@@ -1021,19 +997,7 @@ func (target *BuildTarget) AddMaybeExportedDependency(dep BuildLabel, exported, 
 
 // IsTool returns true if the given build label is a tool used by this target.
 func (target *BuildTarget) IsTool(tool BuildLabel) bool {
-	for _, t := range target.Tools {
-		if t == tool {
-			return true
-		}
-	}
-	for _, tools := range target.namedTools {
-		for _, t := range tools {
-			if t == tool {
-				return true
-			}
-		}
-	}
-	return false
+	return target.Tools.Contains(tool)
 }
 
 // toolPath returns a path to this target when used as a tool.
