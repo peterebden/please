@@ -149,5 +149,5 @@ func (mplex cacheMultiplexer) Shutdown() {
 
 // Returns all cacheable artifacts from this target.
 func cacheArtifacts(target *core.BuildTarget, files ...string) []string {
-	return append(target.Outputs(), files...)
+	return append(target.AllOutputs(), files...)
 }

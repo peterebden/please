@@ -163,7 +163,7 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		// If there aren't any outputs, we don't have to do anything right now.
 		// Checks later will handle the case of something with a post-build function that
 		// later tries to add more outputs.
-		if len(target.DeclaredOutputs()) == 0 && len(target.DeclaredNamedOutputs()) == 0 {
+		if target.Outputs.IsEmpty() {
 			target.SetState(core.Unchanged)
 			state.LogBuildResult(tid, target.Label, core.TargetCached, "Nothing to do")
 			return true
@@ -298,7 +298,7 @@ func prepareDirectories(target *core.BuildTarget) error {
 	}
 	// Nicety for the build rules: create any directories that it's
 	// declared it'll create files in.
-	for _, out := range target.Outputs() {
+	for _, out := range target.AllOutputs() {
 		if dir := path.Dir(out); dir != "." {
 			outPath := path.Join(target.TmpDir(), dir)
 			if !core.PathExists(outPath) {
@@ -338,7 +338,7 @@ func moveOutputs(state *core.BuildState, target *core.BuildTarget) ([]string, bo
 	changed := false
 	tmpDir := target.TmpDir()
 	outDir := target.OutDir()
-	for _, output := range target.Outputs() {
+	for _, output := range target.AllOutputs() {
 		tmpOutput := path.Join(tmpDir, target.GetTmpOutput(output))
 		realOutput := path.Join(outDir, output)
 		if !core.PathExists(tmpOutput) {
@@ -412,7 +412,7 @@ func moveOutput(state *core.BuildState, target *core.BuildTarget, tmpOutput, rea
 
 // RemoveOutputs removes all generated outputs for a rule.
 func RemoveOutputs(target *core.BuildTarget) error {
-	for _, output := range target.Outputs() {
+	for _, output := range target.AllOutputs() {
 		out := path.Join(target.OutDir(), output)
 		if err := os.RemoveAll(out); err != nil {
 			return err
@@ -605,7 +605,7 @@ func buildLinksOfType(state *core.BuildState, target *core.BuildTarget, prefix s
 		for _, dest := range labels {
 			destDir := path.Join(core.RepoRoot, os.Expand(dest, env.ReplaceEnvironment))
 			srcDir := path.Join(core.RepoRoot, target.OutDir())
-			for _, out := range target.Outputs() {
+			for _, out := range target.AllOutputs() {
 				linkIfNotExists(path.Join(srcDir, out), path.Join(destDir, out), f)
 			}
 		}
@@ -653,7 +653,7 @@ func fetchRemoteFile(state *core.BuildState, target *core.BuildTarget) error {
 func fetchOneRemoteFile(state *core.BuildState, target *core.BuildTarget, url string) error {
 	env := core.BuildEnvironment(state, target)
 	url = os.Expand(url, env.ReplaceEnvironment)
-	tmpPath := path.Join(target.TmpDir(), target.Outputs()[0])
+	tmpPath := path.Join(target.TmpDir(), target.AllOutputs()[0])
 	f, err := os.Create(tmpPath)
 	if err != nil {
 		return err

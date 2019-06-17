@@ -513,7 +513,7 @@ func printTempDirs(state *core.BuildState, duration time.Duration) {
 func buildResult(target *core.BuildTarget) []string {
 	results := []string{}
 	if target != nil {
-		for _, out := range target.Outputs() {
+		for _, out := range target.AllOutputs() {
 			if core.StartedAtRepoRoot() {
 				results = append(results, path.Join(target.OutDir(), out))
 			} else {

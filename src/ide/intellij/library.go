@@ -38,14 +38,14 @@ func newLibrary(graph *core.BuildGraph, target *core.BuildTarget) Library {
 			depTarget := graph.TargetOrDie(*label)
 
 			if depTarget.HasLabel("maven-sources") {
-				for _, o := range depTarget.Outputs() {
+				for _, o := range depTarget.AllOutputs() {
 					sources = append(sources, Content{
 						ContentURL: "jar://$PROJECT_DIR$/../../" + depTarget.OutDir() + "/" + o + "!/",
 					})
 				}
 			}
 			if depTarget.HasLabel("maven-classes") {
-				for _, o := range depTarget.Outputs() {
+				for _, o := range depTarget.AllOutputs() {
 					classes = append(classes, Content{
 						ContentURL: "jar://$PROJECT_DIR$/../../" + depTarget.OutDir() + "/" + o + "!/",
 					})
@@ -53,7 +53,7 @@ func newLibrary(graph *core.BuildGraph, target *core.BuildTarget) Library {
 
 			}
 			if depTarget.HasLabel("maven-javadocs") {
-				for _, o := range depTarget.Outputs() {
+				for _, o := range depTarget.AllOutputs() {
 					javadocs = append(javadocs, Content{
 						ContentURL: "jar://$PROJECT_DIR$/../../" + depTarget.OutDir() + "/" + o + "!/",
 					})

@@ -425,10 +425,9 @@ func (target *BuildTarget) DeclaredOutputs() []string {
 
 // AllOutputs returns a slice of all the outputs of this rule.
 func (target *BuildTarget) AllOutputs() []string {
-	var ret []string
 	if target.IsFilegroup && !target.IsHashFilegroup {
 		srcs := target.Sources.All()
-		ret = make([]string, 0, len(srcs))
+		ret := make([]string, 0, len(srcs))
 		// Filegroups just re-output their inputs.
 		for _, src := range srcs {
 			if namedLabel, ok := src.(NamedOutputLabel); ok {
@@ -440,44 +439,29 @@ func (target *BuildTarget) AllOutputs() []string {
 				ret = append(ret, src.LocalPaths(nil)[0])
 			} else {
 				for _, dep := range target.DependenciesFor(*label) {
-					ret = append(ret, dep.Outputs()...)
+					ret = append(ret, dep.AllOutputs()...)
 				}
 			}
 		}
-	} else {
-		// Must really copy the slice before sorting it ([:] is too shallow)
-		ret = make([]string, len(target.outputs))
-		copy(ret, target.outputs)
+		return ret
 	}
-	if target.namedOutputs != nil {
-		for _, outputs := range target.namedOutputs {
-			ret = append(ret, outputs...)
-		}
-	}
-	sort.Strings(ret)
-	return ret
+	return target.Outputs.All()
 }
 
 // FullOutputs returns a slice of all the outputs of this rule with the target's output directory prepended.
 func (target *BuildTarget) FullOutputs() []string {
-	outs := target.Outputs()
+	outs := target.AllOutputs()
+	ret := make([]string, len(outs))
 	outDir := target.OutDir()
 	for i, out := range outs {
-		outs[i] = path.Join(outDir, out)
+		ret[i] = path.Join(outDir, out)
 	}
-	return outs
+	return ret
 }
 
 // NamedOutputs returns a slice of all the outputs of this rule with a given name.
-// If the name is not declared by this rule it panics.
 func (target *BuildTarget) NamedOutputs(name string) []string {
-	if target.namedOutputs == nil {
-		return nil
-	}
-	if outs, present := target.namedOutputs[name]; present {
-		return outs
-	}
-	return nil
+	return target.Outputs.Named(name)
 }
 
 // GetTmpOutput takes the original output filename as an argument, and returns a temporary output
@@ -577,7 +561,7 @@ func (target *BuildTarget) CheckDependencyVisibility(state *BuildState) error {
 // Returns an error if so, or nil if all's well.
 func (target *BuildTarget) CheckDuplicateOutputs() error {
 	outputs := map[string]struct{}{}
-	for _, output := range target.Outputs() {
+	for _, output := range target.AllOutputs() {
 		if _, present := outputs[output]; present {
 			return fmt.Errorf("Target %s declares output file %s multiple times", target.Label, output)
 		}
@@ -990,7 +974,7 @@ func (target *BuildTarget) IsTool(tool BuildLabel) bool {
 
 // toolPath returns a path to this target when used as a tool.
 func (target *BuildTarget) toolPath() string {
-	outputs := target.Outputs()
+	outputs := target.AllOutputs()
 	ret := make([]string, len(outputs))
 	for i, o := range outputs {
 		ret[i], _ = filepath.Abs(path.Join(target.OutDir(), o))
@@ -1000,7 +984,7 @@ func (target *BuildTarget) toolPath() string {
 
 // AddOutput adds a new output to the target if it's not already there.
 func (target *BuildTarget) AddOutput(output string) {
-	target.outputs = target.insert(target.outputs, output)
+	target.Outputs.Add(output)
 }
 
 // AddOptionalOutput adds a new optional output to the target if it's not already there.
@@ -1016,11 +1000,7 @@ func (target *BuildTarget) AddTestOutput(output string) {
 // AddNamedOutput adds a new output to the target under a named group.
 // No attempt to deduplicate against unnamed outputs is currently made.
 func (target *BuildTarget) AddNamedOutput(name, output string) {
-	if target.namedOutputs == nil {
-		target.namedOutputs = map[string][]string{name: target.insert(nil, output)}
-		return
-	}
-	target.namedOutputs[name] = target.insert(target.namedOutputs[name], output)
+	target.Outputs.AddNamed(name, output)
 }
 
 // insert adds a string into a slice if it's not already there. Sorted order is maintained.

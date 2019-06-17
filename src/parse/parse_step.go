@@ -267,7 +267,7 @@ func providePackage(state *core.BuildState, pkg *core.Package) (bool, error) {
 			continue
 		}
 		t := state.WaitForBuiltTarget(p.Target, label)
-		outs := t.Outputs()
+		outs := t.AllOutputs()
 		if !t.IsBinary && len(outs) != 1 {
 			log.Error("Cannot use %s as build provider %s, it must be a binary with exactly 1 output.", p.Target, name)
 			continue

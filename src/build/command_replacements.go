@@ -198,19 +198,20 @@ func replaceSequenceLabel(state *core.BuildState, target *core.BuildTarget, labe
 }
 
 func checkAndReplaceSequence(state *core.BuildState, target, dep *core.BuildTarget, in string, runnable, multiple, dir, outPrefix, hash, test, allOutputs, tool bool) string {
-	if allOutputs && !multiple && len(dep.Outputs()) > 1 {
+	outs := dep.AllOutputs()
+	if allOutputs && !multiple && len(outs) > 1 {
 		// Label must have only one output.
 		panic(fmt.Sprintf("Rule %s can't use %s; %s has multiple outputs.", target.Label, in, dep.Label))
 	} else if runnable && !dep.IsBinary {
 		panic(fmt.Sprintf("Rule %s can't $(exe %s), it's not executable", target.Label, dep.Label))
-	} else if runnable && len(dep.Outputs()) == 0 {
+	} else if runnable && len(outs) == 0 {
 		panic(fmt.Sprintf("Rule %s is tagged as binary but produces no output.", dep.Label))
 	}
 	if hash {
 		return base64.RawURLEncoding.EncodeToString(mustOutputHash(state, dep))
 	}
 	output := ""
-	for _, out := range dep.Outputs() {
+	for _, out := range outs {
 		if allOutputs || out == in {
 			if tool {
 				abs, err := filepath.Abs(handleDir(dep.OutDir(), out, dir))

@@ -80,7 +80,7 @@ func export(graph *core.BuildGraph, dir string, target *core.BuildTarget, done m
 func Outputs(state *core.BuildState, dir string, targets []core.BuildLabel) {
 	for _, label := range targets {
 		target := state.Graph.TargetOrDie(label)
-		for _, out := range target.Outputs() {
+		for _, out := range target.AllOutputs() {
 			fullPath := path.Join(dir, out)
 			outDir := path.Dir(fullPath)
 			if err := os.MkdirAll(outDir, core.DirPermissions); err != nil {

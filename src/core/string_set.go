@@ -85,6 +85,11 @@ func (s *StringSet) Count() int {
 	return n
 }
 
+// IsEmpty returns true if this set contains no entries.
+func (s *StringSet) IsEmpty() bool {
+	return len(s.items) == 0
+}
+
 // Names returns the current set of names in the set.
 func (s *StringSet) Names() []string {
 	if !s.IsNamed() {

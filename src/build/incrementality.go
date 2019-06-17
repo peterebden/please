@@ -90,7 +90,7 @@ func needsBuilding(state *core.BuildState, target *core.BuildTarget, postBuild b
 	// Check the outputs of this rule exist. This would only happen if the user had
 	// removed them but it's incredibly aggravating if you remove an output and the
 	// rule won't rebuild itself.
-	for _, output := range target.Outputs() {
+	for _, output := range target.AllOutputs() {
 		realOutput := path.Join(target.OutDir(), output)
 		if !core.PathExists(realOutput) {
 			log.Debug("Output %s doesn't exist for rule %s; will rebuild.", realOutput, target.Label)
@@ -197,10 +197,9 @@ func ruleHash(state *core.BuildState, target *core.BuildTarget, runtime bool) []
 	for _, out := range target.DeclaredOutputs() {
 		h.Write([]byte(out))
 	}
-	outs := target.DeclaredNamedOutputs()
-	for _, name := range target.DeclaredOutputNames() {
+	for _, name := range target.Outputs.Names() {
 		h.Write([]byte(name))
-		for _, out := range outs[name] {
+		for _, out := range target.Outputs.Named(name) {
 			h.Write([]byte(out))
 		}
 	}

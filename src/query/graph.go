@@ -128,7 +128,7 @@ func makeJSONTarget(state *core.BuildState, target *core.BuildTarget) JSONTarget
 	for in := range core.IterSources(state.Graph, target) {
 		t.Inputs = append(t.Inputs, in.Src)
 	}
-	for _, out := range target.Outputs() {
+	for _, out := range target.AllOutputs() {
 		t.Outputs = append(t.Outputs, path.Join(target.Label.PackageName, out))
 	}
 	for _, dep := range target.Dependencies() {

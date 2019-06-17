@@ -242,7 +242,7 @@ func subinclude(s *scope, args []pyObject) pyObject {
 	}
 	l := pkg.Label()
 	s.Assert(l.CanSee(s.state, t), "Target %s isn't visible to be subincluded into %s", t.Label, l)
-	for _, out := range t.Outputs() {
+	for _, out := range t.AllOutputs() {
 		s.SetAll(s.interpreter.Subinclude(path.Join(t.OutDir(), out), pkg), false)
 	}
 	return None

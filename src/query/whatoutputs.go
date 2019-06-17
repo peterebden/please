@@ -28,7 +28,7 @@ func filesToLabelMap(graph *core.BuildGraph) map[string]*core.BuildLabel {
 	packageMap := make(map[string]*core.BuildLabel)
 	for _, pkg := range graph.PackageMap() {
 		for _, target := range pkg.Outputs {
-			for _, output := range target.Outputs() {
+			for _, output := range target.AllOutputs() {
 				artifactPath := path.Join(target.OutDir(), output)
 				packageMap[artifactPath] = &target.Label
 			}

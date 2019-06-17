@@ -134,8 +134,8 @@ func TestAddOutput(t *testing.T) {
 	target.AddOutput("thingy.py")
 	target.AddOutput("thingy2.py")
 	target.AddOutput("thingy.py")
-	if len(target.Outputs()) != 2 {
-		t.Errorf("Incorrect output length; should be 2, was %d", len(target.Outputs()))
+	if len(target.AllOutputs()) != 2 {
+		t.Errorf("Incorrect output length; should be 2, was %d", len(target.AllOutputs()))
 	}
 }
 
@@ -154,7 +154,7 @@ func TestAddOutputSorting(t *testing.T) {
 		"3.py",
 		"x.pyx",
 	}
-	assert.Equal(t, expected, target.Outputs())
+	assert.Equal(t, expected, target.AllOutputs())
 }
 
 func TestAddOutputPanics(t *testing.T) {
@@ -481,7 +481,7 @@ func TestNamedOutputs(t *testing.T) {
 	target.AddNamedOutput("hdrs", "hdr1.h")
 	target.AddNamedOutput("hdrs", "hdr2.h")
 	target.AddNamedOutput("hdrs", "hdr2.h") // deliberate duplicate
-	assert.Equal(t, []string{"a.txt", "hdr1.h", "hdr2.h", "src1.c", "src2.c", "z.txt"}, target.Outputs())
+	assert.Equal(t, []string{"a.txt", "hdr1.h", "hdr2.h", "src1.c", "src2.c", "z.txt"}, target.AllOutputs())
 	assert.Equal(t, []string{"a.txt", "z.txt"}, target.DeclaredOutputs())
 	assert.Equal(t, map[string][]string{"srcs": {"src1.c", "src2.c"}, "hdrs": {"hdr1.h", "hdr2.h"}}, target.DeclaredNamedOutputs())
 	assert.Equal(t, []string{"hdr1.h", "hdr2.h"}, target.NamedOutputs("hdrs"))

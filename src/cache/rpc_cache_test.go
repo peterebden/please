@@ -66,7 +66,7 @@ func TestStore(t *testing.T) {
 	target := core.NewBuildTarget(label)
 	target.AddOutput("testfile2")
 	rpccache.Store(target, []byte("test_key"))
-	expectedPath := path.Join("src/cache/test_data", core.OsArch, "pkg/name", "label_name", "dGVzdF9rZXk", target.Outputs()[0])
+	expectedPath := path.Join("src/cache/test_data", core.OsArch, "pkg/name", "label_name", "dGVzdF9rZXk", target.AllOutputs()[0])
 	if !core.PathExists(expectedPath) {
 		t.Errorf("Test file %s was not stored in cache.", expectedPath)
 	}
@@ -85,7 +85,7 @@ func TestStoreAndRetrieve(t *testing.T) {
 	target.AddOutput("testfile3")
 	rpccache.Store(target, []byte("test_key"))
 	// Remove the file so we can test retrieval correctly
-	outPath := path.Join(target.OutDir(), target.Outputs()[0])
+	outPath := path.Join(target.OutDir(), target.AllOutputs()[0])
 	if err := os.Remove(outPath); err != nil {
 		t.Errorf("Failed to remove artifact: %s", err)
 	}

@@ -207,7 +207,7 @@ func (cache *rpcCache) retrieveArtifacts(target *core.BuildTarget, req *pb.Retri
 	// directory, because we get back individual artifacts, and we need to make sure that
 	// only the retrieved artifacts are present in the output.
 	if remove {
-		for _, out := range target.Outputs() {
+		for _, out := range target.AllOutputs() {
 			out := path.Join(target.OutDir(), out)
 			if err := os.RemoveAll(out); err != nil {
 				log.Error("Failed to remove artifact %s: %s", out, err)

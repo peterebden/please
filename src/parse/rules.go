@@ -40,7 +40,7 @@ func AllBuiltinFunctions(state *core.BuildState, labels []core.BuildLabel) map[s
 	}
 	for _, l := range labels {
 		t := state.Graph.TargetOrDie(l)
-		for _, out := range t.Outputs() {
+		for _, out := range t.AllOutputs() {
 			stmts, err := p.ParseFileOnly(path.Join(t.OutDir(), out))
 			if err != nil {
 				log.Fatalf("%s", err)

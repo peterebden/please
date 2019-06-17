@@ -30,7 +30,7 @@ func cachePath(target *core.BuildTarget, compress bool) string {
 	if compress {
 		return path.Join(".plz-cache-"+target.Label.PackageName, target.Label.PackageName, target.Label.Name, b64Hash+".tar.gz")
 	}
-	return path.Join(".plz-cache-"+target.Label.PackageName, target.Label.PackageName, target.Label.Name, b64Hash, target.Outputs()[0])
+	return path.Join(".plz-cache-"+target.Label.PackageName, target.Label.PackageName, target.Label.Name, b64Hash, target.AllOutputs()[0])
 }
 
 func inCache(target *core.BuildTarget) bool {

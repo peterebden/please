@@ -8,7 +8,7 @@ import "github.com/thought-machine/please/src/core"
 func TargetOutputs(graph *core.BuildGraph, labels []core.BuildLabel) {
 	for _, label := range labels {
 		target := graph.TargetOrDie(label)
-		for _, out := range target.Outputs() {
+		for _, out := range target.AllOutputs() {
 			fmt.Printf("%s\n", path.Join(target.OutDir(), out))
 		}
 	}
