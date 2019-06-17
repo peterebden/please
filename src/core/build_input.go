@@ -150,8 +150,8 @@ func (label SystemFileLabel) String() string {
 
 // SystemPathLabel represents system dependency somewhere on PATH, which is not managed by the build system.
 type SystemPathLabel struct {
-	Name string
-	Path []string
+	Name   string
+	Config *Configuration
 }
 
 // Paths returns a slice of paths to the files of this input.
@@ -164,7 +164,7 @@ func (label SystemPathLabel) FullPaths(graph *BuildGraph) []string {
 	// non-specified paths like "bash" are turned into absolute ones based on plz's PATH.
 	// awkwardly this means we can't use the builtin exec.LookPath because the current
 	// environment variable isn't necessarily the same as what's in our config.
-	tool, err := LookPath(label.Name, label.Path)
+	tool, err := LookPath(label.Name, label.Config.Path())
 	if err != nil {
 		// This is a bit awkward, we can't signal an error here sensibly.
 		panic(err)

@@ -215,9 +215,15 @@ func addMaybeNamed(s *scope, t *core.BuildTarget, name string, obj pyObject, inp
 // toInputList converts a list of strings to a list of build inputs.
 func toInputList(s *scope, l pyList, name string, systemAllowed, tool bool) []core.BuildInput {
 	il := make([]core.BuildInput, 0, len(l))
+	m := make(map[core.BuildInput]struct{}, len(l))
 	for _, li := range l {
 		if bi := parseBuildInput(s, li, name, systemAllowed, tool); bi != nil {
-			il = append(il, bi)
+			// It's never really been formally documented, but we have historically
+			// deduplicated at this point, so we'll continue to do so.
+			if _, present := m[bi]; !present {
+				il = append(il, bi)
+				m[bi] = struct{}{}
+			}
 		}
 	}
 	return il
@@ -407,7 +413,7 @@ func parseSource(s *scope, src string, systemAllowed, tool bool) core.BuildInput
 		return core.SystemFileLabel{Path: src}
 	} else if tool {
 		// "go" as a source is interpreted as a file, as a tool it's interpreted as something on the PATH.
-		return core.SystemPathLabel{Name: src, Path: s.state.Config.Path()}
+		return core.SystemPathLabel{Name: src, Config: s.state.Config}
 	}
 	// Make sure it's not the actual build file.
 	for _, filename := range s.state.Config.Parse.BuildFileName {
