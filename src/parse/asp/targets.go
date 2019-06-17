@@ -159,11 +159,11 @@ func populateTarget(s *scope, t *core.BuildTarget, args []pyObject) {
 			t.AddSource(core.URLLabel(url.(pyString)))
 		}
 	} else {
-		addMaybeNamed(s, "srcs", args[3], t.AddSource, t.AddNamedSource, false, false)
+		addMaybeNamed(s, t, "srcs", args[3], &t.Sources, false, false, true, false)
 	}
-	addMaybeNamed(s, "tools", args[9], t.AddTool, t.AddNamedTool, true, true)
-	addMaybeNamed(s, "system_srcs", args[32], t.AddSource, nil, true, false)
-	addMaybeNamed(s, "data", args[4], t.AddDatum, nil, false, false)
+	addMaybeNamed(s, t, "tools", args[9], &t.Tools, true, true, false, false)
+	addMaybeNamed(s, t, "system_srcs", args[32], &t.Sources, true, false, true, false)
+	addMaybeNamed(s, t, "data", args[4], &t.Data, false, false, false, true)
 	addMaybeNamedOutput(s, "outs", args[5], t.AddOutput, t.AddNamedOutput, t, false)
 	addMaybeNamedOutput(s, "optional_outs", args[35], t.AddOptionalOutput, nil, t, true)
 	addMaybeNamedOutput(s, "test_outputs", args[31], t.AddTestOutput, nil, t, false)
@@ -189,32 +189,38 @@ func populateTarget(s *scope, t *core.BuildTarget, args []pyObject) {
 }
 
 // addMaybeNamed adds inputs to a target, possibly in named groups.
-func addMaybeNamed(s *scope, name string, obj pyObject, anon func(core.BuildInput), named func(string, core.BuildInput), systemAllowed, tool bool) {
+func addMaybeNamed(s *scope, t *core.BuildTarget, name string, obj pyObject, inputs *core.InputSet, systemAllowed, tool, source, data bool) {
 	if obj == nil {
 		return
 	}
 	if l, ok := asList(obj); ok {
-		for _, li := range l {
-			if bi := parseBuildInput(s, li, name, systemAllowed, tool); bi != nil {
-				anon(bi)
-			}
-		}
+		il := toInputList(s, l, name, systemAllowed, tool)
+		inputs.Set(il)
+		t.AddDependencies(il, source, data)
 	} else if d, ok := asDict(obj); ok {
-		s.Assert(named != nil, "%s cannot be given as a dict", name)
 		for k, v := range d {
 			if v != None {
 				l, ok := asList(v)
 				s.Assert(ok, "Values of %s must be lists of strings", name)
-				for _, li := range l {
-					if bi := parseBuildInput(s, li, name, systemAllowed, tool); bi != nil {
-						named(k, bi)
-					}
-				}
+				il := toInputList(s, l, name, systemAllowed, tool)
+				inputs.AddAllNamed(k, il)
+				t.AddDependencies(il, source, data)
 			}
 		}
 	} else if obj != None {
 		s.Assert(false, "Argument %s must be a list or dict, not %s", name, obj.Type())
 	}
+}
+
+// toInputList converts a list of strings to a list of build inputs.
+func toInputList(s *scope, l pyList, name string, systemAllowed, tool bool) []core.BuildInput {
+	il := make([]core.BuildInput, 0, len(l))
+	for _, li := range l {
+		if bi := parseBuildInput(s, li, name, systemAllowed, tool); bi != nil {
+			il = append(il, bi)
+		}
+	}
+	return il
 }
 
 // addMaybeNamedOutput adds outputs to a target, possibly in a named group
@@ -303,7 +309,7 @@ func addDependencies(s *scope, name string, obj pyObject, target *core.BuildTarg
 			// *sigh*... Bazel seems to allow an implicit : on the start of dependencies
 			str = ":" + str
 		}
-		target.AddMaybeExportedDependency(checkLabel(s, core.ParseBuildLabelContext(str, s.pkg)), exported, false, internal)
+		target.AddMaybeExportedDependency(checkLabel(s, core.ParseBuildLabelContext(str, s.pkg)), exported, false, internal, false)
 	})
 }
 

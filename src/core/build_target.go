@@ -803,7 +803,7 @@ func (target *BuildTarget) ProvideFor(other *BuildTarget) []BuildLabel {
 func (target *BuildTarget) AddSource(source BuildInput) {
 	target.Sources.Add(source)
 	if label := source.Label(); label != nil {
-		target.AddMaybeExportedDependency(*label, false, true, false)
+		target.AddMaybeExportedDependency(*label, false, true, false, false)
 	}
 }
 
@@ -827,7 +827,7 @@ func (target *BuildTarget) addSecret(secrets []string, secret string) []string {
 func (target *BuildTarget) AddNamedSource(name string, source BuildInput) {
 	target.Sources.AddNamed(name, source)
 	if label := source.Label(); label != nil {
-		target.AddMaybeExportedDependency(*label, false, true, false)
+		target.AddMaybeExportedDependency(*label, false, true, false, false)
 	}
 }
 
@@ -976,22 +976,30 @@ func (target *BuildTarget) NamedTools(name string) []BuildInput {
 
 // AddDependency adds a dependency to this target. It deduplicates against any existing deps.
 func (target *BuildTarget) AddDependency(dep BuildLabel) {
-	target.AddMaybeExportedDependency(dep, false, false, false)
+	target.AddMaybeExportedDependency(dep, false, false, false, false)
 }
 
 // AddMaybeExportedDependency adds a dependency to this target which may be exported. It deduplicates against any existing deps.
-func (target *BuildTarget) AddMaybeExportedDependency(dep BuildLabel, exported, source, internal bool) {
+func (target *BuildTarget) AddMaybeExportedDependency(dep BuildLabel, exported, source, internal, data bool) {
 	if dep == target.Label {
 		log.Fatalf("Attempted to add %s as a dependency of itself.\n", dep)
 	}
-	info := target.dependencyInfo(dep)
-	if info == nil {
-		target.dependencies = append(target.dependencies, depInfo{declared: dep, exported: exported, source: source, internal: internal})
+	if info := target.dependencyInfo(dep); info == nil {
+		target.dependencies = append(target.dependencies, depInfo{declared: dep, exported: exported, source: source, internal: internal, data: data})
 	} else {
 		info.exported = info.exported || exported
 		info.source = info.source && source
 		info.internal = info.internal && internal
-		info.data = false // It's not *only* data any more.
+		info.data = info.data && data // It's not *only* data any more.
+	}
+}
+
+// AddDependencies adds a set of build inputs as dependencies to this target.
+func (target *BuildTarget) AddDependencies(inputs []BuildInput, source, data bool) {
+	for _, input := range inputs {
+		if l := input.Label(); l != nil {
+			target.AddMaybeExportedDependency(*l, false, source, false, data)
+		}
 	}
 }
 
