@@ -179,7 +179,7 @@ func makeTarget(graph *BuildGraph, label string, deps ...string) *BuildTarget {
 		target.AddDependency(t.Label)
 		target.resolveDependency(target.Label, t)
 	}
-	target.Sources = append(target.Sources, FileLabel{
+	target.Sources.Add(FileLabel{
 		File:    target.Label.Name + ".go",
 		Package: target.Label.PackageName,
 	})

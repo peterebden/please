@@ -133,44 +133,31 @@ func TestAddOutput(t *testing.T) {
 	target := makeTarget("//src/test/python:lib1", "")
 	target.AddOutput("thingy.py")
 	target.AddOutput("thingy2.py")
-	target.AddOutput("thingy.py")
-	if len(target.AllOutputs()) != 2 {
-		t.Errorf("Incorrect output length; should be 2, was %d", len(target.AllOutputs()))
-	}
+	assert.Equal(t, []string{"thingy.py", "thingy2.py"}, target.AllOutputs())
 }
 
-func TestAddOutputSorting(t *testing.T) {
+func TestAddOutputOrdering(t *testing.T) {
 	target := makeTarget("//src/test/python:lib1", "")
 	target.AddOutput("1.py")
 	target.AddOutput("2.py")
-	target.AddOutput("1.py")
 	target.AddOutput("3.py")
 	target.AddOutput("1.pyx")
 	target.AddOutput("x.pyx")
 	expected := []string{
 		"1.py",
-		"1.pyx",
 		"2.py",
 		"3.py",
+		"1.pyx",
 		"x.pyx",
 	}
 	assert.Equal(t, expected, target.AllOutputs())
-}
-
-func TestAddOutputPanics(t *testing.T) {
-	target := makeTarget("//src/test/python:lib1", "")
-	assert.Panics(t, func() { target.AddOutput("") })
-	assert.Panics(t, func() { target.AddOptionalOutput("") })
-	assert.Panics(t, func() { target.AddTestOutput("") })
-	assert.Panics(t, func() { target.AddNamedOutput("", "") })
 }
 
 func TestAddSource(t *testing.T) {
 	target := makeTarget("//src/test/python:lib1", "")
 	target.AddSource(ParseBuildLabel("//src/test/python:lib2", ""))
 	target.AddSource(ParseBuildLabel("//src/test/python:lib3", ""))
-	target.AddSource(ParseBuildLabel("//src/test/python:lib2", ""))
-	assert.Equal(t, 2, len(target.Sources))
+	assert.Equal(t, 2, len(target.Sources.All()))
 	assert.Equal(t, 2, len(target.DeclaredDependencies()))
 }
 
@@ -195,9 +182,9 @@ func TestOutputs(t *testing.T) {
 	target3.AddSource(target2.Label)
 	addFilegroupSource(target3, "file4.go")
 
-	assert.Equal(t, []string{"file1.go", "file2.go"}, target1.Outputs())
-	assert.Equal(t, []string{"file1.go", "file2.go", "file3.go"}, target2.Outputs())
-	assert.Equal(t, []string{"file1.go", "file2.go", "file3.go", "file4.go"}, target3.Outputs())
+	assert.Equal(t, []string{"file1.go", "file2.go"}, target1.AllOutputs())
+	assert.Equal(t, []string{"file1.go", "file2.go", "file3.go"}, target2.AllOutputs())
+	assert.Equal(t, []string{"file1.go", "file2.go", "file3.go", "file4.go"}, target3.AllOutputs())
 }
 
 func TestFullOutputs(t *testing.T) {
@@ -220,7 +207,7 @@ func TestProvideFor(t *testing.T) {
 	// Now target4 has a data dependency on target2. It has the same requirement as target3 but
 	// it gets target2 instead of target1, because that's just how data deps work.
 	target4 := makeTarget("//src/core:target4", "PUBLIC", target2)
-	target4.Data = append(target4.Data, target2.Label)
+	target4.Data.Add(target2.Label)
 	target4.Requires = append(target4.Requires, "whatevs")
 	assert.Equal(t, []BuildLabel{target2.Label}, target2.ProvideFor(target4))
 }
@@ -239,10 +226,10 @@ func TestAddDatum(t *testing.T) {
 	target1 := makeTarget("//src/core:target1", "PUBLIC")
 	target2 := makeTarget("//src/core:target2", "PUBLIC")
 	target1.AddDatum(target2.Label)
-	assert.Equal(t, target1.Data, []BuildInput{target2.Label})
+	assert.Equal(t, target1.Data.All(), []BuildInput{target2.Label})
 	assert.True(t, target1.dependencies[0].data)
 	// Now we add it as a dependency too, which unsets the data label
-	target1.AddMaybeExportedDependency(target2.Label, false, false, false)
+	target1.AddMaybeExportedDependency(target2.Label, false, false, false, false)
 	assert.False(t, target1.dependencies[0].data)
 }
 
@@ -254,9 +241,6 @@ func TestCheckDuplicateOutputs(t *testing.T) {
 	addFilegroupSource(target3, "thingy.txt")
 	assert.NoError(t, target1.CheckDuplicateOutputs())
 	target2.AddSource(target1.Label)
-	target2.AddSource(target1.Label)
-	// Not an error yet because AddOutput deduplicates trivially identical outputs.
-	assert.NoError(t, target2.CheckDuplicateOutputs())
 	// Will fail now we add the same output to another target.
 	target2.AddSource(target3.Label)
 	assert.Error(t, target2.CheckDuplicateOutputs())
@@ -329,7 +313,7 @@ func TestGetTestCommand(t *testing.T) {
 
 func TestHasSource(t *testing.T) {
 	target := makeTarget("//src/core:target1", "")
-	target.Sources = append(target.Sources, FileLabel{File: "file1.go"})
+	target.Sources.Add(FileLabel{File: "file1.go"})
 	target.AddNamedSource("wevs", FileLabel{File: "file2.go"})
 	assert.True(t, target.HasSource("file1.go"))
 	assert.True(t, target.HasSource("file2.go"))
@@ -338,7 +322,7 @@ func TestHasSource(t *testing.T) {
 
 func TestHasAbsoluteSource(t *testing.T) {
 	target := makeTarget("//src/core:target1", "")
-	target.Sources = append(target.Sources, FileLabel{File: "file1.go"})
+	target.Sources.Add(FileLabel{File: "file1.go"})
 	target.AddNamedSource("wevs", FileLabel{File: "file2.go"})
 	assert.False(t, target.HasSource("src/core/file1.go"))
 	assert.True(t, target.HasAbsoluteSource("src/core/file1.go"))
@@ -381,7 +365,7 @@ func TestDeclaredDependenciesStrict(t *testing.T) {
 	target1 := makeTarget("//src/core:target1", "")
 	target2 := makeTarget("//src/core:target2", "", target1)
 	target3 := makeTarget("//src/core:target3", "", target2)
-	target3.AddMaybeExportedDependency(target1.Label, true, false, false)
+	target3.AddMaybeExportedDependency(target1.Label, true, false, false, false)
 	assert.Equal(t, []BuildLabel{}, target1.DeclaredDependenciesStrict())
 	assert.Equal(t, []BuildLabel{target1.Label}, target2.DeclaredDependenciesStrict())
 	assert.Equal(t, []BuildLabel{target2.Label}, target3.DeclaredDependenciesStrict())
@@ -395,7 +379,7 @@ func TestAddDependency(t *testing.T) {
 	target2.AddDependency(target1.Label)
 	assert.Equal(t, []BuildLabel{target1.Label}, target2.DeclaredDependencies())
 	assert.Equal(t, []BuildLabel{}, target2.ExportedDependencies())
-	target2.AddMaybeExportedDependency(target1.Label, true, false, false)
+	target2.AddMaybeExportedDependency(target1.Label, true, false, false, false)
 	assert.Equal(t, []BuildLabel{target1.Label}, target2.DeclaredDependencies())
 	assert.Equal(t, []BuildLabel{target1.Label}, target2.ExportedDependencies())
 	assert.Equal(t, []*BuildTarget{}, target2.Dependencies())
@@ -406,10 +390,10 @@ func TestAddDependency(t *testing.T) {
 func TestAddDependencySource(t *testing.T) {
 	target1 := makeTarget("//src/core:target1", "")
 	target2 := makeTarget("//src/core:target2", "")
-	target2.AddMaybeExportedDependency(target1.Label, true, true, false)
+	target2.AddMaybeExportedDependency(target1.Label, true, true, false, false)
 	assert.True(t, target2.IsSourceOnlyDep(target1.Label))
 	// N.B. It's important that calling this again cancels the source flag.
-	target2.AddMaybeExportedDependency(target1.Label, true, false, false)
+	target2.AddMaybeExportedDependency(target1.Label, true, false, false, false)
 	assert.False(t, target2.IsSourceOnlyDep(target1.Label))
 }
 
@@ -466,28 +450,25 @@ func TestOutputOrdering(t *testing.T) {
 	target1.AddOutput("file1.txt")
 	target1.AddOutput("file2.txt")
 	target2 := makeTarget("//src/core:target2", "")
-	target2.AddOutput("file2.txt")
 	target2.AddOutput("file1.txt")
+	target2.AddOutput("file2.txt")
 	assert.Equal(t, target1.DeclaredOutputs(), target2.DeclaredOutputs())
-	assert.Equal(t, target1.Outputs(), target2.Outputs())
+	assert.Equal(t, target1.AllOutputs(), target2.AllOutputs())
 }
 
 func TestNamedOutputs(t *testing.T) {
 	target := makeTarget("//src/core:target1", "")
-	target.AddOutput("a.txt")
-	target.AddOutput("z.txt")
 	target.AddNamedOutput("srcs", "src1.c")
 	target.AddNamedOutput("srcs", "src2.c")
 	target.AddNamedOutput("hdrs", "hdr1.h")
 	target.AddNamedOutput("hdrs", "hdr2.h")
-	target.AddNamedOutput("hdrs", "hdr2.h") // deliberate duplicate
-	assert.Equal(t, []string{"a.txt", "hdr1.h", "hdr2.h", "src1.c", "src2.c", "z.txt"}, target.AllOutputs())
-	assert.Equal(t, []string{"a.txt", "z.txt"}, target.DeclaredOutputs())
-	assert.Equal(t, map[string][]string{"srcs": {"src1.c", "src2.c"}, "hdrs": {"hdr1.h", "hdr2.h"}}, target.DeclaredNamedOutputs())
+	assert.Equal(t, []string{"src1.c", "src2.c", "hdr1.h", "hdr2.h"}, target.AllOutputs())
+	assert.Equal(t, []string{"srcs", "hdrs"}, target.Outputs.Names())
+	assert.Equal(t, []string{"src1.c", "src2.c"}, target.Outputs.Named("srcs"))
+	assert.Equal(t, []string{"hdr1.h", "hdr2.h"}, target.Outputs.Named("hdrs"))
 	assert.Equal(t, []string{"hdr1.h", "hdr2.h"}, target.NamedOutputs("hdrs"))
 	assert.Equal(t, []string{"src1.c", "src2.c"}, target.NamedOutputs("srcs"))
 	assert.Equal(t, 0, len(target.NamedOutputs("go_srcs")))
-	assert.Equal(t, []string{"hdrs", "srcs"}, target.DeclaredOutputNames())
 }
 
 func TestAllLocalSources(t *testing.T) {
@@ -515,7 +496,7 @@ func TestAddTool(t *testing.T) {
 	target1 := makeTarget("//src/core:target1", "")
 	target2 := makeTarget("//src/core:target2", "")
 	target1.AddTool(target2.Label)
-	assert.Equal(t, []BuildInput{target2.Label}, target1.Tools)
+	assert.Equal(t, []BuildInput{target2.Label}, target1.Tools.All())
 	assert.True(t, target1.HasDependency(target2.Label))
 }
 
@@ -523,7 +504,7 @@ func TestAddNamedTool(t *testing.T) {
 	target1 := makeTarget("//src/core:target1", "")
 	target2 := makeTarget("//src/core:target2", "")
 	target1.AddNamedTool("test", target2.Label)
-	assert.Equal(t, 0, len(target1.Tools))
+	assert.Equal(t, 1, target1.Tools.Count())
 	assert.Equal(t, []BuildInput{target2.Label}, target1.NamedTools("test"))
 	assert.True(t, target1.HasDependency(target2.Label))
 }

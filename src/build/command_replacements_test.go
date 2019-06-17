@@ -89,8 +89,7 @@ func TestReplacementsForTest(t *testing.T) {
 
 func TestDataReplacementForTest(t *testing.T) {
 	target := makeTarget("//path/to:target1", "cat $(location test_data.txt)", nil)
-	target.Data = append(target.Data, core.FileLabel{File: "test_data.txt", Package: "path/to"})
-
+	target.Data.Add(core.FileLabel{File: "test_data.txt", Package: "path/to"})
 	expected := "cat path/to/test_data.txt"
 	cmd := ReplaceTestSequences(state, target, target.Command)
 	assert.Equal(t, expected, cmd)
@@ -106,7 +105,7 @@ func TestAmpersandReplacement(t *testing.T) {
 func TestToolReplacement(t *testing.T) {
 	target2 := makeTarget("//path/to:target2", "blah", nil)
 	target1 := makeTarget("//path/to:target1", "$(location //path/to:target2)", target2)
-	target1.Tools = append(target1.Tools, target2.Label)
+	target1.Tools.Add(target2.Label)
 
 	wd, _ := os.Getwd()
 	expected := quote(path.Join(wd, "plz-out/gen/path/to/target2.py"))
@@ -128,7 +127,7 @@ func TestToolDirReplacement(t *testing.T) {
 	target2 := makeTarget("//path/to:target2", "blah", nil)
 	target2.AddOutput("blah2.txt")
 	target1 := makeTarget("//path/to:target1", "$(dir //path/to:target2)", target2)
-	target1.Tools = append(target1.Tools, target2.Label)
+	target1.Tools.Add(target2.Label)
 
 	wd, _ := os.Getwd()
 	expected := quote(path.Join(wd, "plz-out/gen/path/to"))
@@ -170,7 +169,7 @@ func TestWorkerReplacement(t *testing.T) {
 	tool := makeTarget("//path/to:target2", "", nil)
 	tool.IsBinary = true
 	target := makeTarget("//path/to:target", "$(worker //path/to:target2) --some_arg", tool)
-	target.Tools = append(target.Tools, tool.Label)
+	target.Tools.Add(tool.Label)
 	worker, remoteArgs, localCmd := workerCommandAndArgs(state, target)
 	assert.Equal(t, wd+"/plz-out/bin/path/to/target2.py", worker)
 	assert.Equal(t, "--some_arg", remoteArgs)
@@ -179,7 +178,7 @@ func TestWorkerReplacement(t *testing.T) {
 
 func TestSystemWorkerReplacement(t *testing.T) {
 	target := makeTarget("//path/to:target", "$(worker /usr/bin/javac) --some_arg", nil)
-	target.Tools = append(target.Tools, core.SystemFileLabel{Path: "/usr/bin/javac"})
+	target.Tools.Add(core.SystemFileLabel{Path: "/usr/bin/javac"})
 	worker, remoteArgs, localCmd := workerCommandAndArgs(state, target)
 	assert.Equal(t, "/usr/bin/javac", worker)
 	assert.Equal(t, "--some_arg", remoteArgs)
@@ -190,7 +189,7 @@ func TestLocalCommandWorker(t *testing.T) {
 	tool := makeTarget("//path/to:target2", "", nil)
 	tool.IsBinary = true
 	target := makeTarget("//path/to:target", "$(worker //path/to:target2) --some_arg && find . | xargs rm && echo hello", tool)
-	target.Tools = append(target.Tools, tool.Label)
+	target.Tools.Add(tool.Label)
 	worker, remoteArgs, localCmd := workerCommandAndArgs(state, target)
 	assert.Equal(t, wd+"/plz-out/bin/path/to/target2.py", worker)
 	assert.Equal(t, "--some_arg", remoteArgs)
@@ -201,7 +200,7 @@ func TestWorkerCommandAndArgsMustComeFirst(t *testing.T) {
 	tool := makeTarget("//path/to:target2", "", nil)
 	tool.IsBinary = true
 	target := makeTarget("//path/to:target", "something something $(worker javac)", tool)
-	target.Tools = append(target.Tools, tool.Label)
+	target.Tools.Add(tool.Label)
 	assert.Panics(t, func() { workerCommandAndArgs(state, target) })
 }
 
