@@ -165,3 +165,12 @@ go_test(
         "//third_party/go:testify",
     ],
 )
+
+go_test(
+    name = "string_set_test",
+    srcs = ["string_set_test.go"],
+    deps = [
+        ":core",
+        "//third_party/go:testify",
+    ],
+)
