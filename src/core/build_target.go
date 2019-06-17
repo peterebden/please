@@ -54,11 +54,7 @@ type BuildTarget struct {
 	// Data files of this rule. Similar to sources but used at runtime, typically by tests.
 	Data InputSet `name:"data"`
 	// Output files of this rule. All are paths relative to this package.
-	outputs []string `name:"outs"`
-	// Named output subsets of this rule. All are paths relative to this package but can be
-	// captured separately; for example something producing C code might separate its outputs
-	// into sources and headers.
-	namedOutputs map[string][]string `name:"outs"`
+	Outputs StringSet `name:"outs"`
 	// Optional output files of this rule. Same as outs but aren't required to be produced always.
 	// Can be glob patterns.
 	OptionalOutputs []string `name:"optional_outs"`
@@ -422,29 +418,13 @@ func (target *BuildTarget) DependenciesFor(label BuildLabel) []*BuildTarget {
 }
 
 // DeclaredOutputs returns the outputs from this target's original declaration.
-// Hence it's similar to Outputs() but without the resolving of other rule names.
+// Hence it's similar to AllOutputs() but without the resolving of other rule names.
 func (target *BuildTarget) DeclaredOutputs() []string {
-	return target.outputs
+	return target.Outputs.All()
 }
 
-// DeclaredNamedOutputs returns the named outputs from this target's original declaration.
-func (target *BuildTarget) DeclaredNamedOutputs() map[string][]string {
-	return target.namedOutputs
-}
-
-// DeclaredOutputNames is a convenience function to return the names of the declared
-// outputs in a consistent order.
-func (target *BuildTarget) DeclaredOutputNames() []string {
-	ret := make([]string, 0, len(target.namedOutputs))
-	for name := range target.namedOutputs {
-		ret = append(ret, name)
-	}
-	sort.Strings(ret)
-	return ret
-}
-
-// Outputs returns a slice of all the outputs of this rule.
-func (target *BuildTarget) Outputs() []string {
+// AllOutputs returns a slice of all the outputs of this rule.
+func (target *BuildTarget) AllOutputs() []string {
 	var ret []string
 	if target.IsFilegroup && !target.IsHashFilegroup {
 		srcs := target.Sources.All()

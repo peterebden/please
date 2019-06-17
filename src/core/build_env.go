@@ -63,21 +63,21 @@ func BuildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 	sources := target.AllSourcePaths(state.Graph)
 	tools := target.Tools.All()
 	tmpDir := path.Join(RepoRoot, target.TmpDir())
-	outEnv := target.GetTmpOutputAll(target.Outputs())
+	outs := target.GetTmpOutputAll(target.Outputs.All())
 
 	env = append(env,
 		"TMP_DIR="+tmpDir,
 		"TMPDIR="+tmpDir,
 		"SRCS="+strings.Join(sources, " "),
-		"OUTS="+strings.Join(outEnv, " "),
+		"OUTS="+strings.Join(outs, " "),
 		"HOME="+tmpDir,
 		"TOOLS="+strings.Join(toolPaths(state, tools), " "),
 		// Set a consistent hash seed for Python. Important for build determinism.
 		"PYTHONHASHSEED=42",
 	)
 	// The OUT variable is only available on rules that have a single output.
-	if len(outEnv) == 1 {
-		env = append(env, "OUT="+path.Join(RepoRoot, target.TmpDir(), outEnv[0]))
+	if len(outs) == 1 {
+		env = append(env, "OUT="+path.Join(RepoRoot, target.TmpDir(), outs[0]))
 	}
 	// The SRC variable is only available on rules that have a single source file.
 	if len(sources) == 1 {
@@ -88,15 +88,13 @@ func BuildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 		env = append(env, "TOOL="+toolPath(state, tools[0]))
 	}
 	// Named source groups if the target declared any.
-	if target.Sources.IsNamed() {
-		for _, name := range target.Sources.Names() {
-			paths := target.SourcePaths(state.Graph, target.Sources.Named(name))
-			env = append(env, "SRCS_"+strings.ToUpper(name)+"="+strings.Join(paths, " "))
-		}
+	for _, name := range target.Sources.Names() {
+		paths := target.SourcePaths(state.Graph, target.Sources.Named(name))
+		env = append(env, "SRCS_"+strings.ToUpper(name)+"="+strings.Join(paths, " "))
 	}
 	// Named output groups similarly.
-	for name, outs := range target.DeclaredNamedOutputs() {
-		outs = target.GetTmpOutputAll(outs)
+	for _, name := range target.Outputs.Names() {
+		outs = target.GetTmpOutputAll(target.Outputs.Named(name))
 		env = append(env, "OUTS_"+strings.ToUpper(name)+"="+strings.Join(outs, " "))
 	}
 	// Named tools as well.
@@ -147,12 +145,12 @@ func TestEnvironment(state *BuildState, target *BuildTarget, testDir string) Bui
 	if state.NeedCoverage && !target.HasAnyLabel(state.Config.Test.DisableCoverage) {
 		env = append(env, "COVERAGE=true", "COVERAGE_FILE=test.coverage")
 	}
-	if len(target.Outputs()) > 0 {
+	if outs := target.Outputs.All(); len(outs) > 0 {
 		// Bit of a hack; ideally we would be unaware of the sandbox here.
 		if target.TestSandbox && runtime.GOOS == "linux" && !strings.HasPrefix(RepoRoot, "/tmp/") {
-			env = append(env, "TEST="+path.Join(SandboxDir, target.Outputs()[0]))
+			env = append(env, "TEST="+path.Join(SandboxDir, outs[0]))
 		} else {
-			env = append(env, "TEST="+path.Join(testDir, target.Outputs()[0]))
+			env = append(env, "TEST="+path.Join(testDir, outs[0]))
 		}
 	}
 	if data := target.Data.AllPaths(state.Graph); len(data) > 0 {
