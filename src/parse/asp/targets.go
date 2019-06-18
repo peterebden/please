@@ -198,8 +198,8 @@ func addMaybeNamed(s *scope, t *core.BuildTarget, name string, obj pyObject, inp
 		inputs.Set(il)
 		t.AddDependencies(il, source, data)
 	} else if d, ok := asDict(obj); ok {
-		for k, v := range d {
-			if v != None {
+		for _, k := range d.Keys() {
+			if v := d[k]; v != None {
 				l, ok := asList(v)
 				s.Assert(ok, "Values of %s must be lists of strings", name)
 				il := toInputList(s, l, name, systemAllowed, tool)
@@ -248,8 +248,8 @@ func addMaybeNamedOutput(s *scope, name string, obj pyObject, anon func(string),
 		}
 	} else if d, ok := asDict(obj); ok {
 		s.Assert(named != nil, "%s cannot be given as a dict", name)
-		for k, v := range d {
-			l, ok := asList(v)
+		for _, k := range d.Keys() {
+			l, ok := asList(d[k])
 			s.Assert(ok, "Values must be lists of strings")
 			for _, li := range l {
 				if li != None {
