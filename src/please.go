@@ -28,12 +28,12 @@ import (
 	"github.com/thought-machine/please/src/hashes"
 	"github.com/thought-machine/please/src/help"
 	"github.com/thought-machine/please/src/ide/intellij"
-	"github.com/thought-machine/please/src/metrics"
 	"github.com/thought-machine/please/src/output"
 	"github.com/thought-machine/please/src/parse"
 	"github.com/thought-machine/please/src/plz"
 	"github.com/thought-machine/please/src/query"
 	"github.com/thought-machine/please/src/run"
+	"github.com/thought-machine/please/src/scm"
 	"github.com/thought-machine/please/src/test"
 	"github.com/thought-machine/please/src/tool"
 	"github.com/thought-machine/please/src/update"
@@ -49,10 +49,9 @@ var config *core.Configuration
 var opts struct {
 	Usage      string `usage:"Please is a high-performance multi-language build system.\n\nIt uses BUILD files to describe what to build and how to build it.\nSee https://please.build for more information about how it works and what Please can do for you."`
 	BuildFlags struct {
-		Config     string            `short:"c" long:"config" description:"Build config to use. Defaults to opt."`
+		Config     string            `short:"c" long:"config" env:"PLZ_BUILD_CONFIG" description:"Build config to use. Defaults to opt."`
 		Arch       cli.Arch          `short:"a" long:"arch" description:"Architecture to compile for."`
 		RepoRoot   cli.Filepath      `short:"r" long:"repo_root" description:"Root of repository to build."`
-		KeepGoing  bool              `short:"k" long:"keep_going" description:"Don't stop on first failed target."`
 		NumThreads int               `short:"n" long:"num_threads" description:"Number of concurrent build operations. Default is number of CPUs + 2."`
 		Include    []string          `short:"i" long:"include" description:"Label of targets to include in automatic detection."`
 		Exclude    []string          `short:"e" long:"exclude" description:"Label of targets to exclude from automatic detection."`
@@ -75,11 +74,12 @@ var opts struct {
 	} `group:"Options controlling output & logging"`
 
 	FeatureFlags struct {
-		NoUpdate           bool `long:"noupdate" description:"Disable Please attempting to auto-update itself."`
-		NoCache            bool `long:"nocache" description:"Disable caches (NB. not incrementality)"`
-		NoHashVerification bool `long:"nohash_verification" description:"Hash verification errors are nonfatal."`
-		NoLock             bool `long:"nolock" description:"Don't attempt to lock the repo exclusively. Use with care."`
-		KeepWorkdirs       bool `long:"keep_workdirs" description:"Don't clean directories in plz-out/tmp after successfully building targets."`
+		NoUpdate           bool    `long:"noupdate" description:"Disable Please attempting to auto-update itself."`
+		NoCache            bool    `long:"nocache" description:"Disable caches (NB. not incrementality)"`
+		NoHashVerification bool    `long:"nohash_verification" description:"Hash verification errors are nonfatal."`
+		NoLock             bool    `long:"nolock" description:"Don't attempt to lock the repo exclusively. Use with care."`
+		KeepWorkdirs       bool    `long:"keep_workdirs" description:"Don't clean directories in plz-out/tmp after successfully building targets."`
+		HTTPProxy          cli.URL `long:"http_proxy" env:"HTTP_PROXY" description:"HTTP proxy to use for downloads"`
 	} `group:"Options that enable / disable certain features"`
 
 	HelpFlags struct {
@@ -96,16 +96,11 @@ var opts struct {
 	Build struct {
 		Prepare bool     `long:"prepare" description:"Prepare build directory for these targets but don't build them."`
 		Shell   bool     `long:"shell" description:"Like --prepare, but opens a shell in the build directory with the appropriate environment variables."`
+		Rebuild bool     `long:"rebuild" description:"To force the optimisation and rebuild one or more targets."`
 		Args    struct { // Inner nesting is necessary to make positional-args work :(
 			Targets []core.BuildLabel `positional-arg-name:"targets" description:"Targets to build"`
 		} `positional-args:"true" required:"true"`
 	} `command:"build" description:"Builds one or more targets"`
-
-	Rebuild struct {
-		Args struct {
-			Targets []core.BuildLabel `positional-arg-name:"targets" required:"true" description:"Targets to rebuild"`
-		} `positional-args:"true" required:"true"`
-	} `command:"rebuild" description:"Forces a rebuild of one or more targets"`
 
 	Hash struct {
 		Detailed bool `long:"detailed" description:"Produces a detailed breakdown of the hash"`
@@ -133,22 +128,23 @@ var opts struct {
 	} `command:"test" description:"Builds and tests one or more targets"`
 
 	Cover struct {
-		active              bool         `no-flag:"true"`
-		FailingTestsOk      bool         `long:"failing_tests_ok" hidden:"true" description:"Exit with status 0 even if tests fail (nonzero only if catastrophe happens)"`
-		NoCoverageReport    bool         `long:"nocoverage_report" description:"Suppress the per-file coverage report displayed in the shell"`
-		LineCoverageReport  bool         `short:"l" long:"line_coverage_report" description:" Show a line-by-line coverage report for all affected files."`
-		NumRuns             int          `short:"n" long:"num_runs" default:"1" description:"Number of times to run each test target."`
-		IncludeAllFiles     bool         `short:"a" long:"include_all_files" description:"Include all dependent files in coverage (default is just those from relevant packages)"`
-		IncludeFile         []string     `long:"include_file" description:"Filenames to filter coverage display to"`
-		TestResultsFile     cli.Filepath `long:"test_results_file" default:"plz-out/log/test_results.xml" description:"File to write combined test results to."`
-		SurefireDir         cli.Filepath `long:"surefire_dir" default:"plz-out/surefire-reports" description:"Directory to copy XML test results to."`
-		CoverageResultsFile cli.Filepath `long:"coverage_results_file" default:"plz-out/log/coverage.json" description:"File to write combined coverage results to."`
-		CoverageXMLReport   cli.Filepath `long:"coverage_xml_report" default:"plz-out/log/coverage.xml" description:"XML File to write combined coverage results to."`
-		ShowOutput          bool         `short:"s" long:"show_output" description:"Always show output of tests, even on success."`
-		Debug               bool         `short:"d" long:"debug" description:"Allows starting an interactive debugger on test failure. Does not work with all test types (currently only python/pytest, C and C++). Implies -c dbg unless otherwise set."`
-		Failed              bool         `short:"f" long:"failed" description:"Runs just the test cases that failed from the immediately previous run."`
-		Detailed            bool         `long:"detailed" description:"Prints more detailed output after tests."`
-		Shell               bool         `long:"shell" description:"Opens a shell in the test directory with the appropriate environment variables."`
+		active              bool          `no-flag:"true"`
+		FailingTestsOk      bool          `long:"failing_tests_ok" hidden:"true" description:"Exit with status 0 even if tests fail (nonzero only if catastrophe happens)"`
+		NoCoverageReport    bool          `long:"nocoverage_report" description:"Suppress the per-file coverage report displayed in the shell"`
+		LineCoverageReport  bool          `short:"l" long:"line_coverage_report" description:" Show a line-by-line coverage report for all affected files."`
+		NumRuns             int           `short:"n" long:"num_runs" default:"1" description:"Number of times to run each test target."`
+		IncludeAllFiles     bool          `short:"a" long:"include_all_files" description:"Include all dependent files in coverage (default is just those from relevant packages)"`
+		IncludeFile         cli.Filepaths `long:"include_file" description:"Filenames to filter coverage display to"`
+		TestResultsFile     cli.Filepath  `long:"test_results_file" default:"plz-out/log/test_results.xml" description:"File to write combined test results to."`
+		SurefireDir         cli.Filepath  `long:"surefire_dir" default:"plz-out/surefire-reports" description:"Directory to copy XML test results to."`
+		CoverageResultsFile cli.Filepath  `long:"coverage_results_file" default:"plz-out/log/coverage.json" description:"File to write combined coverage results to."`
+		CoverageXMLReport   cli.Filepath  `long:"coverage_xml_report" default:"plz-out/log/coverage.xml" description:"XML File to write combined coverage results to."`
+		Incremental         bool          `short:"i" long:"incremental" description:"Calculates summary statistics for incremental coverage, i.e. stats for just the lines currently modified."`
+		ShowOutput          bool          `short:"s" long:"show_output" description:"Always show output of tests, even on success."`
+		Debug               bool          `short:"d" long:"debug" description:"Allows starting an interactive debugger on test failure. Does not work with all test types (currently only python/pytest, C and C++). Implies -c dbg unless otherwise set."`
+		Failed              bool          `short:"f" long:"failed" description:"Runs just the test cases that failed from the immediately previous run."`
+		Detailed            bool          `long:"detailed" description:"Prints more detailed output after tests."`
+		Shell               bool          `long:"shell" description:"Opens a shell in the test directory with the appropriate environment variables."`
 		Args                struct {
 			Target core.BuildLabel `positional-arg-name:"target" description:"Target to test" group:"one test"`
 			Args   []string        `positional-arg-name:"arguments" description:"Arguments or test selectors" group:"one test"`
@@ -163,18 +159,18 @@ var opts struct {
 			PositionalArgs struct {
 				Targets []core.BuildLabel `positional-arg-name:"target" description:"Targets to run"`
 			} `positional-args:"true" required:"true"`
-			Args []string `short:"a" long:"arg" description:"Arguments to pass to the called processes."`
+			Args cli.Filepaths `short:"a" long:"arg" description:"Arguments to pass to the called processes."`
 		} `command:"parallel" description:"Runs a sequence of targets in parallel"`
 		Sequential struct {
 			Quiet          bool `short:"q" long:"quiet" description:"Suppress output from successful subprocesses."`
 			PositionalArgs struct {
 				Targets []core.BuildLabel `positional-arg-name:"target" description:"Targets to run"`
 			} `positional-args:"true" required:"true"`
-			Args []string `short:"a" long:"arg" description:"Arguments to pass to the called processes."`
+			Args cli.Filepaths `short:"a" long:"arg" description:"Arguments to pass to the called processes."`
 		} `command:"sequential" description:"Runs a sequence of targets sequentially."`
 		Args struct {
 			Target core.BuildLabel `positional-arg-name:"target" required:"true" description:"Target to run"`
-			Args   []string        `positional-arg-name:"arguments" description:"Arguments to pass to target when running (to pass flags to the target, put -- before them)"`
+			Args   cli.Filepaths   `positional-arg-name:"arguments" description:"Arguments to pass to target when running (to pass flags to the target, put -- before them)"`
 		} `positional-args:"true"`
 	} `command:"run" subcommands-optional:"true" description:"Builds and runs a single target"`
 
@@ -256,8 +252,8 @@ var opts struct {
 
 	Tool struct {
 		Args struct {
-			Tool tool.Tool `positional-arg-name:"tool" description:"Tool to invoke (jarcat, lint, etc)"`
-			Args []string  `positional-arg-name:"arguments" description:"Arguments to pass to the tool"`
+			Tool tool.Tool     `positional-arg-name:"tool" description:"Tool to invoke (jarcat, lint, etc)"`
+			Args cli.Filepaths `positional-arg-name:"arguments" description:"Arguments to pass to the tool"`
 		} `positional-args:"true"`
 	} `command:"tool" hidden:"true" description:"Invoke one of Please's sub-tools"`
 
@@ -372,19 +368,14 @@ var opts struct {
 // Functions are called after args are parsed and return true for success.
 var buildFunctions = map[string]func() bool{
 	"build": func() bool {
-		success, _ := runBuild(opts.Build.Args.Targets, true, false)
-		return success
-	},
-	"rebuild": func() bool {
-		// It would be more pure to require --nocache for this, but in basically any context that
-		// you use 'plz rebuild', you don't want the cache coming in and mucking things up.
-		// 'plz clean' followed by 'plz build' would still work in those cases, anyway.
-		opts.FeatureFlags.NoCache = true
-		success, _ := runBuild(opts.Rebuild.Args.Targets, true, false)
+		if opts.Build.Rebuild == true {
+			opts.FeatureFlags.NoCache = true
+		}
+		success, _ := runBuild(opts.Build.Args.Targets, true, false, false)
 		return success
 	},
 	"hash": func() bool {
-		success, state := runBuild(opts.Hash.Args.Targets, true, false)
+		success, state := runBuild(opts.Hash.Args.Targets, true, false, false)
 		if opts.Hash.Detailed {
 			for _, target := range state.ExpandOriginalTargets() {
 				build.PrintHashes(state, state.Graph.TargetOrDie(target))
@@ -413,31 +404,42 @@ var buildFunctions = map[string]func() bool{
 		test.AddOriginalTargetsToCoverage(state, opts.Cover.IncludeAllFiles)
 		test.RemoveFilesFromCoverage(state.Coverage, state.Config.Cover.ExcludeExtension)
 
-		test.WriteCoverageToFileOrDie(state.Coverage, string(opts.Cover.CoverageResultsFile))
+		var stats *test.IncrementalStats
+		if opts.Cover.Incremental {
+			lines, err := scm.NewFallback(core.RepoRoot).ChangedLines()
+			if err != nil {
+				log.Fatalf("Failed to determine changes: %s", err)
+			}
+			stats = test.CalculateIncrementalStats(state, lines)
+		}
+		test.WriteCoverageToFileOrDie(state.Coverage, string(opts.Cover.CoverageResultsFile), stats)
 		test.WriteXMLCoverageToFileOrDie(targets, state.Coverage, string(opts.Cover.CoverageXMLReport))
 
 		if opts.Cover.LineCoverageReport {
-			output.PrintLineCoverageReport(state, opts.Cover.IncludeFile)
+			output.PrintLineCoverageReport(state, opts.Cover.IncludeFile.AsStrings())
 		} else if !opts.Cover.NoCoverageReport {
-			output.PrintCoverage(state, opts.Cover.IncludeFile)
+			output.PrintCoverage(state, opts.Cover.IncludeFile.AsStrings())
+		}
+		if opts.Cover.Incremental {
+			output.PrintIncrementalCoverage(stats)
 		}
 		return success || opts.Cover.FailingTestsOk
 	},
 	"run": func() bool {
-		if success, state := runBuild([]core.BuildLabel{opts.Run.Args.Target}, true, false); success {
-			run.Run(state, opts.Run.Args.Target, opts.Run.Args.Args, opts.Run.Env)
+		if success, state := runBuild([]core.BuildLabel{opts.Run.Args.Target}, true, false, false); success {
+			run.Run(state, opts.Run.Args.Target, opts.Run.Args.Args.AsStrings(), opts.Run.Env)
 		}
 		return false // We should never return from run.Run so if we make it here something's wrong.
 	},
 	"parallel": func() bool {
-		if success, state := runBuild(opts.Run.Parallel.PositionalArgs.Targets, true, false); success {
-			os.Exit(run.Parallel(context.Background(), state, state.ExpandOriginalTargets(), opts.Run.Parallel.Args, opts.Run.Parallel.NumTasks, opts.Run.Parallel.Quiet, opts.Run.Env))
+		if success, state := runBuild(opts.Run.Parallel.PositionalArgs.Targets, true, false, false); success {
+			os.Exit(run.Parallel(context.Background(), state, state.ExpandOriginalTargets(), opts.Run.Parallel.Args.AsStrings(), opts.Run.Parallel.NumTasks, opts.Run.Parallel.Quiet, opts.Run.Env))
 		}
 		return false
 	},
 	"sequential": func() bool {
-		if success, state := runBuild(opts.Run.Sequential.PositionalArgs.Targets, true, false); success {
-			os.Exit(run.Sequential(state, state.ExpandOriginalTargets(), opts.Run.Sequential.Args, opts.Run.Sequential.Quiet, opts.Run.Env))
+		if success, state := runBuild(opts.Run.Sequential.PositionalArgs.Targets, true, false, false); success {
+			os.Exit(run.Sequential(state, state.ExpandOriginalTargets(), opts.Run.Sequential.Args.AsStrings(), opts.Run.Sequential.Quiet, opts.Run.Env))
 		}
 		return false
 	},
@@ -456,7 +458,7 @@ var buildFunctions = map[string]func() bool{
 			}
 			opts.Clean.Args.Targets = core.WholeGraph
 		}
-		if success, state := runBuild(opts.Clean.Args.Targets, false, false); success {
+		if success, state := runBuild(opts.Clean.Args.Targets, false, false, false); success {
 			clean.Targets(state, state.ExpandOriginalTargets(), !opts.FeatureFlags.NoCache)
 			return true
 		}
@@ -478,7 +480,7 @@ var buildFunctions = map[string]func() bool{
 		return false
 	},
 	"gc": func() bool {
-		success, state := runBuild(core.WholeGraph, false, false)
+		success, state := runBuild(core.WholeGraph, false, false, true)
 		if success {
 			state.OriginalTargets = state.Config.Gc.Keep
 			gc.GarbageCollect(state, opts.Gc.Args.Targets, state.ExpandOriginalTargets(), state.Config.Gc.Keep, state.Config.Gc.KeepLabel,
@@ -501,7 +503,7 @@ var buildFunctions = map[string]func() bool{
 		return true
 	},
 	"export": func() bool {
-		success, state := runBuild(opts.Export.Args.Targets, false, false)
+		success, state := runBuild(opts.Export.Args.Targets, false, false, false)
 		if success {
 			export.ToDir(state, opts.Export.Output, state.ExpandOriginalTargets())
 		}
@@ -513,7 +515,7 @@ var buildFunctions = map[string]func() bool{
 		return follow.ConnectClient(state, opts.Follow.Args.URL.String(), opts.Follow.Retries, time.Duration(opts.Follow.Delay))
 	},
 	"outputs": func() bool {
-		success, state := runBuild(opts.Export.Outputs.Args.Targets, true, false)
+		success, state := runBuild(opts.Export.Outputs.Args.Targets, true, false, true)
 		if success {
 			export.Outputs(state, opts.Export.Output, state.ExpandOriginalTargets())
 		}
@@ -523,7 +525,7 @@ var buildFunctions = map[string]func() bool{
 		return help.Help(string(opts.Help.Args.Topic))
 	},
 	"tool": func() bool {
-		tool.Run(config, opts.Tool.Args.Tool, opts.Tool.Args.Args)
+		tool.Run(config, opts.Tool.Args.Tool, opts.Tool.Args.Args.AsStrings())
 		return false // If the function returns (which it shouldn't), something went wrong.
 	},
 	"deps": func() bool {
@@ -562,7 +564,9 @@ var buildFunctions = map[string]func() bool{
 			targets = core.FindOwningPackages(state, files)
 		}
 		return runQuery(true, targets, func(state *core.BuildState) {
-			query.AffectedTargets(state, files.Get(), opts.BuildFlags.Include, opts.BuildFlags.Exclude, opts.Query.AffectedTargets.Tests, !opts.Query.AffectedTargets.Intransitive)
+			// affectedtargets deliberately does not include targets labelled "manual".
+			state.SetIncludeAndExclude(opts.BuildFlags.Include, append(opts.BuildFlags.Exclude, "manual", "manual:"+core.OsArch))
+			query.AffectedTargets(state, files.Get(), opts.Query.AffectedTargets.Tests, !opts.Query.AffectedTargets.Intransitive)
 		})
 	},
 	"input": func() bool {
@@ -621,7 +625,7 @@ var buildFunctions = map[string]func() bool{
 		return success
 	},
 	"changed": func() bool {
-		success, state := runBuild(core.WholeGraph, false, false)
+		success, state := runBuild(core.WholeGraph, false, false, false)
 		if !success {
 			return false
 		}
@@ -637,18 +641,14 @@ var buildFunctions = map[string]func() bool{
 		return true
 	},
 	"changes": func() bool {
-		// Temporarily set this flag on to avoid fatal errors from the first parse.
-		keepGoing := opts.BuildFlags.KeepGoing
-		opts.BuildFlags.KeepGoing = true
 		original := query.MustGetRevision(opts.Query.Changes.CurrentCommand)
 		files := opts.Query.Changes.Args.Files.Get()
 		query.MustCheckout(opts.Query.Changes.Since, opts.Query.Changes.CheckoutCommand)
-		_, before := runBuild(core.WholeGraph, false, false)
-		opts.BuildFlags.KeepGoing = keepGoing
+		_, before := runBuild(core.WholeGraph, false, false, false)
 		// N.B. Ignore failure here; if we can't parse the graph before then it will suffice to
 		//      assume that anything we don't know about has changed.
 		query.MustCheckout(original, opts.Query.Changes.CheckoutCommand)
-		success, after := runBuild(core.WholeGraph, false, false)
+		success, after := runBuild(core.WholeGraph, false, false, false)
 		if !success {
 			return false
 		}
@@ -664,7 +664,7 @@ var buildFunctions = map[string]func() bool{
 	},
 	"watch": func() bool {
 		// Don't ask it to test now since we don't know if any of them are tests yet.
-		success, state := runBuild(opts.Watch.Args.Targets, true, false)
+		success, state := runBuild(opts.Watch.Args.Targets, true, false, false)
 		state.NeedRun = opts.Watch.Run
 		watch.Watch(state, state.ExpandOriginalTargets(), runPlease)
 		return success
@@ -675,7 +675,7 @@ var buildFunctions = map[string]func() bool{
 		})
 	},
 	"intellij": func() bool {
-		success, state := runBuild(opts.Ide.IntelliJ.Args.Labels, false, false)
+		success, state := runBuild(opts.Ide.IntelliJ.Args.Labels, false, false, false)
 		if success {
 			intellij.ExportIntellijStructure(state.Config, state.Graph, state.ExpandOriginalLabels())
 		}
@@ -699,7 +699,7 @@ func runQuery(needFullParse bool, labels []core.BuildLabel, onSuccess func(state
 	if len(labels) == 0 {
 		labels = core.WholeGraph
 	}
-	if success, state := runBuild(labels, false, false); success {
+	if success, state := runBuild(labels, false, false, true); success {
 		onSuccess(state)
 		return true
 	}
@@ -710,9 +710,14 @@ func doTest(targets []core.BuildLabel, surefireDir cli.Filepath, resultsFile cli
 	os.RemoveAll(string(surefireDir))
 	os.RemoveAll(string(resultsFile))
 	os.MkdirAll(string(surefireDir), core.DirPermissions)
-	success, state := runBuild(targets, true, true)
+	success, state := runBuild(targets, true, true, false)
 	test.CopySurefireXMLFilesToDir(state, string(surefireDir))
 	test.WriteResultsToFileOrDie(state.Graph, string(resultsFile))
+	if state.Config.Test.Upload != "" {
+		if err := test.UploadResults(state.Graph, state.Config.Test.Upload.String()); err != nil {
+			log.Error("%s", err)
+		}
+	}
 	return success, state
 }
 
@@ -758,7 +763,7 @@ func Please(targets []core.BuildLabel, config *core.Configuration, shouldBuild, 
 	state.PrepareShell = opts.Build.Shell || opts.Test.Shell || opts.Cover.Shell
 	state.Watch = len(opts.Watch.Args.Targets) > 0
 	state.CleanWorkdirs = !opts.FeatureFlags.KeepWorkdirs
-	state.ForceRebuild = len(opts.Rebuild.Args.Targets) > 0
+	state.ForceRebuild = opts.Build.Rebuild
 	state.ShowTestOutput = opts.Test.ShowOutput || opts.Cover.ShowOutput
 	state.DebugTests = debugTests
 	state.ShowAllOutput = opts.OutputFlags.ShowAllOutput
@@ -779,7 +784,7 @@ func Please(targets []core.BuildLabel, config *core.Configuration, shouldBuild, 
 func runPlease(state *core.BuildState, targets []core.BuildLabel) {
 	// Acquire the lock before we start building
 	if (state.NeedBuild || state.NeedTests) && !opts.FeatureFlags.NoLock {
-		core.AcquireRepoLock()
+		core.AcquireRepoLock(state)
 		defer core.ReleaseRepoLock()
 	}
 
@@ -794,7 +799,7 @@ func runPlease(state *core.BuildState, targets []core.BuildLabel) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		output.MonitorState(state, config.Please.NumThreads, !pretty, opts.BuildFlags.KeepGoing, detailedTests, string(opts.OutputFlags.TraceFile))
+		output.MonitorState(state, config.Please.NumThreads, !pretty, detailedTests, string(opts.OutputFlags.TraceFile))
 		wg.Done()
 	}()
 
@@ -835,6 +840,9 @@ func readConfig(forceUpdate bool) *core.Configuration {
 	} else if err := config.ApplyOverrides(opts.BuildFlags.Option); err != nil {
 		log.Fatalf("Can't override requested config setting: %s", err)
 	}
+	if opts.FeatureFlags.HTTPProxy != "" {
+		config.Build.HTTPProxy = opts.FeatureFlags.HTTPProxy
+	}
 	// Now apply any flags that override this
 	if opts.Update.Latest {
 		config.Please.Version.Unset()
@@ -847,11 +855,32 @@ func readConfig(forceUpdate bool) *core.Configuration {
 
 // Runs the actual build
 // Which phases get run are controlled by shouldBuild and shouldTest.
-func runBuild(targets []core.BuildLabel, shouldBuild, shouldTest bool) (bool, *core.BuildState) {
+func runBuild(targets []core.BuildLabel, shouldBuild, shouldTest, isQuery bool) (bool, *core.BuildState) {
+	if !isQuery {
+		opts.BuildFlags.Exclude = append(opts.BuildFlags.Exclude, "manual", "manual:"+core.OsArch)
+	}
+	if stat, _ := os.Stdin.Stat(); (stat.Mode()&os.ModeCharDevice) == 0 && !readingStdin(targets) {
+		if len(targets) == 0 {
+			// Assume they want us to read from stdin since nothing else was given.
+			targets = []core.BuildLabel{core.BuildLabelStdin}
+		} else if shouldBuild || shouldTest || len(targets) != 1 || targets[0] != core.WholeGraph[0] {
+			log.Warning("Input is being piped to stdin but is not being read; you need to pass - explicitly to read it.")
+		}
+	}
 	if len(targets) == 0 {
 		targets = core.InitialPackage()
 	}
 	return Please(targets, config, shouldBuild, shouldTest)
+}
+
+// readingStdin returns true if any of the given build labels are reading from stdin.
+func readingStdin(labels []core.BuildLabel) bool {
+	for _, l := range labels {
+		if l == core.BuildLabelStdin {
+			return true
+		}
+	}
+	return false
 }
 
 // readConfigAndSetRoot reads the .plzconfig files and moves to the repo root.
@@ -993,7 +1022,6 @@ func execute(command string) bool {
 
 	success := buildFunctions[command]()
 
-	metrics.Stop()
 	worker.StopAll()
 
 	return success

@@ -49,12 +49,6 @@ var specialFields = map[string]func(*printer) (string, bool){
 		}
 		return p.genericPrint(reflect.ValueOf(p.target.Visibility))
 	},
-	"container": func(p *printer) (string, bool) {
-		if p.target.ContainerSettings == nil {
-			return "True", p.target.Containerise
-		}
-		return p.genericPrint(reflect.ValueOf(p.target.ContainerSettings.ToMap()))
-	},
 	"tools": func(p *printer) (string, bool) {
 		return p.genericPrint(reflect.ValueOf(p.target.AllTools()))
 	},
@@ -212,6 +206,11 @@ func (p *printer) genericPrint(v reflect.Value) (string, bool) {
 			secs := v.Interface().(time.Duration).Seconds()
 			return fmt.Sprintf("%0.0f", secs), secs > 0.0
 		}
+	case reflect.Ptr:
+		if v.IsNil() {
+			return "", false
+		}
+		return p.genericPrint(v.Elem())
 	}
 	log.Error("Unknown field type %s: %s", v.Kind(), v.Type().Name())
 	p.error = true

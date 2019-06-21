@@ -10,12 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pkg/xattr"
 	"gopkg.in/op/go-logging.v1"
 
 	"github.com/thought-machine/please/src/build"
 	"github.com/thought-machine/please/src/core"
-	"github.com/thought-machine/please/src/metrics"
+	"github.com/thought-machine/please/src/fs"
 	"github.com/thought-machine/please/src/utils"
 	"github.com/thought-machine/please/src/worker"
 )
@@ -31,12 +30,9 @@ const dummyCoverage = "<?xml version=\"1.0\" ?><coverage></coverage>"
 const xattrName = "user.plz_test"
 
 // Test runs the tests for a single target.
-func Test(tid int, state *core.BuildState, label core.BuildLabel) {
-	state.LogBuildResult(tid, label, core.TargetTesting, "Testing...")
-	startTime := time.Now()
-	target := state.Graph.TargetOrDie(label)
-	test(tid, state.ForTarget(target), label, target)
-	metrics.Record(target, time.Since(startTime))
+func Test(tid int, state *core.BuildState, target *core.BuildTarget) {
+	state.LogBuildResult(tid, target.Label, core.TargetTesting, "Testing...")
+	test(tid, state.ForTarget(target), target.Label, target)
 }
 
 func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.BuildTarget) {
@@ -118,13 +114,13 @@ func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.B
 	}
 
 	needToRun := func() bool {
-		if target.State() == core.Unchanged && core.PathExists(cachedOutputFile) {
+		if s := target.State(); (s == core.Unchanged || s == core.Reused) && core.PathExists(cachedOutputFile) {
 			// Output file exists already and appears to be valid. We might still need to rerun though
 			// if the coverage files aren't available.
-			if needCoverage && !verifyHash(cachedCoverageFile, hash) {
+			if needCoverage && !verifyHash(state, cachedCoverageFile, hash) {
 				log.Debug("Rerunning %s, coverage file doesn't exist or has wrong hash", target.Label)
 				return true
-			} else if !verifyHash(cachedOutputFile, hash) {
+			} else if !verifyHash(state, cachedOutputFile, hash) {
 				log.Debug("Rerunning %s, results file has incorrect hash", target.Label)
 				return true
 			}
@@ -318,7 +314,7 @@ func testCommandAndEnv(state *core.BuildState, target *core.BuildTarget) (string
 func runTest(state *core.BuildState, target *core.BuildTarget) ([]byte, error) {
 	replacedCmd, env := testCommandAndEnv(state, target)
 	log.Debug("Running test %s\nENVIRONMENT:\n%s\n%s", target.Label, strings.Join(env, "\n"), replacedCmd)
-	_, stderr, err := core.ExecWithTimeoutShellStdStreams(state, target, target.TestDir(), env, target.TestTimeout, state.Config.Test.Timeout, state.ShowAllOutput, replacedCmd, target.TestSandbox, state.DebugTests, "testing")
+	_, stderr, err := state.ProcessExecutor.ExecWithTimeoutShellStdStreams(target, target.TestDir(), env, target.TestTimeout, state.ShowAllOutput, replacedCmd, target.TestSandbox, state.DebugTests)
 	return stderr, err
 }
 
@@ -345,7 +341,7 @@ func prepareAndRunTest(tid int, state *core.BuildState, target *core.BuildTarget
 		state.LogBuildError(tid, target.Label, core.TargetTestFailed, err, "Failed to prepare test directory for %s: %s", target.Label, err)
 		return []byte{}, err
 	}
-	return runPossiblyContainerisedTest(tid, state, target)
+	return runTest(state, target)
 }
 
 func parseTestOutput(stdout []byte, stderr string, runError error, duration time.Duration, target *core.BuildTarget, outputFile string) core.TestSuite {
@@ -564,7 +560,7 @@ func moveAndCacheOutputFile(state *core.BuildState, target *core.BuildTarget, ha
 		state.Cache.StoreExtra(target, hash, filename)
 	}
 	// Set the hash on the new destination file
-	return xattr.LSet(to, xattrName, hash)
+	return fs.RecordAttr(to, hash, xattrName, state.XattrsSupported)
 }
 
 // startTestWorkerIfNeeded starts a worker server if the test needs one.
@@ -586,7 +582,6 @@ func startTestWorkerIfNeeded(tid int, state *core.BuildState, target *core.Build
 }
 
 // verifyHash verifies that the hash on a test file matches the one for the current test.
-func verifyHash(filename string, hash []byte) bool {
-	attr, err := xattr.LGet(filename, xattrName)
-	return err == nil && bytes.Equal(attr, hash)
+func verifyHash(state *core.BuildState, filename string, hash []byte) bool {
+	return bytes.Equal(hash, fs.ReadAttr(filename, xattrName, state.XattrsSupported))
 }

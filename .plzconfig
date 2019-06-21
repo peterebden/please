@@ -21,7 +21,6 @@ providetool = @//tools/please_go_provide
 importpath = github.com/thought-machine/please
 
 [cpp]
-defaultnamespace = thought_machine
 defaultoptcppflags = --std=c++11 -O2 -DNDEBUG -Wall -Wextra -Werror -Wno-unused-parameter
 defaultdbgcppflags = --std=c++11 -g3 -DDEBUG -Wall -Wextra -Werror -Wno-unused-parameter
 
@@ -29,16 +28,11 @@ defaultdbgcppflags = --std=c++11 -g3 -DDEBUG -Wall -Wextra -Werror -Wno-unused-p
 javacworker = //tools/java:javac_worker
 junitrunner = //tools/java:junit_runner
 jarcattool = @//tools/jarcat
-pleasemaventool = //tools/please_maven
 
 [proto]
 protoctool = //third_party/proto:protoc
 protocgoplugin = //third_party/go:protoc-gen-go
 language = go
-
-[docker]
-defaultimage = thoughtmachine/please_test:v2
-allowlocalfallback = false
 
 [provider "go"]
 target = //test/go_provider

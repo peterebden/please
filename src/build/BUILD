@@ -9,13 +9,11 @@ go_library(
         "//src/cache",
         "//src/core",
         "//src/fs",
-        "//src/metrics",
         "//src/worker",
         "//third_party/go:go-multierror",
         "//third_party/go:logging",
         "//third_party/go:protobuf",
         "//third_party/go:shlex",
-        "//third_party/go:xattr",
     ],
 )
 

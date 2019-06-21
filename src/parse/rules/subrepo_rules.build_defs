@@ -94,16 +94,10 @@ def new_http_archive(name:str, urls:list, build_file:str=None, build_file_conten
         out = name + '_' + basename(urls[0]),
         hashes = hashes,
     )
-    if any([u.endswith('.jar') or u.endswith('.zip') for u in urls]):
-        if strip_prefix:
-            cmd = '$TOOL x $SRCS_REMOTE -o $OUT -s ' + strip_prefix
-        else:
-            cmd = '$TOOL x $SRCS_REMOTE -o $OUT'
+    if strip_prefix:
+        cmd = '$TOOL x $SRCS_REMOTE -o $OUT -s ' + strip_prefix
     else:
-        if strip_prefix:
-            cmd = f'tar -axf $SRCS_REMOTE && mv {strip_prefix} $OUT'
-        else:
-            cmd = 'mkdir $OUT && tar -axf $SRCS_REMOTE -C $OUT'
+        cmd = '$TOOL x $SRCS_REMOTE -o $OUT'
     if build_file:
         cmd += ' && mv $SRCS_BUILD $OUT/' + CONFIG.BUILD_FILE_NAMES[0]
     elif build_file_content:
@@ -165,7 +159,7 @@ def github_repo(name:str, repo:str, revision:str, build_file:str=None, hashes:st
       revision: Revision to download.
       build_file: The file to use as a BUILD file for this subrepository.
       hashes: List of hashes to verify the rule with.
-      strip: Prefix to strip from the contents of the zip. Is usually autodetected for you.
+      strip_prefix: Prefix to strip from the contents of the zip. Is usually autodetected for you.
       config: Configuration file to apply to this subrepo.
       bazel_compat: Shorthand to turn on Bazel compatibility. This is equivalent to
                     specifying a config file with `compatibility = true` in the `[bazel]`

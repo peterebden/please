@@ -12,6 +12,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/shlex"
@@ -20,7 +21,6 @@ import (
 
 	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/fs"
-	"github.com/thought-machine/please/src/metrics"
 	"github.com/thought-machine/please/src/worker"
 )
 
@@ -31,11 +31,10 @@ var errStop = fmt.Errorf("stopping build")
 
 // httpClient is the shared http client that we use for fetching remote files.
 var httpClient http.Client
+var httpClientOnce sync.Once
 
 // Build implements the core logic for building a single target.
-func Build(tid int, state *core.BuildState, label core.BuildLabel) {
-	start := time.Now()
-	target := state.Graph.TargetOrDie(label)
+func Build(tid int, state *core.BuildState, target *core.BuildTarget) {
 	state = state.ForTarget(target)
 	target.SetState(core.Building)
 	if err := buildTarget(tid, state, target); err != nil {
@@ -44,14 +43,13 @@ func Build(tid int, state *core.BuildState, label core.BuildLabel) {
 			state.LogBuildResult(tid, target.Label, core.TargetBuildStopped, "Build stopped")
 			return
 		}
-		state.LogBuildError(tid, label, core.TargetBuildFailed, err, "Build failed: %s", err)
+		state.LogBuildError(tid, target.Label, core.TargetBuildFailed, err, "Build failed: %s", err)
 		if err := RemoveOutputs(target); err != nil {
 			log.Errorf("Failed to remove outputs for %s: %s", target.Label, err)
 		}
 		target.SetState(core.Failed)
 		return
 	}
-	metrics.Record(target, time.Since(start))
 
 	// Add any of the reverse deps that are now fully built to the queue.
 	for _, reverseDep := range state.Graph.ReverseDependencies(target) {
@@ -134,8 +132,10 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		}
 		haveRunPostBuildFunction = true
 	}
-	oldOutputHash, outputHashErr := OutputHash(state, target)
 	if target.IsFilegroup {
+		// Ordering here is important; the hasher needs to get a chance to see the source hash
+
+		oldOutputHash, _ := OutputHash(state, target)
 		log.Debug("Building %s...", target.Label)
 		if err := buildFilegroup(state, target); err != nil {
 			return err
@@ -155,6 +155,7 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		return fmt.Errorf("Error preparing directories for %s: %s", target.Label, err)
 	}
 
+	oldOutputHash, outputHashErr := OutputHash(state, target)
 	retrieveArtifacts := func() bool {
 		// If there aren't any outputs, we don't have to do anything right now.
 		// Checks later will handle the case of something with a post-build function that
@@ -273,7 +274,7 @@ func runBuildCommand(state *core.BuildState, target *core.BuildTarget, command s
 	}
 	env := core.StampedBuildEnvironment(state, target, inputHash)
 	log.Debug("Building target %s\nENVIRONMENT:\n%s\n%s", target.Label, env, command)
-	out, combined, err := core.ExecWithTimeoutShell(state, target, target.TmpDir(), env, target.BuildTimeout, state.Config.Build.Timeout, state.ShowAllOutput, command, target.Sandbox)
+	out, combined, err := state.ProcessExecutor.ExecWithTimeoutShell(target, target.TmpDir(), env, target.BuildTimeout, state.ShowAllOutput, command, target.Sandbox)
 	if err != nil {
 		if state.Verbosity >= 4 {
 			return nil, fmt.Errorf("Error building target %s: %s\nENVIRONMENT:\n%s\n%s\n%s",
@@ -368,12 +369,12 @@ func moveOutputs(state *core.BuildState, target *core.BuildTarget) ([]string, bo
 
 func moveOutput(state *core.BuildState, target *core.BuildTarget, tmpOutput, realOutput string) (bool, error) {
 	// hash the file
-	newHash, err := state.PathHasher.Hash(tmpOutput, false)
+	newHash, err := state.PathHasher.Hash(tmpOutput, false, true)
 	if err != nil {
 		return true, err
 	}
 	if fs.PathExists(realOutput) {
-		if oldHash, err := state.PathHasher.Hash(realOutput, false); err != nil {
+		if oldHash, err := state.PathHasher.Hash(realOutput, false, true); err != nil {
 			return true, err
 		} else if bytes.Equal(oldHash, newHash) {
 			// We already have the same file in the current location. Don't bother moving it.
@@ -482,7 +483,7 @@ func OutputHash(state *core.BuildState, target *core.BuildTarget) ([]byte, error
 		// NB. Always force a recalculation of the output hashes here. Memoisation is not
 		//     useful because by definition we are rebuilding a target, and can actively hurt
 		//     in cases where we compare the retrieved cache artifacts with what was there before.
-		h2, err := state.PathHasher.Hash(filename, true)
+		h2, err := state.PathHasher.Hash(filename, true, !target.IsFilegroup)
 		if err != nil {
 			return nil, err
 		}
@@ -622,6 +623,13 @@ func linkIfNotExists(src, dest string, f linkFunc) {
 // fetchRemoteFile fetches a remote file from a URL.
 // This is a builtin for better efficiency and more control over the whole process.
 func fetchRemoteFile(state *core.BuildState, target *core.BuildTarget) error {
+	httpClientOnce.Do(func() {
+		if state.Config.Build.HTTPProxy != "" {
+			httpClient.Transport = &http.Transport{
+				Proxy: http.ProxyURL(state.Config.Build.HTTPProxy.AsURL()),
+			}
+		}
+	})
 	if err := prepareDirectory(target.OutDir(), false); err != nil {
 		return err
 	} else if err := prepareDirectory(target.TmpDir(), false); err != nil {

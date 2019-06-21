@@ -215,15 +215,17 @@
         Sets the default timeout length, in seconds, for any test that isn't explicitly given one.
         Defaults to 600 (10 minutes).</li>
 
-      <li><b>DefaultContainer</b><br/>
-        Sets the default type of containerisation to use for tests that are given
-        <code>container = True</code>.<br/>
-        Currently the only option is "docker" but we intend to add rkt support at some point.</li>
-
       <li><b>Sandbox</b> (bool)<br/>
         Activates sandboxing for individual tests, which isolates them from network
         access, IPC and some aspects of the filesystem. Currently only works on Linux.
         Defaults to <code>False</code>.</li>
+
+      <li><b>DisableCoverage</b> (repeated string)<br/>
+        Disables coverage for tests that have any of these labels specified.</li>
+
+      <li><b>Upload</b> (string)<br/>
+        URL to upload test results to. The request is a POST containing the results in
+        XML format.</li>
     </ul>
 
     <h3>[Cover]</h3>
@@ -241,70 +243,6 @@
         Defaults to <code>.pb.go</code>, <code>_pb2.py</code>, <code>.pb.cc</code>,
         <code>.pb.h</code>, <code>_test.py</code>, <code>_test.go</code>,
         <code>_pb.go</code>, <code>_bindata.go</code>, and <code>_test_main.cc</code>.</li>
-    </ul>
-
-    <h3>[Metrics]</h3>
-
-    <p>Options related to metric collection. Currently the only metrics implementation pushes
-      to a <a href="https://prometheus.io/">Prometheus</a>
-      <a href="https://github.com/prometheus/pushgateway">pushgateway</a> for collection.</p>
-
-    <ul>
-      <li><b>PushGatewayURL</b><br/>
-	    The URL of the pushgateway to send metrics to.</li>
-
-      <li><b>PushFrequency</b> (duration)<br/>
-	    The frequency to push statistics at. Defaults to 400ms.</li>
-
-      <li><b>PushTimeout</b> (duration)<br/>
-	    The timeout for metric pushes. Defaults to 500ms.</li>
-
-      <li><b>PerTest</b> (bool)<br/>
-	    Emit per-test duration metrics. Off by default, they can be very useful but generate
-        larger cardinalities of labels in Prometheus.</li>
-
-      <li><b>PerUser</b> (bool)<br/>
-	    Emit per-user metric labels. On by default, but turning it off can reduce the amount of
-        data to be stored.</li>
-    </ul>
-
-    <h3>[CustomMetricLabels]</h3>
-
-    <p>Describes optional labels to attach to metrics.<br/>
-      For technical reasons this is a separate section to the main metrics options.</p>
-
-    <p>These are defined as key-value pairs, where the key is the label attached to the metric
-      and the value is a command to run on the system that defines the value to attach.<br/>
-      Hence these labels are run once at startup and constant across all build targets.</p>
-
-    <p>For example:<br/>
-      <pre><code>branch = git rev-parse --abbrev-ref HEAD</code></pre>
-      to attach the current git branch to all metrics reported.</p>
-
-    <p>In general it's a good idea not to let the cardinality of your labels become too large,
-      so you might want to filter it to only print whether the user is on master or not.</p>
-
-    <h3>[Docker]</h3>
-
-    <p>Options relating to tests that are run inside Docker containers.</p>
-
-    <ul>
-      <li><b>DefaultImage</b><br/>
-        The default image used for any test that doesn't specify another.
-        Defaults to <code>ubuntu:trusty</code>.</li>
-
-      <li><b>AllowLocalFallback</b> (bool)<br/>
-        If True, will attempt to run the test locally if containerised running fails.
-        Defaults to <code>False</code>.</li>
-
-      <li><b>Timeout</b> (int)<br/>
-        Default timeout for Dockerised tests, in seconds. Default is 1200 (twenty minutes).</li>
-
-      <li><b>ResultsTimeout</b> (int)<br/>
-        Timeout to wait when trying to retrieve results from inside the container. Default is 20 seconds.</li>
-
-      <li><b>RemoveTimeout</b> (int)<br/>
-        Timeout to wait when trying to remove a container after running a test. Defaults to 20 seconds.</li>
     </ul>
 
     <h3>[Gc]</h3>
@@ -431,10 +369,6 @@
 	or <a href="http://d104xtrw2rzoau.cloudfront.net/wp-content/uploads/2013/06/15806-cat_stuck_jar_27_8_2012.jpg">this</a>
 	is purr-ly coincidental.</li>
 
-      <li><b>PleaseMavenTool</b><br/>
-        Defines the tool used to fetch information from Maven in <code>maven_jars</code> rules.<br/>
-        Defaults to <code>please_maven</code> in the Please install directory.</li>
-
       <li><b>DefaultMavenRepo</b><br/>
         Default location to load artifacts from in maven_jar rules.</li>
 
@@ -478,10 +412,6 @@
       <li><b>ArTool</b><br/>
         The tool invoked to archive static libraries. Defaults to <code>ar</code>.</li>
 
-      <li><b>AsmTool</b><br/>
-        The tool invoked as an assembler. Currently only used on OSX for
-	<code>cc_embed_binary</code> rules and so defaults to <code>nasm</code>.</li>
-
       <li><b>LinkWithLdTool</b><br/>
 	If true, instructs Please to use the tool set earlier in <code>ldtool</code>
 	to link binaries instead of <code>cctool</code>.<br/>
@@ -512,12 +442,6 @@
       <li><b>DefaultLdFlags</b><br/>
         Linker flags passed to all C++ rules.<br/>
         By default this is empty.</li>
-
-      <li><b>DefaultNamespace</b><br/>
-        Namespace passed to all <code>cc_embed_binary</code> rules when not overridden
-        by the <code>namespace</code> argument to that rule.<br/>
-        Not set by default, if you want to use those rules you'll need to set it or
-        pass it explicitly to each one.</li>
 
       <li><b>Coverage</b><br/>
         If true (the default), coverage will be available for C and C++ build rules.<br/>
@@ -663,6 +587,17 @@
     </code></pre>
 
     <p>This will tab-complete, taking into account the various sub-commands and flags etc.</p>
+
+    <h3><a name="events">[Events]</a></h3>
+
+    <p>This section defines how clients can connect to Please to receive events. This allows
+      one instance running a build (say on a CI server) to be connected to by a client
+      instance which can then track what it's doing and display it in the console locally.</p>
+
+    <ul>
+      <li><b>Port</b><br/>
+        The port to expose that clients can receive events from.</li>
+    </ul>
 
 
     <h3>[Bazel]</h3>

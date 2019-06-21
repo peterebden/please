@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/base64"
+	"os"
 	"path"
 	"runtime"
 	"strings"
@@ -40,12 +41,18 @@ func GeneralBuildEnvironment(config *Configuration) BuildEnv {
 
 // buildEnvironment returns the basic parts of the build environment.
 func buildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
-	return append(GeneralBuildEnvironment(state.Config),
+	env := append(GeneralBuildEnvironment(state.Config),
 		"PKG="+target.Label.PackageName,
 		"PKG_DIR="+target.Label.PackageDir(),
 		"NAME="+target.Label.Name,
 		"CONFIG="+state.Config.Build.Config,
 	)
+	if target.PassEnv != nil {
+		for _, e := range *target.PassEnv {
+			env = append(env, e+"="+os.Getenv(e))
+		}
+	}
+	return env
 }
 
 // BuildEnvironment creates the shell env vars to be passed into the exec.Command calls made by plz.
@@ -129,11 +136,7 @@ func TestEnvironment(state *BuildState, target *BuildTarget, testDir string) Bui
 		// We shouldn't really have specific things like this here, but it really is just easier to set it.
 		"GTEST_OUTPUT=xml:"+resultsFile,
 	)
-	// Ideally we would set this to something useful even within a container, but it ends
-	// up being /tmp/test or something which just confuses matters.
-	if !target.Containerise {
-		env = append(env, "HOME="+testDir)
-	}
+	env = append(env, "HOME="+testDir)
 	if state.NeedCoverage && !target.HasAnyLabel(state.Config.Test.DisableCoverage) {
 		env = append(env, "COVERAGE=true", "COVERAGE_FILE=test.coverage")
 	}
@@ -176,7 +179,7 @@ var stampEnv BuildEnv
 var stampEnvOnce sync.Once
 
 func initStampEnv() {
-	stampEnv = BuildEnv{"SCM_REVISION=" + scm.MustNew(RepoRoot).CurrentRevIdentifier()}
+	stampEnv = BuildEnv{"SCM_REVISION=" + scm.NewFallback(RepoRoot).CurrentRevIdentifier()}
 }
 
 func toolPath(state *BuildState, tool BuildInput) string {

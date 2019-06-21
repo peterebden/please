@@ -92,9 +92,10 @@ def python_library(name:str, srcs:list=[], resources:list=[], deps:list=[], visi
     )
 
 
-def python_binary(name:str, main:str, resources:list=[], out:str=None, deps:list=[],
-                  visibility:list=None, zip_safe:bool=None, strip:bool=False, interpreter:str=None,
-                  shebang:str='', labels:list&features&tags=[]):
+def python_binary(name:str, main:str, srcs:list=[], resources:list=[], out:str=None, deps:list=[],
+                  visibility:list=None, test_only:bool=False, zip_safe:bool=None,
+                  site:bool=False, strip:bool=False,
+                  interpreter:str=None, shebang:str='', labels:list&features&tags=[]):
     """Generates a Python binary target.
 
     This compiles all source files together into a single .pex file which can
@@ -105,15 +106,19 @@ def python_binary(name:str, main:str, resources:list=[], out:str=None, deps:list
     Args:
       name (str): Name of the rule.
       main (str): Python file which is the entry point and __main__ module.
+      srcs (list): List of additional Python source files for this binary.
       resources (list): List of static resources to include in the .pex.
       out (str): Name of the output file. Default to name + .pex
       deps (list): Dependencies of this rule.
       visibility (list): Visibility specification.
+      test_only (bool): If True, can only be depended on by tests.
       zip_safe (bool): Allows overriding whether the output is marked zip safe or not.
                        If set to explicitly True or False, the output will be marked
                        appropriately; by default it will be safe unless any of the
                        transitive dependencies are themselves marked as not zip-safe.
       strip (bool): Strips source code from the output .pex file, leaving just bytecode.
+      site (bool): Allows the Python interpreter to import site; conversely if False, it will be
+                   started with the -S flag to avoid importing site.
       interpreter (str): The Python interpreter to use. Defaults to the config setting
                          which is normally just 'python', but could be 'python3' or
                          'pypy' or whatever.
@@ -122,16 +127,22 @@ def python_binary(name:str, main:str, resources:list=[], out:str=None, deps:list
       labels (list): Labels to apply to this rule.
     """
     shebang = shebang or interpreter or CONFIG.DEFAULT_PYTHON_INTERPRETER
-    cmd = '$TOOLS_PEX -s "%s" -m "%s" --zip_safe' % (shebang, CONFIG.PYTHON_MODULE_DIR)
+    cmd = '$TOOLS_PEX -s "%s" -m "%s" --zip_safe --interpreter_options="%s"' % (
+        shebang, CONFIG.PYTHON_MODULE_DIR, CONFIG.PYTHON_INTERPRETER_OPTIONS)
+    if site:
+        cmd += ' -S'
     pre_build, cmd = _handle_zip_safe(cmd, zip_safe)
+
+    assert main not in srcs, "main file should not be included in srcs"
 
     lib_rule = python_library(
         name='_%s#lib' % name,
-        srcs=[main],
+        srcs=[main] + srcs,
         resources=resources,
         interpreter=interpreter,
         deps=deps,
         visibility=visibility,
+        test_only=test_only,
     )
 
     # Use the pex tool to compress the entry point & add all the bootstrap helpers etc.
@@ -150,6 +161,7 @@ def python_binary(name:str, main:str, resources:list=[], out:str=None, deps:list
             'interpreter': [interpreter or CONFIG.DEFAULT_PYTHON_INTERPRETER],
             'pex': [CONFIG.PEX_TOOL],
         },
+        test_only=test_only,
     )
     # This rule concatenates the .pex with all the other precompiled zip files from dependent rules.
     cmd = '$TOOL z -i . -s .pex.zip -s .whl --preamble_from="$SRC" --include_other --add_init_py --strict'
@@ -176,13 +188,14 @@ def python_binary(name:str, main:str, resources:list=[], out:str=None, deps:list
         # intermediary filegroup rule if really needed.
         provides={'py': lib_rule},
         labels=labels,
+        test_only=test_only,
     )
 
 
 def python_test(name:str, srcs:list, data:list=[], resources:list=[], deps:list=[], worker:str='',
                 labels:list&features&tags=None, size:str=None, flags:str='', visibility:list=None,
-                container:bool|dict=False, sandbox:bool=None, timeout:int=0, flaky:bool|int=0,
-                test_outputs:list=None, zip_safe:bool=None, interpreter:str=None):
+                sandbox:bool=None, timeout:int=0, flaky:bool|int=0,
+                test_outputs:list=None, zip_safe:bool=None, interpreter:str=None, site:bool=False):
     """Generates a Python test target.
 
     This works very similarly to python_binary; it is also a single .pex file
@@ -203,7 +216,6 @@ def python_test(name:str, srcs:list, data:list=[], resources:list=[], deps:list=
       size (str): Test size (enormous, large, medium or small).
       flags (str): Flags to apply to the test command.
       visibility (list): Visibility specification.
-      container (bool | dict): If True, the test will be run in a container (eg. Docker).
       sandbox (bool): Sandbox the test on Linux to restrict access to namespaces such as network.
       timeout (int): Maximum time this test is allowed to run for, in seconds.
       flaky (int | bool): True to mark this test as flaky, or an integer for a number of reruns.
@@ -215,9 +227,15 @@ def python_test(name:str, srcs:list, data:list=[], resources:list=[], deps:list=
       interpreter (str): The Python interpreter to use. Defaults to the config setting
                          which is normally just 'python', but could be 'python3' or
                         'pypy' or whatever.
+      site (bool): Allows the Python interpreter to import site; conversely if False, it will be
+                   started with the -S flag to avoid importing site.
     """
     interpreter = interpreter or CONFIG.DEFAULT_PYTHON_INTERPRETER
-    cmd = '$TOOLS_PEX -t -s "%s" -m "%s" -r "%s" --zip_safe' % (interpreter, CONFIG.PYTHON_MODULE_DIR, CONFIG.PYTHON_TEST_RUNNER)
+    cmd = '$TOOLS_PEX -t -s "%s" -m "%s" -r "%s" --zip_safe --interpreter_options="%s"' % (
+        interpreter, CONFIG.PYTHON_MODULE_DIR, CONFIG.PYTHON_TEST_RUNNER,
+        CONFIG.PYTHON_INTERPRETER_OPTIONS)
+    if site:
+        cmd += ' -S'
     pre_build, cmd = _handle_zip_safe(cmd, zip_safe)
 
     # Use the pex tool to compress the entry point & add all the bootstrap helpers etc.
@@ -274,7 +292,6 @@ def python_test(name:str, srcs:list, data:list=[], resources:list=[], deps:list=
         output_is_complete=True,
         binary=True,
         test=True,
-        container=container,
         test_sandbox=sandbox,
         building_description="Building pex...",
         visibility=visibility,
@@ -344,7 +361,7 @@ def pip_library(name:str, version:str, hashes:list=None, package_name:str=None, 
         # Fix for https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=830892
         # tl;dr: Debian has broken --target with a custom patch, the only way to fix is to pass --system
         # which is itself Debian-specific, so we need to find if we're running on Debian. AAAAARGGGHHHH...
-        cmd = f'[ -f /etc/debian_version ] && [ $TOOLS_PIP == "/usr/bin/pip3" ] && SYS_FLAG="--system" || SYS_FLAG=""; {cmd} $SYS_FLAG' 
+        cmd = f'[ -f /etc/debian_version ] && [ $TOOLS_PIP == "/usr/bin/pip3" ] && SYS_FLAG="--system" || SYS_FLAG=""; {cmd} $SYS_FLAG'
     cmd += f' -b build {repo_flag} {index_flag} {pip_flags} {package_name}'
 
     if strip:

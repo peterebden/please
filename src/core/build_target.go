@@ -5,7 +5,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -83,8 +82,6 @@ type BuildTarget struct {
 	// Indicates that the target can only be depended on by tests or other rules with this set.
 	// Used to restrict non-deployable code and also affects coverage detection.
 	TestOnly bool `name:"test_only"`
-	// True if we're going to containerise the test.
-	Containerise bool `name:"container"`
 	// True if the build action is sandboxed.
 	Sandbox bool
 	// True if the test action is sandboxed.
@@ -117,8 +114,6 @@ type BuildTarget struct {
 	ShowProgress bool `name:"progress"`
 	// If ShowProgress is true, this is used to store the current progress of the target.
 	Progress float32 `print:"false"`
-	// Containerisation settings that override the defaults.
-	ContainerSettings *TargetContainerSettings `name:"container"`
 	// The results of this test target, if it is one.
 	Results TestSuite `print:"false"`
 	// Description displayed while the command is building.
@@ -154,6 +149,8 @@ type BuildTarget struct {
 	Tools []BuildInput
 	// Named tools, similar to named sources.
 	namedTools map[string][]BuildInput `name:"tools"`
+	// Target-specific environment passthroughs.
+	PassEnv *[]string `name:"pass_env"`
 	// Flakiness of test, ie. number of times we will rerun it before giving up. 1 is the default.
 	Flakiness int `name:"flaky"`
 	// Timeouts for build/test actions
@@ -161,7 +158,7 @@ type BuildTarget struct {
 	TestTimeout  time.Duration `name:"test_timeout"`
 	// Extra output files from the test.
 	// These are in addition to the usual test.results output file.
-	TestOutputs []string
+	TestOutputs []string `name:"test_outputs"`
 }
 
 // A PreBuildFunction is a type that allows hooking a pre-build callback.
@@ -235,28 +232,6 @@ func (s BuildTargetState) String() string {
 	return "Unknown"
 }
 
-// TargetContainerSettings are known settings controlling containerisation for a particular target.
-type TargetContainerSettings struct {
-	// Image to use for this test
-	DockerImage string `name:"docker_image"`
-	// Username / Uid to run as
-	DockerUser string `name:"docker_user"`
-	// Location to mount a tmpfs at
-	Tmpfs string `name:"tmpfs"`
-}
-
-// ToMap returns this struct as a map.
-func (settings *TargetContainerSettings) ToMap() map[string]string {
-	m := map[string]string{}
-	v := reflect.ValueOf(settings).Elem()
-	for i := 0; i < v.NumField(); i++ {
-		if s := v.Field(i).String(); s != "" {
-			m[v.Type().Field(i).Tag.Get("name")] = s
-		}
-	}
-	return m
-}
-
 // NewBuildTarget constructs & returns a new BuildTarget.
 func NewBuildTarget(label BuildLabel) *BuildTarget {
 	return &BuildTarget{
@@ -264,6 +239,12 @@ func NewBuildTarget(label BuildLabel) *BuildTarget {
 		state:               int32(Inactive),
 		BuildingDescription: DefaultBuildingDescription,
 	}
+}
+
+// String returns a stringified form of the build label of this target, which is
+// a unique identity for it.
+func (target *BuildTarget) String() string {
+	return target.Label.String()
 }
 
 // TmpDir returns the temporary working directory for this target, eg.
@@ -357,6 +338,22 @@ func (target *BuildTarget) Dependencies() []*BuildTarget {
 	for _, deps := range target.dependencies {
 		for _, dep := range deps.deps {
 			ret = append(ret, dep)
+		}
+	}
+	sort.Sort(ret)
+	return ret
+}
+
+// ExternalDependencies returns the non-internal dependencies of this target (i.e. not "_target#tag" ones).
+func (target *BuildTarget) ExternalDependencies() []*BuildTarget {
+	ret := make(BuildTargets, 0, len(target.dependencies))
+	for _, deps := range target.dependencies {
+		for _, dep := range deps.deps {
+			if dep.Label.Parent() != target.Label {
+				ret = append(ret, dep)
+			} else {
+				ret = append(ret, dep.ExternalDependencies()...)
+			}
 		}
 	}
 	sort.Sort(ret)
@@ -725,10 +722,6 @@ func (target *BuildTarget) HasAllLabels(labels []string) bool {
 // Each include/exclude can have multiple comma-separated labels; in this case, all of the labels
 // in a given group must match.
 func (target *BuildTarget) ShouldInclude(includes, excludes []string) bool {
-	if target.HasLabel("manual") || target.HasLabel("manual:"+OsArch) {
-		return false
-	}
-
 	if len(includes) == 0 && len(excludes) == 0 {
 		return true
 	}
@@ -1125,22 +1118,6 @@ func (target *BuildTarget) AddRequire(require string) {
 	target.AddLabel(require)
 }
 
-// SetContainerSetting sets one of the fields on the container settings by name.
-func (target *BuildTarget) SetContainerSetting(name, value string) error {
-	if target.ContainerSettings == nil {
-		target.ContainerSettings = &TargetContainerSettings{}
-	}
-	t := reflect.TypeOf(*target.ContainerSettings)
-	for i := 0; i < t.NumField(); i++ {
-		if strings.ToLower(t.Field(i).Name) == name {
-			v := reflect.ValueOf(target.ContainerSettings)
-			v.Elem().Field(i).SetString(value)
-			return nil
-		}
-	}
-	return fmt.Errorf("Field %s isn't a valid container setting", name)
-}
-
 // OutMode returns the mode to set outputs of a target to.
 func (target *BuildTarget) OutMode() os.FileMode {
 	if target.IsBinary {
@@ -1169,6 +1146,26 @@ func (target *BuildTarget) Parent(graph *BuildGraph) *BuildTarget {
 // HasParent returns true if the target has a parent rule that's not itself.
 func (target *BuildTarget) HasParent() bool {
 	return target.Label.HasParent()
+}
+
+// ShouldShowProgress returns true if the target should display progress.
+// This is provided as a function to satisfy the process package.
+func (target *BuildTarget) ShouldShowProgress() bool {
+	return target.ShowProgress
+}
+
+// ProgressDescription returns a description of what the target is doing as it runs.
+// This is provided as a function to satisfy the process package.
+func (target *BuildTarget) ProgressDescription() string {
+	if target.State() >= Built && target.IsTest {
+		return "testing"
+	}
+	return target.BuildingDescription
+}
+
+// SetProgress sets the current progress of this target.
+func (target *BuildTarget) SetProgress(progress float32) {
+	target.Progress = progress
 }
 
 // BuildTargets makes a slice of build targets sortable by their labels.

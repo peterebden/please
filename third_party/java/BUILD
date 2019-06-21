@@ -23,11 +23,11 @@ maven_jar(
 
 # These are shipped as components of Please, but for easier management the code lives in
 # https://github.com/thought-machine/please-java
-# The versions tend to lag a little bit behind this repo as a result.
+# As a result the versions are no longer directly connected to the ones in this repo.
 maven_jar(
     name = "junit_runner",
     hashes = ["409563f6d2de11ef5e9e88275e1da62e984e4ccb"],
-    id = "build.please:junit-runner:13.3.5",
+    id = "build.please:junit-runner:13.4.0",
     deps = [
         ":hamcrest",
         ":jacoco_shaded",
@@ -37,13 +37,13 @@ maven_jar(
 
 maven_jar(
     name = "jacoco_shaded",
-    hashes = ["1bf517865fcb9740159d6b4de4f6fb7b69f24aa9"],
-    id = "build.please:jacoco-shaded:0.8.1",
+    hashes = ["d0ee5760fa10cfe453c01ba9be7ca1733a485384"],
+    id = "build.please:jacoco-shaded:0.8.4",
 )
 
 maven_jar(
     name = "javac_worker",
-    hashes = ["46b9672f0adb195e610fc86a656fd70ef3359d07"],
-    id = "build.please:javac-worker:13.1.10",
+    hashes = ["9358da07f1497e8eeba6991be2ad626f994801b1"],
+    id = "build.please:javac-worker:13.4.0",
     deps = [":gson"],
 )

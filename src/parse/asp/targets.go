@@ -24,14 +24,12 @@ func createTarget(s *scope, args []pyObject) *core.BuildTarget {
 	}
 	name := string(args[0].(pyString))
 	testCmd := args[2]
-	container := isTruthy(19)
 	test := isTruthy(14)
 	// A bunch of error checking first
 	s.NAssert(name == "all", "'all' is a reserved build target name.")
 	s.NAssert(name == "", "Target name is empty")
 	s.NAssert(strings.ContainsRune(name, '/'), "/ is a reserved character in build target names")
 	s.NAssert(strings.ContainsRune(name, ':'), ": is a reserved character in build target names")
-	s.NAssert(container && !test, "Only tests can have container=True")
 
 	if tag := args[34]; tag != nil {
 		if tagStr := string(tag.(pyString)); tagStr != "" {
@@ -48,7 +46,6 @@ func createTarget(s *scope, args []pyObject) *core.BuildTarget {
 	target.IsTest = test
 	target.NeedsTransitiveDependencies = isTruthy(17)
 	target.OutputIsComplete = isTruthy(18)
-	target.Containerise = container
 	target.Sandbox = isTruthy(20)
 	target.TestOnly = test || isTruthy(15)
 	target.ShowProgress = isTruthy(36)
@@ -59,6 +56,10 @@ func createTarget(s *scope, args []pyObject) *core.BuildTarget {
 		name := string(args[37].(pyString))
 		size = mustSize(s, name)
 		target.AddLabel(name)
+	}
+	if args[40] != None {
+		l := asStringList(s, args[40].(pyList), "pass_env")
+		target.PassEnv = &l
 	}
 
 	target.BuildTimeout = sizeAndTimeout(s, size, args[24], s.state.Config.Build.Timeout)
@@ -90,15 +91,11 @@ func createTarget(s *scope, args []pyObject) *core.BuildTarget {
 		} else {
 			target.Flakiness = 1
 		}
-		// Automatically label containerised tests.
-		if target.Containerise {
-			target.AddLabel("container")
-		}
 		if testCmd != nil && testCmd != None {
 			target.TestCommand, target.TestCommands = decodeCommands(s, args[2])
 		}
 		target.TestTimeout = sizeAndTimeout(s, size, args[25], s.state.Config.Test.Timeout)
-		target.TestSandbox = isTruthy(21) && !target.Containerise
+		target.TestSandbox = isTruthy(21)
 		target.NoTestOutput = isTruthy(22)
 	}
 	return target
@@ -108,7 +105,9 @@ func createTarget(s *scope, args []pyObject) *core.BuildTarget {
 func sizeAndTimeout(s *scope, size *core.Size, timeout pyObject, defaultTimeout cli.Duration) time.Duration {
 	switch t := timeout.(type) {
 	case pyInt:
-		return time.Duration(t) * time.Second
+		if t > 0 {
+			return time.Duration(t) * time.Second
+		}
 	case pyString:
 		return time.Duration(mustSize(s, string(t)).Timeout)
 	}
@@ -173,7 +172,6 @@ func populateTarget(s *scope, t *core.BuildTarget, args []pyObject) {
 	})
 	addMaybeNamedSecret(s, "secrets", args[8], t.AddSecret, t.AddNamedSecret, t, true)
 	addProvides(s, "provides", args[29], t)
-	setContainerSettings(s, "container", args[19], t)
 	if f := callbackFunction(s, "pre_build", args[26], 1, "argument"); f != nil {
 		t.PreBuildFunction = &preBuildFunction{f: f, s: s}
 	}
@@ -325,20 +323,6 @@ func addProvides(s *scope, name string, obj pyObject, t *core.BuildTarget) {
 			str, ok := v.(pyString)
 			s.Assert(ok, "%s values must be strings", name)
 			t.AddProvide(k, checkLabel(s, core.ParseBuildLabelContext(string(str), s.pkg)))
-		}
-	}
-}
-
-// setContainerSettings sets any custom container settings on the target.
-func setContainerSettings(s *scope, name string, obj pyObject, t *core.BuildTarget) {
-	if obj != nil && obj != None && obj != True && obj != False {
-		d, ok := asDict(obj)
-		s.Assert(ok, "Argument %s must be a dict, not %s", name, obj.Type())
-		for k, v := range d {
-			str, ok := v.(pyString)
-			s.Assert(ok, "%s keys must be strings", name)
-			err := t.SetContainerSetting(strings.Replace(k, "_", "", -1), string(str))
-			s.Assert(err == nil, "%s", err)
 		}
 	}
 }

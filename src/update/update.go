@@ -33,12 +33,15 @@ import (
 
 	"github.com/thought-machine/please/src/cli"
 	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/src/process"
 )
 
 var log = logging.MustGetLogger("update")
 
 // minSignedVersion is the earliest version of Please that has a signature.
 var minSignedVersion = semver.Version{Major: 9, Minor: 2}
+
+var httpClient http.Client
 
 // CheckAndUpdate checks whether we should update Please and does so if needed.
 // If it requires an update it will never return, it will either die on failure or on success will exec the new Please.
@@ -59,7 +62,7 @@ func CheckAndUpdate(config *core.Configuration, updatesEnabled, updateCommand, f
 
 	// Must lock here so that the update process doesn't race when running two instances
 	// simultaneously.
-	core.AcquireRepoLock()
+	core.AcquireRepoLock(nil)
 	defer core.ReleaseRepoLock()
 
 	// If the destination exists and the user passed --force, remove it to force a redownload.
@@ -70,6 +73,13 @@ func CheckAndUpdate(config *core.Configuration, updatesEnabled, updateCommand, f
 		}
 	}
 
+	// Honour the proxy setting if it's in the config.
+	if config.Build.HTTPProxy != "" {
+		httpClient.Transport = &http.Transport{
+			Proxy: http.ProxyURL(config.Build.HTTPProxy.AsURL()),
+		}
+	}
+
 	// Download it.
 	newPlease := downloadAndLinkPlease(config, verify)
 
@@ -77,6 +87,7 @@ func CheckAndUpdate(config *core.Configuration, updatesEnabled, updateCommand, f
 	clean(config, updateCommand)
 
 	// Now run the new one.
+	core.ReturnToInitialWorkingDir()
 	args := filterArgs(forceUpdate, append([]string{newPlease}, os.Args[1:]...))
 	log.Info("Executing %s", strings.Join(args, " "))
 	if err := syscall.Exec(newPlease, args, os.Environ()); err != nil {
@@ -177,6 +188,10 @@ func downloadPlease(config *core.Configuration, verify bool) {
 	defer mustClose(rc)
 	var r io.Reader = bufio.NewReader(rc)
 
+	if len(config.Please.VersionChecksum) > 0 {
+		r = mustVerifyHash(r, config.Please.VersionChecksum)
+	}
+
 	if verify && config.Please.Version.LessThan(minSignedVersion) {
 		log.Warning("Won't verify signature of download, version is too old to be signed.")
 	} else if verify {
@@ -220,7 +235,7 @@ func copyTarFile(zr io.Reader, newDir, url string) {
 // It panics if the download fails.
 func mustDownload(url string, progress bool) io.ReadCloser {
 	log.Info("Downloading %s", url)
-	response, err := http.Get(url)
+	response, err := httpClient.Get(url)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to download %s: %s", url, err))
 	} else if response.StatusCode < 200 || response.StatusCode > 299 {
@@ -323,8 +338,7 @@ func describe(a, b semver.Version, verb bool) string {
 // It returns true iff the version is as expected.
 func verifyNewPlease(newPlease, version string) bool {
 	version = "Please version " + version // Output is prefixed with this.
-	cmd := core.ExecCommand(newPlease, "--version")
-	output, err := cmd.Output()
+	output, err := process.ExecCommand(newPlease, "--version")
 	if err != nil {
 		log.Errorf("Failed to run new Please: %s", err)
 		return false

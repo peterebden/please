@@ -505,81 +505,10 @@ go_get(
 )
 
 go_get(
-    name = "docker",
-    get = "docker.io/go-docker",
-    install = [
-        "",
-        "api/...",
-    ],
-    repo = "github.com/docker/go-docker",
-    revision = "v1.0.0",
-    deps = [
-        ":docker-distribution",
-        ":errors",
-        ":go-connections",
-        ":go-digest",
-        ":go-units",
-        ":gogo-protobuf",
-        ":image-spec",
-        ":net",
-    ],
-)
-
-go_get(
-    name = "docker-distribution",
-    get = "github.com/docker/distribution",
-    install = [
-        "reference",
-        "digestset",
-    ],
-    revision = "edc3ab29cdff8694dd6feb85cfeb4b5f1b38ed9c",
-    strip = ["vendor"],
-    deps = [
-        ":go-digest",
-        ":net",
-    ],
-)
-
-go_get(
-    name = "go-connections",
-    get = "github.com/docker/go-connections/...",
-    revision = "v0.3.0",
-    deps = [
-        ":errors",
-        ":net",
-    ],
-)
-
-go_get(
-    name = "go-units",
-    get = "github.com/docker/go-units",
-    revision = "v0.3.2",
-)
-
-go_get(
     name = "gogo-protobuf",
     get = "github.com/gogo/protobuf",
     install = ["proto"],
     revision = "v0.4",
-)
-
-go_get(
-    name = "go-digest",
-    get = "github.com/opencontainers/go-digest",
-    revision = "v1.0.0-rc1",
-)
-
-go_get(
-    name = "image-spec",
-    get = "github.com/opencontainers/image-spec",
-    install = [
-        "specs-go/...",
-    ],
-    revision = "v1.0.0",
-    deps = [
-        ":errors",
-        ":go-digest",
-    ],
 )
 
 go_get(
@@ -640,4 +569,22 @@ go_get(
         ":logging",
         ":terminal",
     ],
+)
+
+go_get(
+    name = "diff",
+    get = "github.com/sourcegraph/go-diff/diff",
+    revision = "v0.5.1",
+    deps = [
+        ":gogo-protobuf",
+        ":sqs-pbtypes",
+    ],
+)
+
+go_get(
+    name = "sqs-pbtypes",
+    get = "sourcegraph.com/sqs/pbtypes",
+    repo = "github.com/sqs/pbtypes",
+    revision = "v1.0.0",
+    deps = [":gogo-protobuf"],
 )

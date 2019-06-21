@@ -174,16 +174,6 @@ func TestAddSource(t *testing.T) {
 	assert.Equal(t, 2, len(target.DeclaredDependencies()))
 }
 
-func TestSetContainerSettings(t *testing.T) {
-	target := makeTarget("//src/test/python:lib1", "")
-
-	target.SetContainerSetting("dockerimage", "tm/special_image:v2")
-	assert.Equal(t, "tm/special_image:v2", target.ContainerSettings.DockerImage)
-
-	target.SetContainerSetting("dockeruser", "")
-	assert.Equal(t, "", target.ContainerSettings.DockerUser)
-}
-
 func TestOutputs(t *testing.T) {
 	target1 := makeTarget("//src/core:target1", "PUBLIC")
 	target1.AddOutput("file1.go")
@@ -539,18 +529,6 @@ func TestAllTools(t *testing.T) {
 	assert.Equal(t, []BuildInput{target2.Label, target4.Label, target3.Label}, target1.AllTools())
 }
 
-func TestContainerSettingsToMap(t *testing.T) {
-	s := TargetContainerSettings{
-		DockerImage: "alpine:3.5",
-		DockerUser:  "test",
-	}
-	expected := map[string]string{
-		"docker_image": "alpine:3.5",
-		"docker_user":  "test",
-	}
-	assert.Equal(t, expected, s.ToMap())
-}
-
 func TestShouldIncludeSimple(t *testing.T) {
 	target := makeTargetWithLabels("//src/core:target1", "a", "b", "c")
 	excludes := []string{}
@@ -625,18 +603,12 @@ func TestShouldIncludeWithCompoundIncludeAndExclude(t *testing.T) {
 	assert.False(t, target.ShouldInclude(includes, excludes))
 }
 
-func TestShouldIncludeManual(t *testing.T) {
-	target := makeTargetWithLabels("//src/core:target1", "a", "manual")
-	// Doesn't include because "manual" overrides it
-	assert.False(t, target.ShouldInclude([]string{"a"}, nil))
-
-	target = makeTargetWithLabels("//src/core:target1", "a", "manual:test_armhf")
-	// Does include because it's a different architecture
-	assert.True(t, target.ShouldInclude([]string{"a"}, nil))
-
-	target = makeTargetWithLabels("//src/core:target1", "a", "manual:"+OsArch)
-	// Doesn't include because it's manual for this architecture.
-	assert.False(t, target.ShouldInclude([]string{"a"}, nil))
+func TestExternalDependencies(t *testing.T) {
+	t1a := makeTarget("//src/core:_target1#a", "PUBLIC")
+	t1 := makeTarget("//src/core:target1", "PUBLIC", t1a)
+	t2a := makeTarget("//src/core:_target2#a", "PUBLIC", t1)
+	t2 := makeTarget("//src/core:target2", "PUBLIC", t2a)
+	assert.Equal(t, []*BuildTarget{t1}, t2.ExternalDependencies())
 }
 
 func makeTarget(label, visibility string, deps ...*BuildTarget) *BuildTarget {

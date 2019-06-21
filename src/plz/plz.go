@@ -1,6 +1,7 @@
 package plz
 
 import (
+	"strings"
 	"sync"
 
 	"gopkg.in/op/go-logging.v1"
@@ -10,7 +11,6 @@ import (
 	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/follow"
 	"github.com/thought-machine/please/src/fs"
-	"github.com/thought-machine/please/src/metrics"
 	"github.com/thought-machine/please/src/parse"
 	"github.com/thought-machine/please/src/test"
 	"github.com/thought-machine/please/src/utils"
@@ -34,8 +34,8 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, config *
 	if config.Events.Port != 0 || config.Display.SystemStats {
 		go follow.UpdateResources(state)
 	}
-	metrics.InitFromConfig(config)
 
+	l := newLimiter(state.Config)
 	// Start looking for the initial targets to kick the build off
 	go findOriginalTasks(state, preTargets, targets, arch)
 	// Start up all the build workers
@@ -43,7 +43,7 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, config *
 	wg.Add(config.Please.NumThreads)
 	for i := 0; i < config.Please.NumThreads; i++ {
 		go func(tid int) {
-			doTasks(tid, state, state.Include, state.Exclude, arch)
+			doTasks(l, tid, state, state.Include, state.Exclude, arch)
 			wg.Done()
 		}(i)
 	}
@@ -54,7 +54,7 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, config *
 	}
 }
 
-func doTasks(tid int, state *core.BuildState, include, exclude []string, arch cli.Arch) {
+func doTasks(l *limiter, tid int, state *core.BuildState, include, exclude []string, arch cli.Arch) {
 	for {
 		label, dependor, t := state.NextTask()
 		switch t {
@@ -69,11 +69,19 @@ func doTasks(tid int, state *core.BuildState, include, exclude []string, arch cl
 				state.TaskDone(false)
 			}
 		case core.Build, core.SubincludeBuild:
-			build.Build(tid, state, label)
-			state.TaskDone(true)
+			target := state.Graph.TargetOrDie(label)
+			if l.ShouldRun(state, target, t) {
+				build.Build(tid, state, target)
+				state.TaskDone(true)
+				l.Done(target)
+			}
 		case core.Test:
-			test.Test(tid, state, label)
-			state.TaskDone(true)
+			target := state.Graph.TargetOrDie(label)
+			if l.ShouldRun(state, target, t) {
+				test.Test(tid, state, target)
+				state.TaskDone(true)
+				l.Done(target)
+			}
 		}
 	}
 }
@@ -126,8 +134,20 @@ func findOriginalTask(state *core.BuildState, target core.BuildLabel, addToList 
 		target.Subrepo = arch.String()
 	}
 	if target.IsAllSubpackages() {
-		for pkg := range utils.FindAllSubpackages(state.Config, target.PackageName, "") {
-			state.AddOriginalTarget(core.NewBuildLabel(pkg, "all"), addToList)
+		// Any command-line labels with subrepos and ... require us to know where they are in order to
+		// walk the directory tree, so we have to make sure the subrepo exists first.
+		dir := target.PackageName
+		prefix := ""
+		if target.Subrepo != "" {
+			state.WaitForBuiltTarget(target.SubrepoLabel(), target)
+			subrepo := state.Graph.SubrepoOrDie(target.Subrepo)
+			dir = subrepo.Dir(dir)
+			prefix = subrepo.Dir(prefix)
+		}
+		for pkg := range utils.FindAllSubpackages(state.Config, dir, "") {
+			l := core.NewBuildLabel(strings.TrimLeft(strings.TrimPrefix(pkg, prefix), "/"), "all")
+			l.Subrepo = target.Subrepo
+			state.AddOriginalTarget(l, addToList)
 		}
 	} else {
 		state.AddOriginalTarget(target, addToList)

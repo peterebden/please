@@ -1,15 +1,11 @@
 module github.com/thought-machine/please
 
 require (
-	docker.io/go-docker v1.0.0
 	github.com/Songmu/prompter v0.0.0-20181014095714-d227c68538bd
 	github.com/Workiva/go-datastructures v1.0.50
 	github.com/bazelbuild/buildtools v0.0.0-20190228125936-4bcdbd1064fc
 	github.com/coreos/go-semver v0.2.0
 	github.com/djherbis/atime v1.0.0
-	github.com/docker/distribution v2.7.1+incompatible // indirect
-	github.com/docker/go-connections v0.4.0 // indirect
-	github.com/docker/go-units v0.3.3 // indirect
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/gogo/protobuf v1.2.0 // indirect
@@ -24,13 +20,13 @@ require (
 	github.com/karrick/godirwalk v1.7.8
 	github.com/kevinburke/go-bindata v3.13.0+incompatible // indirect
 	github.com/mattn/go-isatty v0.0.4 // indirect
-	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
-	github.com/opencontainers/image-spec v1.0.1 // indirect
+	github.com/peterebden/ar v0.0.0-20181115090543-a0ae3a11a518
 	github.com/peterebden/gcfg v1.3.0
 	github.com/peterebden/go-cli-init v1.0.0
 	github.com/pkg/xattr v0.4.0
 	github.com/prometheus/client_golang v0.9.2
 	github.com/shirou/gopsutil v2.18.12+incompatible
+	github.com/sourcegraph/go-diff v0.5.1
 	github.com/sourcegraph/jsonrpc2 v0.0.0-20190106185902-35a74f039c6a
 	github.com/streamrail/concurrent-map v0.0.0-20160823150647-8bf1e9bacbf6
 	github.com/stretchr/testify v1.2.2

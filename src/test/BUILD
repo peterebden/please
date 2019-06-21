@@ -12,13 +12,10 @@ go_library(
         "//src/cli",
         "//src/core",
         "//src/fs",
-        "//src/metrics",
         "//src/utils",
         "//src/worker",
-        "//third_party/go:docker",
         "//third_party/go:logging",
         "//third_party/go:tools",
-        "//third_party/go:xattr",
     ],
 )
 
@@ -30,13 +27,6 @@ go_test(
         ":test",
         "//third_party/go:testify",
     ],
-)
-
-go_test(
-    name = "container_test",
-    srcs = ["container_test.go"],
-    container = True,
-    data = ["test_data/container_data.txt"],
 )
 
 go_test(
@@ -62,6 +52,7 @@ go_test(
     srcs = ["xml_results_test.go"],
     deps = [
         ":test",
+        "//src/core",
         "//third_party/go:testify",
     ],
 )

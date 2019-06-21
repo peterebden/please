@@ -54,7 +54,7 @@ type buildingTargetData struct {
 
 // MonitorState monitors the build while it's running (essentially until state.TestCases is closed)
 // and prints output while it's happening.
-func MonitorState(state *core.BuildState, numThreads int, plainOutput, keepGoing, detailedTests bool, traceFile string) {
+func MonitorState(state *core.BuildState, numThreads int, plainOutput, detailedTests bool, traceFile string) {
 	failedTargetMap := map[core.BuildLabel]error{}
 	buildingTargets := make([]buildingTarget, numThreads)
 
@@ -83,7 +83,7 @@ func MonitorState(state *core.BuildState, numThreads int, plainOutput, keepGoing
 				displayDone <- struct{}{}
 			}()
 		}
-		processResult(state, result, buildingTargets, plainOutput, keepGoing, &failedTargets, &failedNonTests, failedTargetMap, traceFile != "")
+		processResult(state, result, buildingTargets, plainOutput, &failedTargets, &failedNonTests, failedTargetMap, traceFile != "")
 	}
 	stop <- struct{}{}
 	<-displayDone
@@ -95,10 +95,7 @@ func MonitorState(state *core.BuildState, numThreads int, plainOutput, keepGoing
 		if state.Verbosity > 0 {
 			printFailedBuildResults(failedNonTests, failedTargetMap, duration)
 		}
-		if !keepGoing && !state.Watch {
-			// Die immediately and unsuccessfully, this avoids awkward interactions with various things later.
-			os.Exit(-1)
-		}
+		return
 	}
 	// Check all the targets we wanted to build actually have been built.
 	for _, label := range state.ExpandOriginalTargets() {
@@ -168,7 +165,7 @@ func yesNo(b bool) string {
 }
 
 func processResult(state *core.BuildState, result *core.BuildResult, buildingTargets []buildingTarget, plainOutput bool,
-	keepGoing bool, failedTargets, failedNonTests *[]core.BuildLabel, failedTargetMap map[core.BuildLabel]error, shouldTrace bool) {
+	failedTargets, failedNonTests *[]core.BuildLabel, failedTargetMap map[core.BuildLabel]error, shouldTrace bool) {
 	label := result.Label
 	active := result.Status.IsActive()
 	failed := result.Status.IsFailure()
@@ -186,16 +183,12 @@ func processResult(state *core.BuildState, result *core.BuildResult, buildingTar
 	if failed {
 		failedTargetMap[label] = result.Err
 		// Don't stop here after test failure, aggregate them for later.
-		if !keepGoing && result.Status != core.TargetTestFailed {
+		if result.Status != core.TargetTestFailed {
 			// Reset colour so the entire compiler error output doesn't appear red.
 			log.Errorf("%s failed:${RESET}\n%s", result.Label, shortError(result.Err))
 			state.KillAll()
 		} else if !plainOutput { // plain output will have already logged this
 			log.Errorf("%s failed: %s", result.Label, shortError(result.Err))
-		}
-		if keepGoing {
-			// This will wait until we've finished up all possible tasks then kill everything off.
-			go state.DelayedKillAll()
 		}
 		*failedTargets = append(*failedTargets, label)
 		if result.Status != core.TargetTestFailed {
@@ -496,7 +489,7 @@ func printTempDirs(state *core.BuildState, duration time.Duration) {
 			fmt.Printf("\n")
 			argv := []string{"bash", "--noprofile", "--norc", "-o", "pipefail"}
 			if (state.NeedTests && target.TestSandbox) || (!state.NeedTests && target.Sandbox) {
-				argv = core.MustSandboxCommand(state, argv)
+				argv = state.ProcessExecutor.MustSandboxCommand(argv)
 			}
 			log.Debug("Full command: %s", strings.Join(argv, " "))
 			cmd := exec.Command(argv[0], argv[1:]...)
@@ -638,6 +631,11 @@ func PrintCoverage(state *core.BuildState, includeFiles []string) {
 		totalTotal += total
 	}
 	printf("${BOLD_WHITE}Total coverage: %s${RESET}\n", coveragePercentage(totalCovered, totalTotal, ""))
+}
+
+// PrintIncrementalCoverage prints the given incremental coverage statistics.
+func PrintIncrementalCoverage(stats *test.IncrementalStats) {
+	printf("${BOLD_WHITE}Incremental coverage: %s${RESET}\n", coveragePercentage(stats.CoveredLines, stats.ModifiedLines, ""))
 }
 
 // PrintLineCoverageReport writes out line-by-line coverage metrics after a test run.

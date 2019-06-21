@@ -4,7 +4,6 @@ package core
 
 import (
 	"crypto/sha1"
-	"encoding/gob"
 	"fmt"
 	"io"
 	"os"
@@ -48,12 +47,6 @@ const MachineConfigFileName = "/etc/plzconfig"
 const UserConfigFileName = "~/.config/please/plzconfig"
 
 const oldUserConfigFileName = "~/.please/plzconfig"
-
-// The available container implementations that we support.
-const (
-	ContainerImplementationNone   = "none"
-	ContainerImplementationDocker = "docker"
-)
 
 // GithubDownloadLocation is plz's Github repo, which will become the default download location in future.
 const GithubDownloadLocation = "https://github.com/thought-machine/please"
@@ -186,8 +179,7 @@ func ReadConfigFiles(filenames []string, profiles []string) (*Configuration, err
 
 	// We can only verify options by reflection (we need struct tags) so run them quickly through this.
 	return config, config.ApplyOverrides(map[string]string{
-		"test.defaultcontainer": config.Test.DefaultContainer,
-		"python.testrunner":     config.Python.TestRunner,
+		"python.testrunner": config.Python.TestRunner,
 	})
 }
 
@@ -243,6 +235,7 @@ func DefaultConfiguration() *Configuration {
 	config.Build.Config = "opt"         // Optimised builds by default
 	config.Build.FallbackConfig = "opt" // Optimised builds as a fallback on any target that doesn't have a matching one set
 	config.Build.PleaseSandboxTool = "please_sandbox"
+	config.Build.Xattrs = true
 	config.BuildConfig = map[string]string{}
 	config.BuildEnv = map[string]string{}
 	config.Aliases = map[string]string{}
@@ -256,17 +249,8 @@ func DefaultConfiguration() *Configuration {
 	config.Cache.DirClean = true
 	config.Cache.Workers = runtime.NumCPU() + 2 // Mirrors the number of workers in please.go.
 	config.Cache.RPCMaxMsgSize.UnmarshalFlag("200MiB")
-	config.Metrics.PushFrequency = cli.Duration(400 * time.Millisecond)
-	config.Metrics.PushTimeout = cli.Duration(500 * time.Millisecond)
-	config.Metrics.PerUser = true
 	config.Test.Timeout = cli.Duration(10 * time.Minute)
-	config.Test.DefaultContainer = ContainerImplementationDocker
 	config.Display.SystemStats = true
-	config.Docker.DefaultImage = "ubuntu:trusty"
-	config.Docker.AllowLocalFallback = false
-	config.Docker.Timeout = cli.Duration(20 * time.Minute)
-	config.Docker.ResultsTimeout = cli.Duration(20 * time.Second)
-	config.Docker.RemoveTimeout = cli.Duration(20 * time.Second)
 	config.Go.GoTool = "go"
 	config.Go.CgoCCTool = "gcc"
 	config.Go.BuildIDTool = "go_buildid_replacer"
@@ -279,6 +263,7 @@ func DefaultConfiguration() *Configuration {
 	config.Python.DefaultInterpreter = "python3"
 	config.Python.TestRunner = "unittest"
 	config.Python.UsePyPI = true
+	config.Python.InterpreterOptions = ""
 	// Annoyingly pip on OSX doesn't seem to work with this flag (you get the dreaded
 	// "must supply either home or prefix/exec-prefix" error). Goodness knows why *adding* this
 	// flag - which otherwise seems exactly what we want - provokes that error, but the logic
@@ -290,19 +275,17 @@ func DefaultConfiguration() *Configuration {
 	config.Java.SourceLevel = "8"
 	config.Java.TargetLevel = "8"
 	config.Java.ReleaseLevel = ""
-	config.Java.DefaultMavenRepo = []cli.URL{"https://repo1.maven.org/maven2"}
+	config.Java.DefaultMavenRepo = []cli.URL{"https://repo1.maven.org/maven2", "https://jcenter.bintray.com/"}
 	config.Java.JavacFlags = "-Werror -Xlint:-options" // bootstrap class path warnings are pervasive without this.
 	config.Java.JlinkTool = "jlink"
 	config.Java.JavacWorker = "javac_worker"
 	config.Java.JarCatTool = "jarcat"
-	config.Java.PleaseMavenTool = "please_maven"
 	config.Java.JUnitRunner = "junit_runner.jar"
 	config.Java.JavaHome = ""
 	config.Cpp.CCTool = "gcc"
 	config.Cpp.CppTool = "g++"
 	config.Cpp.LdTool = "ld"
 	config.Cpp.ArTool = "ar"
-	config.Cpp.AsmTool = "nasm"
 	config.Cpp.DefaultOptCflags = "--std=c99 -O3 -pipe -DNDEBUG -Wall -Werror"
 	config.Cpp.DefaultDbgCflags = "--std=c99 -g3 -pipe -DDEBUG -Wall -Werror"
 	config.Cpp.DefaultOptCppflags = "--std=c++11 -O3 -pipe -DNDEBUG -Wall -Werror"
@@ -339,6 +322,7 @@ func DefaultConfiguration() *Configuration {
 type Configuration struct {
 	Please struct {
 		Version          cli.Version `help:"Defines the version of plz that this repo is supposed to use currently. If it's not present or the version matches the currently running version no special action is taken; otherwise if SelfUpdate is set Please will attempt to download an appropriate version, otherwise it will issue a warning and continue.\n\nNote that if this is not set, you can run plz update to update to the latest version available on the server." var:"PLZ_VERSION"`
+		VersionChecksum  []string    `help:"Defines a hex-encoded sha256 checksum that the downloaded version must match. Can be specified multiple times to support different architectures."`
 		Location         string      `help:"Defines the directory Please is installed into.\nDefaults to ~/.please but you might want it to be somewhere else if you're installing via another method (e.g. the debs and install script still use /opt/please)."`
 		SelfUpdate       bool        `help:"Sets whether plz will attempt to update itself when the version set in the config file is different."`
 		DownloadLocation cli.URL     `help:"Defines the location to download Please from when self-updating. Defaults to the Please web server, but you can point it to some location of your own if you prefer to keep traffic within your network or use home-grown versions."`
@@ -372,9 +356,11 @@ type Configuration struct {
 		FallbackConfig    string       `help:"The build config to use when one is chosen and a required target does not have one by the same name. Also defaults to opt." example:"opt | dbg"`
 		Lang              string       `help:"Sets the language passed to build rules when building. This can be important for some tools (although hopefully not many) - we've mostly observed it with Sass."`
 		Sandbox           bool         `help:"True to sandbox individual build actions, which isolates them from network access and some aspects of the filesystem. Currently only works on Linux." var:"BUILD_SANDBOX"`
+		Xattrs            bool         `help:"True (the default) to attempt to use xattrs to record file metadata. If false Please will fall back to using additional files where needed, which is more compatible but has slightly worse performance."`
 		PleaseSandboxTool string       `help:"The location of the please_sandbox tool to use."`
 		Nonce             string       `help:"This is an arbitrary string that is added to the hash of every build target. It provides a way to force a rebuild of everything when it's changed.\nWe will bump the default of this whenever we think it's required - although it's been a pretty long time now and we hope that'll continue."`
 		PassEnv           []string     `help:"A list of environment variables to pass from the current environment to build rules. For example\n\nPassEnv = HTTP_PROXY\n\nwould copy your HTTP_PROXY environment variable to the build env for any rules."`
+		HTTPProxy         cli.URL      `help:"A URL to use as a proxy server for downloads. Only applies to internal ones - e.g. self-updates or remote_file rules."`
 	}
 	BuildConfig map[string]string `help:"A section of arbitrary key-value properties that are made available in the BUILD language. These are often useful for writing custom rules that need some configurable property.\n\n[buildconfig]\nandroid-tools-version = 23.0.2\n\nFor example, the above can be accessed as CONFIG.ANDROID_TOOLS_VERSION."`
 	BuildEnv    map[string]string `help:"A set of extra environment variables to define for build rules. For example:\n\n[buildenv]\nsecret-passphrase = 12345\n\nThis would become SECRET_PASSPHRASE for any rules. These can be useful for passing secrets into custom rules; any variables containing SECRET or PASSWORD won't be logged.\n\nIt's also useful if you'd like internal tools to honour some external variable."`
@@ -397,32 +383,21 @@ type Configuration struct {
 		RPCSecure             bool         `help:"Forces SSL on for the RPC cache. It will be activated if any of rpcpublickey, rpcprivatekey or rpccacert are set, but this can be used if none of those are needed and SSL is still in use."`
 		RPCMaxMsgSize         cli.ByteSize `help:"Maximum size of a single message that we'll send to the RPC server.\nThis should agree with the server's limit, if it's higher the artifacts will be rejected.\nThe value is given as a byte size so can be suffixed with M, GB, KiB, etc."`
 	} `help:"Please has several built-in caches that can be configured in its config file.\n\nThe simplest one is the directory cache which by default is written into the .plz-cache directory. This allows for fast retrieval of code that has been built before (for example, when swapping Git branches).\n\nThere is also a remote RPC cache which allows using a centralised server to store artifacts. A typical pattern here is to have your CI system write artifacts into it and give developers read-only access so they can reuse its work.\n\nFinally there's a HTTP cache which is very similar, but a little obsolete now since the RPC cache outperforms it and has some extra features. Otherwise the two have similar semantics and share quite a bit of implementation.\n\nPlease has server implementations for both the RPC and HTTP caches."`
-	Metrics struct {
-		PushGatewayURL cli.URL      `help:"The URL of the pushgateway to send metrics to."`
-		PushFrequency  cli.Duration `help:"The frequency, in milliseconds, to push statistics at." example:"400ms"`
-		PushTimeout    cli.Duration `help:"Timeout on pushes to the metrics repository." example:"500ms"`
-		PerTest        bool         `help:"Emit per-test duration metrics. Off by default because they generate increased load on Prometheus."`
-		PerUser        bool         `help:"Emit per-user metrics. On by default for compatibility, but will generate more load on Prometheus."`
-	} `help:"A section of options relating to reporting metrics. Currently only pushing metrics to a Prometheus pushgateway is supported, which is enabled by the pushgatewayurl setting."`
-	CustomMetricLabels map[string]string `help:"Allows defining custom labels to be applied to metrics. The key is the name of the label, and the value is a command to be run, the output of which becomes the label's value. For example, to attach the current Git branch to all metrics:\n\n[custommetriclabels]\nbranch = git rev-parse --abbrev-ref HEAD\n\nBe careful when defining new labels, it is quite possible to overwhelm the metric collector by creating metric sets with too high cardinality."`
-	Test               struct {
-		Timeout          cli.Duration `help:"Default timeout applied to all tests. Can be overridden on a per-rule basis."`
-		DefaultContainer string       `help:"Sets the default type of containerisation to use for tests that are given container = True.\nCurrently the only available option is 'docker', we expect to add support for more engines in future." options:"none,docker"`
-		Sandbox          bool         `help:"True to sandbox individual tests, which isolates them from network access, IPC and some aspects of the filesystem. Currently only works on Linux." var:"TEST_SANDBOX"`
-		DisableCoverage  []string     `help:"Disables coverage for tests that have any of these labels spcified."`
+	Test struct {
+		Timeout         cli.Duration `help:"Default timeout applied to all tests. Can be overridden on a per-rule basis."`
+		Sandbox         bool         `help:"True to sandbox individual tests, which isolates them from network access, IPC and some aspects of the filesystem. Currently only works on Linux." var:"TEST_SANDBOX"`
+		DisableCoverage []string     `help:"Disables coverage for tests that have any of these labels spcified."`
+		Upload          cli.URL      `help:"URL to upload test results to (in XML format)"`
 	}
+	Limit map[string]*struct {
+		Label string `help:"Label to restrict"`
+		Limit int    `help:"Maximum number of targets that can build or test simultaneously"`
+	} `help:"A section of options allowing limiting the number of targets with certain criteria that can run simultaneously"`
 	Size  map[string]*Size `help:"Named sizes of targets; these are the definitions of what can be passed to the 'size' argument."`
 	Cover struct {
 		FileExtension    []string `help:"Extensions of files to consider for coverage.\nDefaults to a reasonably obvious set for the builtin rules including .go, .py, .java, etc."`
 		ExcludeExtension []string `help:"Extensions of files to exclude from coverage.\nTypically this is for generated code; the default is to exclude protobuf extensions like .pb.go, _pb2.py, etc."`
 	}
-	Docker struct {
-		DefaultImage       string       `help:"The default image used for any test that doesn't specify another."`
-		AllowLocalFallback bool         `help:"If True, will attempt to run the test locally if containerised running fails."`
-		Timeout            cli.Duration `help:"Default timeout for containerised tests. Can be overridden on a per-rule basis."`
-		ResultsTimeout     cli.Duration `help:"Timeout to wait when trying to retrieve results from inside the container. Default is 20 seconds."`
-		RemoveTimeout      cli.Duration `help:"Timeout to wait when trying to remove a container after running a test. Defaults to 20 seconds."`
-	} `help:"Please supports running individual tests within Docker containers for isolation. This is useful for tests that mutate some global state (such as an embedded database, or open a server on a particular port). To do so, simply mark a test rule with container = True."`
 	Gc struct {
 		Keep      []BuildLabel `help:"Marks targets that gc should always keep. Can include meta-targets such as //test/... and //docs:all."`
 		KeepLabel []string     `help:"Defines a target label to be kept; for example, if you set this to go, no Go targets would ever be considered for deletion." example:"go"`
@@ -450,6 +425,7 @@ type Configuration struct {
 		WheelRepo          cli.URL `help:"Defines a location for a remote repo that python_wheel rules will download from. See python_wheel for more information." var:"PYTHON_WHEEL_REPO"`
 		UsePyPI            bool    `help:"Whether or not to use PyPI for pip_library rules or not. Defaults to true, if you disable this you will presumably want to set DefaultPipRepo to use one of your own.\nIs overridden by the use_pypi argument to pip_library." var:"USE_PYPI"`
 		WheelNameScheme    string  `help:"Defines a custom templatized wheel naming scheme. Templatized variables should be surrounded in curly braces, and the available options are: url_base, package_name, and version. The default search pattern is '{url_base}/{package_name}-{version}-${{OS}}-${{ARCH}}.whl' along with a few common variants." var:"PYTHON_WHEEL_NAME_SCHEME"`
+		InterpreterOptions string  `help:"Options to pass to the python interpeter, when writing shebangs for pex executables." var:"PYTHON_INTERPRETER_OPTIONS"`
 	} `help:"Please has built-in support for compiling Python.\nPlease's Python artifacts are pex files, which are essentially self-executable zip files containing all needed dependencies, bar the interpreter itself. This fits our aim of at least semi-static binaries for each language.\nSee https://github.com/pantsbuild/pex for more information.\nNote that due to differences between the environment inside a pex and outside some third-party code may not run unmodified (for example, it cannot simply open() files). It's possible to work around a lot of this, but if it all becomes too much it's possible to mark pexes as not zip-safe which typically resolves most of it at a modest speed penalty."`
 	Java struct {
 		JavacTool          string    `help:"Defines the tool used for the Java compiler. Defaults to javac." var:"JAVAC_TOOL"`
@@ -457,7 +433,6 @@ type Configuration struct {
 		JavaHome           string    `help:"Defines the path of the Java Home folder." var:"JAVA_HOME"`
 		JavacWorker        string    `help:"Defines the tool used for the Java persistent compiler. This is significantly (approx 4x) faster for large Java trees than invoking javac separately each time. Default to javac_worker in the install directory, but can be switched off to fall back to javactool and separate invocation." var:"JAVAC_WORKER"`
 		JarCatTool         string    `help:"Defines the tool used to concatenate .jar files which we use to build the output of java_binary, java_test and various other rules. Defaults to jarcat in the Please install directory." var:"JARCAT_TOOL"`
-		PleaseMavenTool    string    `help:"Defines the tool used to fetch information from Maven in maven_jars rules.\nDefaults to please_maven in the Please install directory." var:"PLEASE_MAVEN_TOOL"`
 		JUnitRunner        string    `help:"Defines the .jar containing the JUnit runner. This is built into all java_test rules since it's necessary to make JUnit do anything useful.\nDefaults to junit_runner.jar in the Please install directory." var:"JUNIT_RUNNER"`
 		DefaultTestPackage string    `help:"The Java classpath to search for functions annotated with @Test. If not specified the compiled sources will be searched for files named *Test.java." var:"DEFAULT_TEST_PACKAGE"`
 		ReleaseLevel       string    `help:"The default Java release level when compiling.\nSourceLevel and TargetLevel are ignored if this is set. Bear in mind that this flag is only supported in Java version 9+." var:"JAVA_RELEASE_LEVEL"`
@@ -472,14 +447,12 @@ type Configuration struct {
 		CppTool            string     `help:"The tool invoked to compile C++ code. Defaults to g++ but you might want to set it to clang++, for example." var:"CPP_TOOL"`
 		LdTool             string     `help:"The tool invoked to link object files. Defaults to ld but you could also set it to gold, for example." var:"LD_TOOL"`
 		ArTool             string     `help:"The tool invoked to archive static libraries. Defaults to ar." var:"AR_TOOL"`
-		AsmTool            string     `help:"The tool invoked as an assembler. Currently only used on OSX for cc_embed_binary rules and so defaults to nasm." var:"ASM_TOOL"`
 		LinkWithLdTool     bool       `help:"If true, instructs Please to use the tool set earlier in ldtool to link binaries instead of cctool.\nThis is an esoteric setting that most people don't want; a vanilla ld will not perform all steps necessary here (you'll get lots of missing symbol messages from having no libc etc). Generally best to leave this disabled unless you have very specific requirements." var:"LINK_WITH_LD_TOOL"`
 		DefaultOptCflags   string     `help:"Compiler flags passed to all C rules during opt builds; these are typically pretty basic things like what language standard you want to target, warning flags, etc.\nDefaults to --std=c99 -O3 -DNDEBUG -Wall -Wextra -Werror" var:"DEFAULT_OPT_CFLAGS"`
 		DefaultDbgCflags   string     `help:"Compiler rules passed to all C rules during dbg builds.\nDefaults to --std=c99 -g3 -DDEBUG -Wall -Wextra -Werror." var:"DEFAULT_DBG_CFLAGS"`
 		DefaultOptCppflags string     `help:"Compiler flags passed to all C++ rules during opt builds; these are typically pretty basic things like what language standard you want to target, warning flags, etc.\nDefaults to --std=c++11 -O3 -DNDEBUG -Wall -Wextra -Werror" var:"DEFAULT_OPT_CPPFLAGS"`
 		DefaultDbgCppflags string     `help:"Compiler rules passed to all C++ rules during dbg builds.\nDefaults to --std=c++11 -g3 -DDEBUG -Wall -Wextra -Werror." var:"DEFAULT_DBG_CPPFLAGS"`
 		DefaultLdflags     string     `help:"Linker flags passed to all C++ rules.\nBy default this is empty." var:"DEFAULT_LDFLAGS"`
-		DefaultNamespace   string     `help:"Namespace passed to all cc_embed_binary rules when not overridden by the namespace argument to that rule.\nNot set by default, if you want to use those rules you'll need to set it or pass it explicitly to each one." var:"DEFAULT_NAMESPACE"`
 		PkgConfigPath      string     `help:"Custom PKG_CONFIG_PATH for pkg-config.\nBy default this is empty." var:"PKG_CONFIG_PATH"`
 		Coverage           bool       `help:"If true (the default), coverage will be available for C and C++ build rules.\nThis is still a little experimental but should work for GCC. Right now it does not work for Clang (it likely will in Clang 4.0 which will likely support --fprofile-dir) and so this can be useful to disable it.\nIt's also useful in some cases for CI systems etc if you'd prefer to avoid the overhead, since the tests have to be compiled with extra instrumentation and without optimisation." var:"CPP_COVERAGE"`
 		TestMain           BuildLabel `help:"The build target to use for the default main for C++ test rules." example:"///pleasings//cc:unittest_main" var:"CC_TEST_MAIN"`
@@ -553,16 +526,6 @@ func (config *Configuration) Hash() []byte {
 	}
 	for _, env := range config.getBuildEnv(false) {
 		h.Write([]byte(env))
-	}
-	return h.Sum(nil)
-}
-
-// ContainerisationHash returns the hash of the containerisation part of the config.
-func (config *Configuration) ContainerisationHash() []byte {
-	h := sha1.New()
-	encoder := gob.NewEncoder(h)
-	if err := encoder.Encode(config.Docker); err != nil {
-		panic(err)
 	}
 	return h.Sum(nil)
 }

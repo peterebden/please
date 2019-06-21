@@ -1,3 +1,100 @@
+Version 14.0.0
+--------------
+
+    * Hashes are stored on files in xattrs (when available) for faster rebuilds (#640).
+    * Use of xattrs can now be disabled for systems where they are not supported (#641, #548, #644)
+    * `plz tool maven` and the builtin `maven_jars` are removed. They can be used from their
+      new home of https://github.com/thought-machine/pleasings.
+    * `go_test` no longer works for versions prior to 1.8
+    * `go_library` rules using assembly now only work with Go 1.12+ (previously they did not
+      work with 1.12) (#659)
+    * `plz rebuild` is removed in favour of `plz build --rebuild`
+    * The `--keep_going` flag has been removed (#655)
+    * `python_binary` and `python_test` now take a `site` argument determining whether they
+      import the site module at startup. Default is off. (#634)
+    * Import lines are excluded from Python coverage stats (#607)
+    * Jarcat honours --strip_prefix in some more places
+    * Support for uploading test results to a remote server (#657)
+    * Some fixes for cgo_library when at the root of the repo
+
+
+Version 13.8.2
+--------------
+
+    * Fix watch on files at repo root (#618)
+    * Allow targets labelled as manual to be included in (most) `plz query` invocations
+    * Add jcenter.bintry.com as a default Maven repo to improve reliability (looks like
+      repo1.maven.org rate limits us sometimes).
+
+
+Version 13.8.1
+--------------
+
+    * Update returns to original directory before re-exec (#627)
+    * More arguments are completed as filenames (#628)
+    * Initial support for incremental coverage calculations.
+
+
+Version 13.8.0
+--------------
+
+    * Allow specifying Python interpreter options through global config (#625)
+    * Allow `sh_cmd` to take commands as a list (#623)
+    * Explicit feature passing in the behave test runner integration (#621)
+
+
+Version 13.7.1
+--------------
+
+    * More robust subprocess management (#620)
+    * Improved default handling of files shown for coverage.
+    * Handle sources not existing on PATH more gracefully during `plz query changes`
+    * Allow for non-flat tarballs (#624)
+
+
+Version 13.7.0
+--------------
+
+    * `genrule` now accepts `pass_env`, a list of environment variables to be passed through (#575)
+    * `go_get` rules can now find dependencies without `gopath` (#617)
+    * Downloaded plz versions can be hash validated in addition to signature checked (#615)
+    * Jacoco version updated for better java 11 compatibility.
+
+
+Version 13.6.3
+--------------
+
+    * Instruct user directory to add to PATH manually. (#614)
+    * Use master for default revision in go_get, to avoid slow path. (#613)
+    * Setting PDEATHSIG on child processes (#605)
+
+
+Version 13.6.2
+--------------
+
+    * bzip2 decompression is now supported when extracting remote_file rules.
+    * go_get improvements for multiple downloads in the same rule.
+    * No longer fails for stamped rules when the SCM revision is unknown; instead
+      the placeholder <unknown> will be returned.
+
+
+Version 13.6.1
+--------------
+
+    * Add licences field to go_get
+    * Warn if stdin is being piped but not being read
+
+
+Version 13.6.0
+--------------
+
+    * Various fixes for `plz watch --run` (#599, #600, #602, #603)
+    * Fixes for `plz coverage` with no argument (#535)
+    * More cross-compilation fixes (#603)
+    * `remote_file` now takes an `extract` argument to extract tarballs / zipfiles.
+    * Added `get_licences` builtin to find licences of a target.
+
+
 Version 13.5.5
 --------------
 

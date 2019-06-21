@@ -17,8 +17,7 @@
   Each of these require explicit declarations of all their dependencies in the
   BUILD file; this is how we pin dependencies & guarantee reproducibility.<br/>
   There are one or two alternatives that show slightly different approaches
-  (e.g. <a href="lexicon.html#python_wheel">python_wheel</a> or
-  <a href="lexicon.html#maven_jars">maven_jars</a>) as well, and
+  (e.g. <a href="lexicon.html#python_wheel">python_wheel</a> which is more standalone, and
   <a href="lexicon.html#remote_file">remote_file</a> which is a general tool to
   download anything (although often more work is required to actually build it)</p>
 
@@ -35,7 +34,7 @@
   their downloads can be parallelised with compiling other targets.</p>
 
 
-<h2>Subrepos</h2>
+<h2><a name="subrepos">Subrepos</a></h2>
 
 <p>Please also supports a concept called "subrepos" which allows fetching arbitrary dependencies
   and attaching build rules to them. These can be depended on from other build rules and generally
@@ -47,25 +46,26 @@
   BUILD file to them, but it can also use an existing one if appropriate.</p>
 
 <p>For example (as seen <a href="https://github.com/thought-machine/please/blob/master/third_party/cc/BUILD">in the Please repo</a>):
-  <pre><code>github_repo(
-    name = "gtest",
-    bazel_compat = True,
-    repo = "google/googletest",
-    revision = "release-1.8.1",
-)
-</code></pre></p>
+  <pre><code class="language-plz">
+    github_repo(
+        name = "gtest",
+        bazel_compat = True,
+        repo = "google/googletest",
+        revision = "release-1.8.1",
+    )
+  </code></pre></p>
 
 <p>Rules within subrepos can be referenced using a triple-slash prefix on rules, anywhere
   where a build rule would normally be accepted. For example:
-  <pre><code>
-cc_test(
-    name = "my_test",
-    ...
-    deps = [
-        "///third_party/cc/gtest//:gtest_main",
-    ],
-)
-</code></pre>
+  <pre><code class="language-plz">
+    cc_test(
+        name = "my_test",
+        ...
+        deps = [
+            "///third_party/cc/gtest//:gtest_main",
+        ],
+    )
+  </code></pre>
 
 <p>Note that the subrepo label (<code>third_party/cc/gtest</code>) includes the package we defined
   it in earlier. In many ways subrepos mirror the feature in Bazel, but in this case are more
@@ -86,10 +86,10 @@ cc_test(
 
 <p>If you're coming from Gradle or Maven, it's a little more alien due to being less language-specific
   and requiring full transitive dependencies to be specified.<br/>
-  <a href="lexicon.html#maven_jars">maven_jars</a> is the closest equivalent to declaring
-  Maven dependencies in the same way that Gradle does it; it works by communicating with
-  Maven repositories to find dependencies and generating more BUILD rules for them. This can
-  be a little unreliable though, since the Maven package format is complex, and your dependencies
+  There is an <a href="https://github.com/thought-machine/pleasings/blob/master/java/maven_jars.build_defs">add-on rule</a>
+  which is the closest equivalent; it works by communicating with Maven repositories to
+  find dependencies and generating more BUILD rules for them. This can be a little
+  unreliable though, since the Maven package format is complex, and your dependencies
   aren't fully within your control and can change between builds - we recommend
   <a href="lexicon.html#maven_jar">maven_jar</a> instead, but understand it's more work to set up.</p>
 

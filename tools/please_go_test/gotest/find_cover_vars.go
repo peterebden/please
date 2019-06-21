@@ -62,6 +62,9 @@ func FindCoverVars(dir, importPath string, exclude, srcs []string) ([]CoverVar, 
 func findCoverVars(filepath, importPath string, srcs []string) ([]CoverVar, error) {
 	dir, file := path.Split(filepath)
 	dir = strings.TrimRight(dir, "/")
+	if dir == "" {
+		dir = "."
+	}
 	fi, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return nil, err

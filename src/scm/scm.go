@@ -22,6 +22,11 @@ type SCM interface {
 	ChangedFiles(fromCommit string, includeUntracked bool, relativeTo string) []string
 	// IgnoreFile marks a file to be ignored by the SCM.
 	IgnoreFile(name string) error
+	// Remove deletes the given files from the SCM.
+	Remove(names []string) error
+	// ChangedLines returns the set of lines that have been modified,
+	// as a map of filename -> affected line numbers.
+	ChangedLines() (map[string][]int, error)
 }
 
 // New returns a new SCM instance for this repo root.
@@ -33,12 +38,12 @@ func New(repoRoot string) SCM {
 	return nil
 }
 
-// MustNew returns a new SCM instance for this repo root.
-// It dies if a supported one cannot be determined.
-func MustNew(repoRoot string) SCM {
-	s := New(repoRoot)
-	if s == nil {
-		log.Fatalf("Cannot determine SCM implementation for this repo")
+// NewFallback returns a new SCM instance for this repo root.
+// If there is no known implementation it returns a stub.
+func NewFallback(repoRoot string) SCM {
+	if scm := New(repoRoot); scm != nil {
+		return scm
 	}
-	return s
+	log.Warning("Cannot determine SCM, revision identifiers will be unavailable and `plz query changes/changed` will not work correctly.")
+	return &stub{}
 }

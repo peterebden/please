@@ -12,6 +12,7 @@ import (
 
 	"github.com/thought-machine/please/src/cli"
 	"github.com/thought-machine/please/src/fs"
+	"github.com/thought-machine/please/src/process"
 )
 
 // startTime is as close as we can conveniently get to process start time.
@@ -83,12 +84,12 @@ type BuildState struct {
 	Parser Parser
 	// Worker pool for the parser
 	ParsePool Pool
+	// Subprocess executor.
+	ProcessExecutor *process.Executor
 	// Hashes of variouts bits of the configuration, used for incrementality.
 	Hashes struct {
 		// Hash of the general config, not including specialised bits.
 		Config []byte
-		// Hash of the config relating to containerisation for tests.
-		Containerisation []byte
 	}
 	// Tracks file hashes during the build.
 	PathHasher *fs.PathHasher
@@ -144,6 +145,8 @@ type BuildState struct {
 	ShowAllOutput bool
 	// True to attach a debugger on test failure.
 	DebugTests bool
+	// True if we think the underlying filesystem supports xattrs (which affects how we write some metadata).
+	XattrsSupported bool
 	// True once we have killed the workers, so we only do it once.
 	workersKilled bool
 	// Number of running workers
@@ -283,28 +286,6 @@ func (state *BuildState) killall(signal TaskType) {
 	}
 }
 
-// DelayedKillAll waits until no workers are running
-func (state *BuildState) DelayedKillAll() {
-	for state.anyRunningTasks() {
-	}
-	if state.progress.numPending > 0 {
-		log.Error("All workers seem deadlocked, stopping.")
-		state.KillAll()
-	}
-}
-
-// anyRunningTasks checks over a little while whether there are any tasks still running and
-// returns true if so.
-func (state *BuildState) anyRunningTasks() bool {
-	for i := 0; i < 10; i++ {
-		if state.progress.numRunning > 0 {
-			return true
-		}
-		time.Sleep(10 * time.Millisecond) // Give it a little time to see if anything wakes.
-	}
-	return state.progress.numRunning > 0
-}
-
 // IsOriginalTarget returns true if a target is an original target, ie. one specified on the command line.
 func (state *BuildState) IsOriginalTarget(label BuildLabel) bool {
 	return state.isOriginalTarget(label, false)
@@ -324,6 +305,7 @@ func (state *BuildState) isOriginalTarget(label BuildLabel, exact bool) bool {
 // Handles build labels on Exclude so should be preferred over setting them directly.
 func (state *BuildState) SetIncludeAndExclude(include, exclude []string) {
 	state.Include = include
+	state.Exclude = nil
 	for _, e := range exclude {
 		if LooksLikeABuildLabel(e) {
 			if label, err := parseMaybeRelativeBuildLabel(e, ""); err != nil {
@@ -518,8 +500,6 @@ func (state *BuildState) expandOriginalPseudoTarget(label BuildLabel) BuildLabel
 	if label.IsAllTargets() {
 		if pkg := state.Graph.PackageByLabel(label); pkg != nil {
 			addPackage(pkg)
-		} else {
-			log.Warning("Package %s does not exist in graph", label.PackageName)
 		}
 	} else {
 		for name, pkg := range state.Graph.PackageMap() {
@@ -730,27 +710,38 @@ func (state *BuildState) ForConfig(config ...string) *BuildState {
 	return s
 }
 
+// DisableXattrs disables xattr support for this build. This is done for filesystems that
+// don't support it.
+func (state *BuildState) DisableXattrs() {
+	state.XattrsSupported = false
+	state.PathHasher.DisableXattrs()
+}
+
 // NewBuildState constructs and returns a new BuildState.
 // Everyone should use this rather than attempting to construct it themselves;
 // callers can't initialise all the required private fields.
 func NewBuildState(numThreads int, cache Cache, verbosity int, config *Configuration) *BuildState {
+	// Deliberately ignore the error here so we don't require the sandbox tool until it's needed.
+	sandboxTool, _ := LookBuildPath(config.Build.PleaseSandboxTool, config)
 	state := &BuildState{
-		Graph:        NewGraph(),
-		pendingTasks: queue.NewPriorityQueue(10000, true), // big hint, why not
-		lastResults:  make([]*BuildResult, numThreads),
-		PathHasher:   fs.NewPathHasher(RepoRoot),
-		StartTime:    startTime,
-		Config:       config,
-		Verbosity:    verbosity,
-		Cache:        cache,
-		ParsePool:    NewPool(numThreads),
-		VerifyHashes: true,
-		NeedBuild:    true,
-		Success:      true,
-		Coverage:     TestCoverage{Files: map[string][]LineCoverage{}},
-		OriginalArch: cli.HostArch(),
-		numWorkers:   numThreads,
-		Stats:        &SystemStats{},
+		Graph:           NewGraph(),
+		pendingTasks:    queue.NewPriorityQueue(10000, true), // big hint, why not
+		lastResults:     make([]*BuildResult, numThreads),
+		PathHasher:      fs.NewPathHasher(RepoRoot, config.Build.Xattrs),
+		ProcessExecutor: process.New(sandboxTool),
+		StartTime:       startTime,
+		Config:          config,
+		Verbosity:       verbosity,
+		Cache:           cache,
+		ParsePool:       NewPool(numThreads),
+		VerifyHashes:    true,
+		NeedBuild:       true,
+		Success:         true,
+		XattrsSupported: config.Build.Xattrs,
+		Coverage:        TestCoverage{Files: map[string][]LineCoverage{}},
+		OriginalArch:    cli.HostArch(),
+		numWorkers:      numThreads,
+		Stats:           &SystemStats{},
 		progress: &stateProgress{
 			numActive:       1, // One for the initial target adding on the main thread.
 			numRunning:      1, // Similarly.
@@ -761,7 +752,6 @@ func NewBuildState(numThreads int, cache Cache, verbosity int, config *Configura
 	}
 	state.progress.allStates = []*BuildState{state}
 	state.Hashes.Config = config.Hash()
-	state.Hashes.Containerisation = config.ContainerisationHash()
 	config.Please.NumThreads = numThreads
 	for _, exp := range config.Parse.ExperimentalDir {
 		state.experimentalLabels = append(state.experimentalLabels, BuildLabel{PackageName: exp, Name: "..."})

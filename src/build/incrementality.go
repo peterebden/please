@@ -16,15 +16,12 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/base64"
-	"encoding/gob"
 	"fmt"
 	"hash"
 	"io/ioutil"
 	"os"
 	"path"
 	"sort"
-
-	"github.com/pkg/xattr"
 
 	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/fs"
@@ -63,7 +60,7 @@ func needsBuilding(state *core.BuildState, target *core.BuildTarget, postBuild b
 			}
 		}
 	}
-	oldRuleHash, oldConfigHash, oldSourceHash, oldSecretHash := readRuleHash(target, postBuild)
+	oldRuleHash, oldConfigHash, oldSourceHash, oldSecretHash := readRuleHash(state, target, postBuild)
 	if !bytes.Equal(oldConfigHash, state.Hashes.Config) {
 		if len(oldConfigHash) == 0 {
 			// Small nicety to make it a bit clearer what's going on.
@@ -146,7 +143,7 @@ func mustSourceHash(state *core.BuildState, target *core.BuildTarget) []byte {
 func sourceHash(state *core.BuildState, target *core.BuildTarget) ([]byte, error) {
 	h := sha1.New()
 	for source := range core.IterSources(state.Graph, target) {
-		result, err := state.PathHasher.Hash(source.Src, false)
+		result, err := state.PathHasher.Hash(source.Src, false, true)
 		if err != nil {
 			return nil, err
 		}
@@ -155,7 +152,7 @@ func sourceHash(state *core.BuildState, target *core.BuildTarget) ([]byte, error
 	}
 	for _, tool := range target.AllTools() {
 		for _, path := range tool.FullPaths(state.Graph) {
-			result, err := state.PathHasher.Hash(path, false)
+			result, err := state.PathHasher.Hash(path, false, true)
 			if err != nil {
 				return nil, err
 			}
@@ -235,17 +232,7 @@ func ruleHash(state *core.BuildState, target *core.BuildTarget, runtime bool) []
 		for _, datum := range target.Data {
 			h.Write([]byte(datum.String()))
 		}
-		hashBool(h, target.Containerise)
 		hashOptionalBool(h, target.TestSandbox)
-		if target.ContainerSettings != nil {
-			e := gob.NewEncoder(h)
-			if err := e.Encode(target.ContainerSettings); err != nil {
-				panic(err)
-			}
-		}
-		if target.Containerise {
-			h.Write(state.Hashes.Containerisation)
-		}
 	}
 
 	hashBool(h, target.NeedsTransitiveDependencies)
@@ -276,6 +263,13 @@ func ruleHash(state *core.BuildState, target *core.BuildTarget, runtime bool) []
 	// any amount of other stuff).
 	hashBool(h, target.PreBuildFunction != nil)
 	hashBool(h, target.PostBuildFunction != nil)
+	if target.PassEnv != nil {
+		for _, env := range *target.PassEnv {
+			h.Write([]byte(env))
+			h.Write([]byte{'='})
+			h.Write([]byte(os.Getenv(env)))
+		}
+	}
 	return h.Sum(nil)
 }
 
@@ -295,10 +289,10 @@ func hashOptionalBool(writer hash.Hash, b bool) {
 
 // readRuleHash reads the hash of a file using xattrs.
 // If postBuild is true then the rule hash will be the post-build one if present.
-func readRuleHash(target *core.BuildTarget, postBuild bool) ([]byte, []byte, []byte, []byte) {
+func readRuleHash(state *core.BuildState, target *core.BuildTarget, postBuild bool) ([]byte, []byte, []byte, []byte) {
 	var h []byte
 	for _, output := range target.FullOutputs() {
-		b := readRuleHashOnFile(target, output)
+		b := fs.ReadAttr(output, xattrName, state.XattrsSupported)
 		if b == nil {
 			return nil, nil, nil, nil
 		} else if h != nil && !bytes.Equal(h, b) {
@@ -312,14 +306,13 @@ func readRuleHash(target *core.BuildTarget, postBuild bool) ([]byte, []byte, []b
 		// If the target has a post-build function, we might have written it there.
 		// Only works for pre-build, though.
 		if target.PostBuildFunction != nil && !postBuild {
-			h = readRuleHashOnFile(target, postBuildOutputFileName(target))
+			h = fs.ReadAttr(postBuildOutputFileName(target), xattrName, state.XattrsSupported)
 			if h == nil {
 				return nil, nil, nil, nil
 			}
-
 		} else {
 			// Try the fallback file; target might not have had any outputs, for example.
-			h = readRuleHashOnFile(target, fallbackRuleHashFileName(target))
+			h = fs.ReadAttrFile(path.Join(target.OutDir(), target.Label.Name))
 			if h == nil {
 				return nil, nil, nil, nil
 			}
@@ -329,24 +322,6 @@ func readRuleHash(target *core.BuildTarget, postBuild bool) ([]byte, []byte, []b
 		return h[hashLength : 2*hashLength], h[2*hashLength : 3*hashLength], h[3*hashLength : 4*hashLength], h[4*hashLength : fullHashLength]
 	}
 	return h[0:hashLength], h[2*hashLength : 3*hashLength], h[3*hashLength : 4*hashLength], h[4*hashLength : fullHashLength]
-}
-
-// readRuleHashOnFile reads a rule hash from a single file. It returns an empty slice if it can't be read.
-func readRuleHashOnFile(target *core.BuildTarget, output string) []byte {
-	b, err := xattr.LGet(output, xattrName)
-	if err != nil {
-		if fs.IsSymlink(output) {
-			// Symlinks can't take xattrs on Linux. We stash it on the fallback hash file instead.
-			return readRuleHashOnFile(target, fallbackRuleHashFileName(target))
-		} else if e2 := err.(*xattr.Error).Err; !os.IsNotExist(e2) && e2 != xattr.ENOATTR {
-			log.Warning("Failed to read rule hash for %s: %s", target.Label, err)
-		}
-		return nil
-	} else if len(b) != fullHashLength {
-		// We could warn here but that would be annoying if we ever did change it.
-		return nil
-	}
-	return b
 }
 
 // writeRuleHash attaches the rule hash to the file to its outputs using xattrs.
@@ -363,51 +338,23 @@ func writeRuleHash(state *core.BuildState, target *core.BuildTarget) error {
 	outputs := target.FullOutputs()
 	if len(outputs) == 0 {
 		// Target has no outputs, have to use the fallback file.
-		return writeFallbackRuleHashFile(target, hash)
+		return fs.RecordAttrFile(path.Join(target.OutDir(), target.Label.Name), hash)
 	}
 	for _, output := range outputs {
-		if err := writeRuleHashOnFile(target, output, hash); err != nil {
+		if err := fs.RecordAttr(output, hash, xattrName, state.XattrsSupported); err != nil {
 			return err
 		}
 	}
 	if target.PostBuildFunction != nil {
-		return writeRuleHashOnFile(target, postBuildOutputFileName(target), hash)
+		return fs.RecordAttr(postBuildOutputFileName(target), hash, xattrName, state.XattrsSupported)
 	}
 	return nil
-}
-
-// writeRuleHashOnFile sets a rule hash on a single file.
-func writeRuleHashOnFile(target *core.BuildTarget, output string, hash []byte) error {
-	if err := xattr.LSet(output, xattrName, hash); err != nil {
-		if fs.IsSymlink(output) {
-			// As mentioned above, we have to put hashes for symlinks on the alternative hash file.
-			return writeFallbackRuleHashFile(target, hash)
-		} else if os.IsPermission(err.(*xattr.Error).Err) {
-			// Can't set xattrs without write permission... attempt to chmod it first.
-			if err := os.Chmod(output, target.OutMode()|0200); err == nil {
-				return xattr.LSet(output, xattrName, hash)
-			}
-		}
-		return err
-	}
-	return nil
-}
-
-// writeFallbackRuleHashFile writes a rule hash to the fallback file.
-func writeFallbackRuleHashFile(target *core.BuildTarget, hash []byte) error {
-	fallbackFilename := fallbackRuleHashFileName(target)
-	f, err := os.Create(fallbackFilename)
-	if err != nil {
-		return err
-	}
-	f.Close()
-	return writeRuleHashOnFile(target, fallbackFilename, hash)
 }
 
 // fallbackRuleHashFile returns the filename we'll store the hashes for this file on if we have
 // no alternative (for example, if it doesn't have any outputs we have to put them *somewhere*)
 func fallbackRuleHashFileName(target *core.BuildTarget) string {
-	return path.Join(target.OutDir(), ".rule_hash_"+target.Label.Name)
+	return path.Join(target.OutDir(), target.Label.Name)
 }
 
 func postBuildOutputFileName(target *core.BuildTarget) string {
@@ -475,7 +422,7 @@ func RuntimeHash(state *core.BuildState, target *core.BuildTarget) ([]byte, erro
 	h := sha1.New()
 	h.Write(sh)
 	for source := range core.IterRuntimeFiles(state.Graph, target, true) {
-		result, err := state.PathHasher.Hash(source.Src, false)
+		result, err := state.PathHasher.Hash(source.Src, false, true)
 		if err != nil {
 			return result, err
 		}
@@ -513,7 +460,7 @@ func secretHash(state *core.BuildState, target *core.BuildTarget) ([]byte, error
 	}
 	h := sha1.New()
 	for _, secret := range target.Secrets {
-		ph, err := state.PathHasher.Hash(secret, false)
+		ph, err := state.PathHasher.Hash(secret, false, false)
 		if err != nil && os.IsNotExist(err) {
 			return noSecrets, nil // Not having the secrets is not an error yet.
 		} else if err != nil {

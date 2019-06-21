@@ -117,8 +117,16 @@ func (u *URL) UnmarshalText(text []byte) error {
 }
 
 // String implements the fmt.Stringer interface
-func (u *URL) String() string {
-	return string(*u)
+func (u URL) String() string {
+	return string(u)
+}
+
+// AsURL returns this as a url.URL
+// It is assumed never to fail because this URL has already been successfully parsed, at which
+// point it is checked for validity.
+func (u URL) AsURL() *url.URL {
+	ret, _ := url.Parse(string(u))
+	return ret
 }
 
 // A Version is an extension to semver.Version extending it with the ability to
@@ -210,6 +218,18 @@ func (f *Filepath) Complete(match string) []flags.Completion {
 	return ret
 }
 
+// Filepaths is a convenience type that is a list of file paths that knows how to convert itself to strings.
+type Filepaths []Filepath
+
+// AsStrings returns this slice of filepaths as a slice of strings.
+func (f Filepaths) AsStrings() []string {
+	ret := make([]string, len(f))
+	for i, fp := range f {
+		ret[i] = string(fp)
+	}
+	return ret
+}
+
 // Arch represents a combined Go-style operating system and architecture pair, as in "linux_amd64".
 type Arch struct {
 	OS, Arch string
@@ -280,6 +300,8 @@ func (arch *Arch) XArch() string {
 func (arch *Arch) GoArch() string {
 	if arch.Arch == "x86" {
 		return "386"
+	} else if arch.Arch == "x86-64" {
+		return "amd64"
 	}
 	return arch.Arch
 }
