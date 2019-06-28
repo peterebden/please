@@ -17,13 +17,13 @@ import (
 func Write(importPath, dir string, deps []string) error {
 	provides := map[string]string{}
 	binaries := map[string]string{}
-	if err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	if err := filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
-		} else if !info.IsDir() || path == dir {
+		} else if !info.IsDir() || p == dir || path.Base(dir) == "testdata" {
 			return nil
 		}
-		return write(importPath, strings.Trim(path[len(dir):], "/"), path, deps, provides, binaries)
+		return write(importPath, strings.Trim(p[len(dir):], "/"), p, deps, provides, binaries)
 	}); err != nil {
 		return err
 	}
@@ -38,17 +38,19 @@ func write(rootImportPath, pkgName, dir string, deps []string, provides, binarie
 		fmt.Fprintf(os.Stderr, "Failed to parse Go files in %s: %s\n", pkgName, err)
 		return nil // Don't die fatally; otherwise we are at the mercy of any one bad file in any repo.
 	}
-	localdeps := []string{}
-	for _, pkg := range pkgs {
+	ourpkgs := map[string]*pkgInfo{}
+	for name, pkg := range pkgs {
 		m := provides
 		if pkg.Name == "main" {
 			m = binaries
 		}
 		m[path.Join(rootImportPath, pkgName)] = "//" + pkgName + ":" + pkg.Name
+		ourpkg := &pkgInfo{Pkg: pkg}
+		ourpkgs[name] = ourpkg
 		for _, file := range pkg.Files {
 			for _, imp := range file.Imports {
 				if p := strings.Trim(imp.Path.Value, `"`); strings.HasPrefix(p, rootImportPath) {
-					localdeps = append(localdeps, "//"+strings.TrimLeft(p[len(rootImportPath):], "/")+":"+path.Base(p))
+					ourpkg.LocalDeps = append(ourpkg.LocalDeps, "//"+strings.TrimLeft(p[len(rootImportPath):], "/")+":"+path.Base(p))
 				}
 			}
 		}
@@ -58,23 +60,27 @@ func write(rootImportPath, pkgName, dir string, deps []string, provides, binarie
 		return err
 	}
 	defer f.Close()
-	return tmpl.Execute(f, pkgInfo{
+	return tmpl.Execute(f, pkgsInfo{
 		Name:       pkgName,
 		Dir:        dir,
 		ImportPath: rootImportPath,
-		Pkgs:       pkgs,
+		Pkgs:       ourpkgs,
 		Deps:       deps,
-		LocalDeps:  localdeps,
 		Provides:   provides,
 		Binaries:   binaries,
 	})
 }
 
-type pkgInfo struct {
+type pkgsInfo struct {
 	Name, ImportPath, Dir string
-	Pkgs                  map[string]*ast.Package
-	Deps, LocalDeps       []string
+	Pkgs                  map[string]*pkgInfo
+	Deps                  []string
 	Provides, Binaries    map[string]string
+}
+
+type pkgInfo struct {
+	Pkg       *ast.Package
+	LocalDeps []string
 }
 
 func nonTestOnly(info os.FileInfo) bool {
@@ -86,16 +92,21 @@ var tmpl = template.Must(template.New("build").Funcs(template.FuncMap{
 }).Parse(`
 package(go_import_path = "{{ .ImportPath }}")
 {{ range $pkgName, $pkg := .Pkgs }}
-{{ if eq $pkgName "main" }}go_binary({{ else }}go_library({{ end }}
+{{ if eq $pkgName "main" }}
+go_binary(
+    name = "{{ $pkgName }}",
+{{ else }}
+go_library(
     name = "{{ basename $.Dir }}",
+{{ end -}}
     srcs = [
-        {{- range $src, $file := $pkg.Files }}
+        {{- range $src, $file := $pkg.Pkg.Files }}
         "{{ basename $src }}",
         {{- end }}
     ],
-    {{- if or $.Deps $.LocalDeps }}
+    {{- if or $.Deps $pkg.LocalDeps }}
     deps = [
-        {{- range $.LocalDeps }}
+        {{- range $pkg.LocalDeps }}
         "{{ . }}",
         {{- end }}
         {{- range $.Deps }}
@@ -103,9 +114,9 @@ package(go_import_path = "{{ .ImportPath }}")
         {{- end }}
     ],
     {{- end }}
-    {{- if $pkg.Imports }}
+    {{- if $pkg.Pkg.Imports }}
     requires = [
-        {{- range $path, $_ := $pkg.Imports }}
+        {{- range $path, $_ := $pkg.Pkg.Imports }}
         "{{ $path }}",
         {{- end }}
     ],

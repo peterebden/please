@@ -731,7 +731,7 @@ def _go_get_download(name:str, tag:str, get:str, repo:str='', patch:str=None, ha
         cmd += [f'rm -rf {subdir}/{s}' for s in strip]
     if infer_build:
         tools['provide'] = [CONFIG.GO_PROVIDE_TOOL]
-        cmd += [f'$TOOLS_PROVIDE {getroot} $OUT ' + ' '.join(deps)]
+        cmd += [f'$TOOLS_PROVIDE {getroot} $OUT ' + ' '.join([canonicalise(d) for d in deps])]
     return build_rule(
         name = name,
         tag = tag,
