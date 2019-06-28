@@ -44,7 +44,8 @@ func write(rootImportPath, pkgName, dir string, deps []string, provides, binarie
 		if pkg.Name == "main" {
 			m = binaries
 		}
-		m[path.Join(rootImportPath, pkgName)] = "//" + pkgName + ":" + pkg.Name
+		importPath := path.Join(rootImportPath, pkgName)
+		m[importPath] = "//" + pkgName + ":" + path.Base(importPath)
 		ourpkg := &pkgInfo{Pkg: pkg}
 		ourpkgs[name] = ourpkg
 		for _, file := range pkg.Files {
