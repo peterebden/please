@@ -750,6 +750,9 @@ func (target *BuildTarget) AddProvide(language string, label BuildLabel) {
 	} else {
 		target.Provides[language] = label
 	}
+	if label != target.Label { // It's legit for a target to provide itself.
+		target.AddDependency(label)
+	}
 }
 
 // ProvideFor returns the build label that we'd provide for the given target.

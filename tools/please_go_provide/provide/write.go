@@ -103,7 +103,7 @@ go_binary(
 {{ else }}
 go_library(
     name = "{{ basename $.Dir }}",
-{{ end -}}
+{{- end }}
     srcs = [
         {{- range $src, $file := $pkg.Pkg.Files }}
         "{{ basename $src }}",
