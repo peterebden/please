@@ -49,8 +49,12 @@ func write(rootImportPath, pkgName, dir string, deps []string, provides, binarie
 		ourpkgs[name] = ourpkg
 		for _, file := range pkg.Files {
 			for _, imp := range file.Imports {
-				if p := strings.Trim(imp.Path.Value, `"`); strings.HasPrefix(p, rootImportPath) {
+				p := strings.Trim(imp.Path.Value, `"`)
+				if strings.HasPrefix(p, rootImportPath) {
 					ourpkg.LocalDeps = append(ourpkg.LocalDeps, "//"+strings.TrimLeft(p[len(rootImportPath):], "/")+":"+path.Base(p))
+				}
+				if strings.Contains(p, ".") { // quick and dirty way of not adding stdlib
+					ourpkg.Imports = append(ourpkg.Imports, p)
 				}
 			}
 		}
@@ -81,6 +85,7 @@ type pkgsInfo struct {
 type pkgInfo struct {
 	Pkg       *ast.Package
 	LocalDeps []string
+	Imports   []string
 }
 
 func nonTestOnly(info os.FileInfo) bool {
@@ -114,10 +119,10 @@ go_library(
         {{- end }}
     ],
     {{- end }}
-    {{- if $pkg.Pkg.Imports }}
-    requires = [
-        {{- range $path, $_ := $pkg.Pkg.Imports }}
-        "{{ $path }}",
+    {{- if $pkg.Imports }}
+    _requires = [
+        {{- range $pkg.Imports }}
+        "{{ . }}",
         {{- end }}
     ],
     {{- end }}

@@ -496,7 +496,7 @@ go_module(
 
 go_module(
     name = "buildifier",
-    path = "github.com/bazelbuild/buildtools/buildifier",
+    path = "github.com/bazelbuild/buildtools",
     binary = True,
     version = "0.19.2",
     deps = [

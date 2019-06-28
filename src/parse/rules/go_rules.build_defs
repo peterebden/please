@@ -15,7 +15,8 @@ _LINK_PKGS_CMD = ' '.join([
 def go_library(name:str, srcs:list, asm_srcs:list=None, hdrs:list=None, out:str=None, deps:list=[],
                visibility:list=None, test_only:bool&testonly=False, complete:bool=True,
                _needs_transitive_deps=False, _all_srcs=False, cover:bool=True,
-               filter_srcs:bool=True, _link_private:bool=False, _link_extra:bool=True, _abi:str=False):
+               filter_srcs:bool=True, _link_private:bool=False, _link_extra:bool=True,
+               _abi:str=False, _requires:list=[]):
     """Generates a Go library which can be reused by other rules.
 
     Args:
@@ -73,6 +74,7 @@ def go_library(name:str, srcs:list, asm_srcs:list=None, hdrs:list=None, out:str=
             _abi = abi_rule,
             _needs_transitive_deps = _needs_transitive_deps,
             _all_srcs = _all_srcs,
+            _requires = _requires,
         )
         asm_rule = build_rule(
             name = name,
@@ -132,7 +134,7 @@ def go_library(name:str, srcs:list, asm_srcs:list=None, hdrs:list=None, out:str=
         }
     else:
         outs = [out]
-
+    requires = ['go', 'go_src'] if _all_srcs else ['go']
     return build_rule(
         name=name,
         srcs=srcs,
@@ -142,7 +144,7 @@ def go_library(name:str, srcs:list, asm_srcs:list=None, hdrs:list=None, out:str=
         cmd=_go_library_cmds(complete=complete, all_srcs=_all_srcs, cover=cover, filter_srcs=filter_srcs, abi=_abi),
         visibility=visibility,
         building_description="Compiling...",
-        requires=['go', 'go_src'] if _all_srcs else ['go'],
+        requires=requires + _requires,
         provides={'go': ':' + name, 'go_src': src_rule},
         labels = labels,
         test_only=test_only,
@@ -285,7 +287,8 @@ def _merge_cgo_obj(name, a_rule, o_rule=None, visibility=None, test_only=False, 
 
 def go_binary(name:str, srcs:list=[], asm_srcs:list=[], out:str=None, deps:list=[],
               visibility:list=None, test_only:bool&testonly=False, static:bool=CONFIG.GO_DEFAULT_STATIC,
-              filter_srcs:bool=True, definitions:str|list|dict=None, stamp:bool=False):
+              filter_srcs:bool=True, definitions:str|list|dict=None, stamp:bool=False,
+              _requires:list=[]):
     """Compiles a Go binary.
 
     Args:
@@ -319,6 +322,7 @@ def go_binary(name:str, srcs:list=[], asm_srcs:list=[], out:str=None, deps:list=
         test_only=test_only,
         _link_private = True,
         _link_extra = False,
+        _requires = _requires,
     )
     cmds, tools = _go_binary_cmds(static=static, definitions=definitions)
     return build_rule(
