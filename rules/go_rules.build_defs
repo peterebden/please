@@ -699,9 +699,9 @@ def _go_get_download(name:str, tag:str, get:str, repo:str='', patch:str=None, ha
     # Some special optimisation for github, which lets us download zipfiles at a particular sha instead of
     # cloning the whole repo. Obviously that is a lot faster than cloning entire repos.
     if repo.startswith('github.com'):
-        cmd, get_deps, tools = _go_github_repo_cmd(name, getroot, repo, revision)
+        cmd, get_deps, tools = _go_github_repo_cmd(name, getroot, repo, revision, suffix=fallback)
     elif get.startswith('github.com'):
-        cmd, get_deps, tools = _go_github_repo_cmd(name, getroot, getroot, revision)
+        cmd, get_deps, tools = _go_github_repo_cmd(name, getroot, getroot, revision, suffix=fallback)
     elif get.startswith('golang.org/x/') and not repo:
         # We know about these guys...
         cmd, get_deps, tools = _go_github_repo_cmd(name, getroot, 'github.com/golang/' + getroot[len('golang.org/x/'):], revision)
@@ -756,7 +756,7 @@ def _go_get_download(name:str, tag:str, get:str, repo:str='', patch:str=None, ha
     ), getroot
 
 
-def _go_github_repo_cmd(name, get, repo, revision):
+def _go_github_repo_cmd(name, get, repo, revision, suffix=True):
     """Returns a partial command to fetch a Go repo from Github."""
     parts = get.split('/')
     out = '/'.join(parts[:3])
@@ -766,8 +766,10 @@ def _go_github_repo_cmd(name, get, repo, revision):
         dest = parts[2]
     else:
         dest = parts[-1]
+    if suffix:
+        name += '-' + parts[-1]
     remote_rule = remote_file(
-        name = name + '-' + parts[-1],
+        name = name,
         _tag = 'download',
         url = f'https://{repo}/archive/{revision}.zip',
         out = name + '-' + parts[-1] + '.zip',
