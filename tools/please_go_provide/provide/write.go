@@ -141,13 +141,8 @@ var tmpl = template.Must(template.New("build").Funcs(template.FuncMap{
 }).Parse(`
 package(go_import_path = "{{ .ImportPath }}")
 {{ range $pkgName, $pkg := .Pkgs }}
-{{ if eq $pkgName "main" }}
-go_binary(
-    name = "{{ $pkgName }}",
-{{ else }}
-go_library(
-    name = "{{ basename $.Dir }}",
-{{- end }}
+{{ if eq $pkgName "main" }}go_binary({{ else }}go_library({{ end }}
+    name = {{ if eq (len $.Pkgs) 1 -}}"{{ basename $.Dir }}"{{ else }}"{{ $pkgName }}"{{ end }},
     srcs = [
         {{- range $src, $file := $pkg.Pkg.Files }}
         "{{ basename $src }}",
