@@ -4,8 +4,10 @@ package provide
 import (
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/token"
+	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -20,8 +22,10 @@ func Write(importPath, dir string, deps []string) error {
 	if err := filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
-		} else if !info.IsDir() || p == dir || path.Base(dir) == "testdata" {
+		} else if !info.IsDir() || p == dir {
 			return nil
+		} else if info.IsDir() && path.Base(p) == "testdata" {
+			return filepath.SkipDir
 		}
 		return write(importPath, strings.Trim(p[len(dir):], "/"), p, deps, provides, binaries)
 	}); err != nil {
@@ -40,6 +44,16 @@ func write(rootImportPath, pkgName, dir string, deps []string, provides, binarie
 	}
 	ourpkgs := map[string]*pkgInfo{}
 	for name, pkg := range pkgs {
+		// Need to use build constraints to filter files down
+		for name := range pkg.Files {
+			if match, _ := build.Default.MatchFile(dir, path.Base(name)); !match {
+				delete(pkg.Files, name)
+			}
+		}
+		if len(pkg.Files) == 0 {
+			delete(pkgs, name)
+			continue
+		}
 		m := provides
 		if pkg.Name == "main" {
 			m = binaries
@@ -57,7 +71,13 @@ func write(rootImportPath, pkgName, dir string, deps []string, provides, binarie
 				if strings.Contains(p, ".") { // quick and dirty way of not adding stdlib
 					ourpkg.Imports = append(ourpkg.Imports, p)
 				}
+				if p == "C" {
+					ourpkg.Cgo = true
+				}
 			}
+		}
+		if pkg.Name != "main" {
+			readExtraFiles(dir, ourpkg)
 		}
 	}
 	f, err := os.Create(path.Join(dir, "BUILD"))
@@ -76,6 +96,28 @@ func write(rootImportPath, pkgName, dir string, deps []string, provides, binarie
 	})
 }
 
+// readExtraFiles reads any assembly or .c / .h files in the given directory.
+func readExtraFiles(dir string, pkg *pkgInfo) {
+	shouldInclude := func(name, suffix string) bool {
+		if strings.HasSuffix(name, suffix) {
+			match, _ := build.Default.MatchFile(dir, name)
+			return match
+		}
+		return false
+	}
+	files, _ := ioutil.ReadDir(dir)
+	for _, file := range files {
+		name := file.Name()
+		if shouldInclude(name, ".s") {
+			pkg.AsmFiles = append(pkg.AsmFiles, name)
+		} else if pkg.Cgo && shouldInclude(name, ".c") {
+			pkg.CFiles = append(pkg.CFiles, name)
+		} else if pkg.Cgo && shouldInclude(name, ".h") {
+			pkg.HFiles = append(pkg.HFiles, name)
+		}
+	}
+}
+
 type pkgsInfo struct {
 	Name, ImportPath, Dir string
 	Pkgs                  map[string]*pkgInfo
@@ -84,9 +126,10 @@ type pkgsInfo struct {
 }
 
 type pkgInfo struct {
-	Pkg       *ast.Package
-	LocalDeps []string
-	Imports   []string
+	Pkg                      *ast.Package
+	LocalDeps, Imports       []string
+	CFiles, HFiles, AsmFiles []string
+	Cgo                      bool
 }
 
 func nonTestOnly(info os.FileInfo) bool {
@@ -110,6 +153,13 @@ go_library(
         "{{ basename $src }}",
         {{- end }}
     ],
+    {{- if $pkg.AsmFiles }}
+    asm_srcs = [
+        {{- range $pkg.AsmFiles }}
+        "{{ . }}",
+        {{- end }}
+    ],
+    {{- end }}
     {{- if or $.Deps $pkg.LocalDeps }}
     deps = [
         {{- range $pkg.LocalDeps }}
