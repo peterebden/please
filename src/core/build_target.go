@@ -1171,6 +1171,15 @@ func (target *BuildTarget) SetProgress(progress float32) {
 	target.Progress = progress
 }
 
+// SubrepoPrefix returns the subrepo prefix for this target, handling the case where
+// it doesn't have one and where it's in the same subrepo as the one given.
+func (target *BuildTarget) SubrepoPrefix(subrepo *Subrepo) string {
+	if target.Subrepo == nil || target.Subrepo == subrepo {
+		return ""
+	}
+	return target.Subrepo.Prefix
+}
+
 // BuildTargets makes a slice of build targets sortable by their labels.
 type BuildTargets []*BuildTarget
 

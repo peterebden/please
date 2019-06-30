@@ -137,9 +137,13 @@ func IterSources(graph *BuildGraph, target *BuildTarget) <-chan SourcePair {
 			// This is the current build rule, so link its sources.
 			for _, source := range sources {
 				for _, providedSource := range recursivelyProvideSource(graph, target, source) {
+					prefix := ""
+					if l := providedSource.Label(); l != nil {
+						prefix = graph.TargetOrDie(*l).SubrepoPrefix(target.Subrepo)
+					}
 					fullPaths := providedSource.FullPaths(graph)
 					for i, sourcePath := range providedSource.Paths(graph) {
-						tmpPath := path.Join(tmpDir, sourcePath)
+						tmpPath := path.Join(tmpDir, prefix, sourcePath)
 						ch <- SourcePair{fullPaths[i], tmpPath}
 						donePaths[tmpPath] = true
 					}
@@ -148,10 +152,11 @@ func IterSources(graph *BuildGraph, target *BuildTarget) <-chan SourcePair {
 		} else {
 			// This is a dependency of the rule, so link its outputs.
 			outDir := dependency.OutDir()
+			prefix := dependency.SubrepoPrefix(target.Subrepo)
 			for _, dep := range dependency.Outputs() {
 				depPath := path.Join(outDir, dep)
 				pkgName := dependency.Label.PackageName
-				tmpPath := path.Join(tmpDir, pkgName, dep)
+				tmpPath := path.Join(tmpDir, prefix, pkgName, dep)
 				if !donePaths[tmpPath] {
 					ch <- SourcePair{depPath, tmpPath}
 					donePaths[tmpPath] = true

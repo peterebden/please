@@ -779,6 +779,9 @@ func subrepo(s *scope, args []pyObject) pyObject {
 		State:          state,
 		IsCrossCompile: isCrossCompile,
 	}
+	if args[6] != None {
+		sr.Prefix = string(args[6].(pyString))
+	}
 	if s.state.Config.Bazel.Compatibility && s.pkg.Name == "workspace" {
 		sr.Name = s.pkg.SubrepoArchName(name)
 	}
