@@ -612,81 +612,89 @@ func (config *Configuration) TagsToFields() map[string]reflect.StructField {
 // ApplyOverrides applies a set of overrides to the config.
 // The keys of the given map are dot notation for the config setting.
 func (config *Configuration) ApplyOverrides(overrides map[string]string) error {
+	for k, v := range overrides {
+		if err := config.ApplyOverride(k, v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ApplyOverride applies a single override to the config.
+func (config *Configuration) ApplyOverride(k, v string) error {
 	match := func(s1 string) func(string) bool {
 		return func(s2 string) bool {
 			return strings.ToLower(s2) == s1
 		}
 	}
 	elem := reflect.ValueOf(config).Elem()
-	for k, v := range overrides {
-		split := strings.Split(strings.ToLower(k), ".")
-		if len(split) != 2 {
-			return fmt.Errorf("Bad option format: %s", k)
+	split := strings.Split(strings.ToLower(k), ".")
+	if len(split) != 2 {
+		return fmt.Errorf("Bad option format: %s", k)
+	}
+	field := elem.FieldByNameFunc(match(split[0]))
+	if !field.IsValid() {
+		return fmt.Errorf("Unknown config field: %s", split[0])
+	} else if field.Kind() == reflect.Map {
+		field.SetMapIndex(reflect.ValueOf(split[1]), reflect.ValueOf(v))
+		return nil
+	} else if field.Kind() != reflect.Struct {
+		return fmt.Errorf("Unsettable config field: %s", split[0])
+	}
+	subfield, ok := field.Type().FieldByNameFunc(match(split[1]))
+	if !ok {
+		return fmt.Errorf("Unknown config field: %s", split[1])
+	}
+	field = field.FieldByNameFunc(match(split[1]))
+	switch field.Kind() {
+	case reflect.String:
+		// verify this is a legit setting for this field
+		if options := subfield.Tag.Get("options"); options != "" {
+			if !cli.ContainsString(v, strings.Split(options, ",")) {
+				return fmt.Errorf("Invalid value %s for field %s; options are %s", v, k, options)
+			}
 		}
-		field := elem.FieldByNameFunc(match(split[0]))
-		if !field.IsValid() {
-			return fmt.Errorf("Unknown config field: %s", split[0])
-		} else if field.Kind() == reflect.Map {
-			field.SetMapIndex(reflect.ValueOf(split[1]), reflect.ValueOf(v))
-			continue
-		} else if field.Kind() != reflect.Struct {
-			return fmt.Errorf("Unsettable config field: %s", split[0])
+		if field.Type().Name() == "URL" {
+			field.Set(reflect.ValueOf(cli.URL(v)))
+		} else {
+			field.Set(reflect.ValueOf(v))
 		}
-		subfield, ok := field.Type().FieldByNameFunc(match(split[1]))
-		if !ok {
-			return fmt.Errorf("Unknown config field: %s", split[1])
+	case reflect.Bool:
+		v = strings.ToLower(v)
+		// Mimics the set of truthy things gcfg accepts in our config file.
+		field.SetBool(v == "true" || v == "yes" || v == "on" || v == "1")
+	case reflect.Int:
+		i, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("Invalid value for an integer field: %s", v)
 		}
-		field = field.FieldByNameFunc(match(split[1]))
-		switch field.Kind() {
-		case reflect.String:
-			// verify this is a legit setting for this field
-			if options := subfield.Tag.Get("options"); options != "" {
-				if !cli.ContainsString(v, strings.Split(options, ",")) {
-					return fmt.Errorf("Invalid value %s for field %s; options are %s", v, k, options)
-				}
-			}
-			if field.Type().Name() == "URL" {
-				field.Set(reflect.ValueOf(cli.URL(v)))
-			} else {
-				field.Set(reflect.ValueOf(v))
-			}
-		case reflect.Bool:
-			v = strings.ToLower(v)
-			// Mimics the set of truthy things gcfg accepts in our config file.
-			field.SetBool(v == "true" || v == "yes" || v == "on" || v == "1")
-		case reflect.Int:
-			i, err := strconv.Atoi(v)
-			if err != nil {
-				return fmt.Errorf("Invalid value for an integer field: %s", v)
-			}
-			field.Set(reflect.ValueOf(i))
-		case reflect.Int64:
-			var d cli.Duration
-			if err := d.UnmarshalText([]byte(v)); err != nil {
-				return fmt.Errorf("Invalid value for a duration field: %s", v)
-			}
-			field.Set(reflect.ValueOf(d))
-		case reflect.Slice:
-			// Comma-separated values are accepted.
-			if field.Type().Elem().Kind() == reflect.Struct {
-				// Assume it must be a slice of BuildLabel.
-				l := []BuildLabel{}
-				for _, s := range strings.Split(v, ",") {
-					l = append(l, ParseBuildLabel(s, ""))
-				}
-				field.Set(reflect.ValueOf(l))
-			} else if field.Type().Elem().Name() == "URL" {
-				urls := []cli.URL{}
-				for _, s := range strings.Split(v, ",") {
-					urls = append(urls, cli.URL(s))
-				}
-				field.Set(reflect.ValueOf(urls))
-			} else {
-				field.Set(reflect.ValueOf(strings.Split(v, ",")))
-			}
-		default:
-			return fmt.Errorf("Can't override config field %s (is %s)", k, field.Kind())
+		field.Set(reflect.ValueOf(i))
+	case reflect.Int64:
+		var d cli.Duration
+		if err := d.UnmarshalText([]byte(v)); err != nil {
+			return fmt.Errorf("Invalid value for a duration field: %s", v)
 		}
+		field.Set(reflect.ValueOf(d))
+	case reflect.Slice:
+		// Comma-separated values are accepted.
+		if field.Type().Elem().Kind() == reflect.Struct {
+			// Assume it must be a slice of BuildLabel.
+			l := []BuildLabel{}
+			for _, s := range strings.Split(v, ",") {
+				l = append(l, ParseBuildLabel(s, ""))
+			}
+			field.Set(reflect.ValueOf(l))
+		} else if field.Type().Elem().Name() == "URL" {
+			urls := []cli.URL{}
+			for _, s := range strings.Split(v, ",") {
+				urls = append(urls, cli.URL(s))
+			}
+			field.Set(reflect.ValueOf(urls))
+		} else {
+			field.Set(reflect.ValueOf(strings.Split(v, ",")))
+		}
+	default:
+		return fmt.Errorf("Can't override config field %s (is %s)", k, field.Kind())
 	}
 	return nil
 }

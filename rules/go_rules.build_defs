@@ -538,6 +538,7 @@ def go_module(name:str, path:str, version:str, repo:str=None, hashes:list=None, 
         dep = get_rule,
         path = prefix,
         prefix = prefix,
+        config = {"go.importpath": path},
     )
     if binary:
         return filegroup(

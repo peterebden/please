@@ -754,8 +754,19 @@ func subrepo(s *scope, args []pyObject) pyObject {
 		root = string(args[2].(pyString))
 	}
 	state := s.state
-	if args[3] != None { // arg 3 is the config file to load
-		state = state.ForConfig(path.Join(s.pkg.Name, string(args[3].(pyString))))
+	if args[3] != None { // arg 3 is the config file to load (or settings to override)
+		switch targ := args[3].(type) {
+		case pyString:
+			state = state.ForConfig(path.Join(s.pkg.Name, string(targ)))
+		case pyDict:
+			state = state.ForConfig()
+			for k, v := range targ {
+				val, ok := v.(pyString)
+				s.Assert(ok, "Values in config dict must be strings")
+				err := state.Config.ApplyOverride(k, string(val))
+				s.Assert(err == nil, "Error applying config: %s", err)
+			}
+		}
 	} else if args[4].IsTruthy() { // arg 4 is bazel_compat
 		state = state.ForConfig()
 		state.Config.Bazel.Compatibility = true
