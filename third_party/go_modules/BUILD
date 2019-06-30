@@ -301,6 +301,13 @@ go_module(
     name = "go-multierror",
     path = "github.com/hashicorp/go-multierror",
     version = "b7773ae218740a7be65057fc60b366a49b538a44",
+    deps = [":errwrap"],
+)
+
+go_module(
+    name = "errwrap",
+    path = "github.com/hashicorp/errwrap",
+    version = "v1.0.0",
 )
 
 go_module(
