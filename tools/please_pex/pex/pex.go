@@ -20,17 +20,19 @@ type Writer struct {
 	noSite         bool
 	shebang        string
 	realEntryPoint string
+	pexStamp       string
 	testSrcs       []string
 	testIncludes   []string
 	testRunner     string
 }
 
 // NewWriter constructs a new Writer.
-func NewWriter(entryPoint, interpreter string, options string, zipSafe, noSite bool) *Writer {
+func NewWriter(entryPoint, interpreter, options, stamp string, zipSafe, noSite bool) *Writer {
 	pw := &Writer{
 		zipSafe:        zipSafe,
 		noSite:         noSite,
 		realEntryPoint: toPythonPath(entryPoint),
+		pexStamp:       stamp,
 	}
 	pw.SetShebang(interpreter, options)
 	return pw
@@ -59,19 +61,20 @@ func (pw *Writer) SetShebang(shebang string, options string) {
 
 // SetTest sets this Writer to write tests using the given sources.
 // This overrides the entry point given earlier.
-func (pw *Writer) SetTest(srcs []string, testRunner string) {
+func (pw *Writer) SetTest(srcs []string, testRunner string, addTestRunnerDeps bool) {
 	pw.realEntryPoint = "test_main"
 	pw.testSrcs = srcs
 
-	commonIncludes := []string{
+	testRunnerDeps := []string{
 		".bootstrap/coverage",
 		".bootstrap/__init__.py",
 		".bootstrap/six.py",
 	}
 
-	if testRunner == "pytest" {
+	switch testRunner {
+	case "pytest":
 		// We only need xmlrunner for unittest, the equivalent is builtin to pytest.
-		pw.testIncludes = append(commonIncludes,
+		testRunnerDeps = append(testRunnerDeps,
 			".bootstrap/pytest.py",
 			".bootstrap/_pytest",
 			".bootstrap/py",
@@ -80,10 +83,9 @@ func (pw *Writer) SetTest(srcs []string, testRunner string) {
 			".bootstrap/funcsigs",
 			".bootstrap/pkg_resources",
 		)
-
 		pw.testRunner = "pytest.py"
-	} else if testRunner == "behave" {
-		pw.testIncludes = append(commonIncludes,
+	case "behave":
+		testRunnerDeps = append(testRunnerDeps,
 			".bootstrap/behave",
 			".bootstrap/parse.py",
 			".bootstrap/parse_type",
@@ -93,11 +95,16 @@ func (pw *Writer) SetTest(srcs []string, testRunner string) {
 			".bootstrap/colorama",
 		)
 		pw.testRunner = "behave.py"
-	} else {
-		pw.testIncludes = append(commonIncludes,
-			".bootstrap/xmlrunner")
-
+	default:
+		if len(testRunner) > 0 && testRunner != "unittest" {
+			panic("unsupported python testRunner: " + testRunner)
+		}
+		testRunnerDeps = append(testRunnerDeps, ".bootstrap/xmlrunner")
 		pw.testRunner = "unittest.py"
+	}
+
+	if addTestRunnerDeps {
+		pw.testIncludes = testRunnerDeps
 	}
 }
 
@@ -113,7 +120,9 @@ func (pw *Writer) Write(out, moduleDir string) error {
 
 	// Write required pex stuff for tests. Note that this executable is also a zipfile and we can
 	// jarcat it directly in (nifty, huh?).
-	if len(pw.testSrcs) != 0 {
+	//
+	// Note that if the target contains its own test-runner, then we don't need to add anything.
+	if len(pw.testIncludes) > 0 {
 		f.Include = pw.testIncludes
 		if err := f.AddZipFile(os.Args[0]); err != nil {
 			return err
@@ -125,6 +134,7 @@ func (pw *Writer) Write(out, moduleDir string) error {
 	b = bytes.Replace(b, []byte("__MODULE_DIR__"), []byte(strings.Replace(moduleDir, ".", "/", -1)), 1)
 	b = bytes.Replace(b, []byte("__ENTRY_POINT__"), []byte(pw.realEntryPoint), 1)
 	b = bytes.Replace(b, []byte("__ZIP_SAFE__"), []byte(pythonBool(pw.zipSafe)), 1)
+	b = bytes.Replace(b, []byte("__PEX_STAMP__"), []byte(pw.pexStamp), 1)
 
 	if len(pw.testSrcs) != 0 {
 		// If we're writing a test, we append test_main.py to it.
