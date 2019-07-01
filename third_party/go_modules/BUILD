@@ -476,7 +476,7 @@ go_module(
 go_module(
     name = "gogo-protobuf",
     path = "github.com/gogo/protobuf",
-    version = "v0.4",
+    version = "v1.2.1",
 )
 
 go_module(
