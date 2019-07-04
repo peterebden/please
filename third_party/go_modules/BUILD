@@ -527,6 +527,13 @@ go_module(
     name = "jsonrpc2",
     path = "github.com/sourcegraph/jsonrpc2",
     version = "549eb959f029d014d623104d40ab966d159a92de",
+    deps = [":websocket"],
+)
+
+go_module(
+    name = "websocket",
+    path = "github.com/gorilla/websocket",
+    version = "v1.4.0",
 )
 
 go_module(
