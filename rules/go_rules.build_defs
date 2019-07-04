@@ -507,6 +507,10 @@ def go_module(name:str, path:str, version:str, repo:str=None, hashes:list=None, 
               test_only:bool=False, deps:list=[], exported_deps:list=[], visibility:list=None):
     """Defines a rule to download a single Go module.
 
+    This roughly mimics a module from a go.mod file; it fetches a repo and generates build rules
+    for the packages within it.
+    Vendor directories are currently not supported.
+
     Args:
       name: Name of the rule
       path: Path to module (as specified in go.mod file)

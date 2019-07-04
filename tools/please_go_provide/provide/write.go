@@ -41,6 +41,8 @@ func write(rootImportPath, pkgName, dir string, deps []string, provides, binarie
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to parse Go files in %s: %s\n", pkgName, err)
 		return nil // Don't die fatally; otherwise we are at the mercy of any one bad file in any repo.
+	} else if len(pkgs) == 0 && pkgName != "" {
+		return nil // nothing to do
 	}
 	ourpkgs := map[string]*pkgInfo{}
 	for name, pkg := range pkgs {
@@ -59,8 +61,12 @@ func write(rootImportPath, pkgName, dir string, deps []string, provides, binarie
 			m = binaries
 		}
 		importPath := path.Join(rootImportPath, pkgName)
-		m[importPath] = "//" + pkgName + ":" + path.Base(importPath)
+		dirName := path.Base(importPath)
+		m[importPath] = "//" + pkgName + ":" + dirName
 		ourpkg := &pkgInfo{Pkg: pkg}
+		if _, present := pkgs[dirName]; !present {
+			name = dirName
+		}
 		ourpkgs[name] = ourpkg
 		for _, file := range pkg.Files {
 			for _, imp := range file.Imports {
@@ -142,7 +148,7 @@ var tmpl = template.Must(template.New("build").Funcs(template.FuncMap{
 package(go_import_path = "{{ .ImportPath }}")
 {{ range $pkgName, $pkg := .Pkgs }}
 {{ if eq $pkgName "main" }}go_binary({{ else }}go_library({{ end }}
-    name = {{ if eq (len $.Pkgs) 1 -}}"{{ basename $.Dir }}"{{ else }}"{{ $pkgName }}"{{ end }},
+    name = "{{ $pkgName }}",
     srcs = [
         {{- range $src, $file := $pkg.Pkg.Files }}
         "{{ basename $src }}",

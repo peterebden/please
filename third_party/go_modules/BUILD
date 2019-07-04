@@ -138,7 +138,18 @@ go_module(
     name = "testify",
     path = "github.com/stretchr/testify",
     version = "f390dcf405f7b83c997eac1b06768bb9f44dec18",
-    deps = [":spew"],
+    test_only = True,
+    deps = [
+        ":spew",
+        ":difflib",
+    ],
+)
+
+go_module(
+    name = "difflib",
+    path = "github.com/pmezard/go-difflib",
+    version = "5d4384ee4fb2527b0a1256a821ebfc92f91efefc",
+    test_only = True,
 )
 
 go_module(
