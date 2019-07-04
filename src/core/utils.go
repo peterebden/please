@@ -161,6 +161,11 @@ func IterSources(graph *BuildGraph, target *BuildTarget) <-chan SourcePair {
 					ch <- SourcePair{depPath, tmpPath}
 					donePaths[tmpPath] = true
 				}
+				for _, link := range dependency.OutputLinks {
+					if tmpPath := path.Join(tmpDir, prefix, link, dep); !donePaths[tmpPath] {
+						ch <- SourcePair{depPath, tmpPath}
+					}
+				}
 			}
 			// Mark any label-type outputs as done.
 			for _, out := range dependency.DeclaredOutputs() {

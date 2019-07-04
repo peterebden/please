@@ -24,8 +24,10 @@ func Write(importPath, dir string, deps []string) error {
 			return err
 		} else if !info.IsDir() || p == dir {
 			return nil
-		} else if info.IsDir() && path.Base(p) == "testdata" {
-			return filepath.SkipDir
+		} else if info.IsDir() {
+			if base := path.Base(p); base == "testdata" || strings.HasPrefix(base, ".") || base == "vendor" {
+				return filepath.SkipDir
+			}
 		}
 		return write(importPath, strings.Trim(p[len(dir):], "/"), p, deps, provides, binaries)
 	}); err != nil {

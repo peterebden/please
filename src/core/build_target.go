@@ -63,6 +63,8 @@ type BuildTarget struct {
 	// Optional output files of this rule. Same as outs but aren't required to be produced always.
 	// Can be glob patterns.
 	OptionalOutputs []string `name:"optional_outs"`
+	// Directories to link outputs into when they are consumed by other rules.
+	OutputLinks []string `name:"out_links"`
 	// Optional labels applied to this rule. Used for including/excluding rules.
 	Labels []string
 	// Shell command to run.

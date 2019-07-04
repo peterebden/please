@@ -140,9 +140,17 @@ go_module(
     version = "f390dcf405f7b83c997eac1b06768bb9f44dec18",
     test_only = True,
     deps = [
-        ":spew",
         ":difflib",
+        ":objx",
+        ":spew",
     ],
+)
+
+go_module(
+    name = "objx",
+    path = "github.com/stretchr/objx",
+    version = "v0.2.0",
+    test_only = True,
 )
 
 go_module(
@@ -335,6 +343,13 @@ go_module(
     name = "go-sockaddr",
     path = "github.com/hashicorp/go-sockaddr",
     version = "6d291a969b86c4b633730bfc6b8b9d64c3aafed9",
+    deps = [":radix"],
+)
+
+go_module(
+    name = "radix",
+    path = "github.com/armon/go-radix",
+    version = "v1.0.0",
 )
 
 go_module(

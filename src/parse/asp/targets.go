@@ -58,8 +58,11 @@ func createTarget(s *scope, args []pyObject) *core.BuildTarget {
 		target.AddLabel(name)
 	}
 	if args[40] != None {
-		l := asStringList(s, args[40].(pyList), "pass_env")
+		l := asStringList(s, args[40], "pass_env")
 		target.PassEnv = &l
+	}
+	if args[41] != None {
+		target.OutputLinks = asStringList(s, args[41], "out_links")
 	}
 
 	target.BuildTimeout = sizeAndTimeout(s, size, args[24], s.state.Config.Build.Timeout)
