@@ -343,7 +343,10 @@ go_module(
     name = "go-sockaddr",
     path = "github.com/hashicorp/go-sockaddr",
     version = "6d291a969b86c4b633730bfc6b8b9d64c3aafed9",
-    deps = [":radix"],
+    deps = [
+        ":radix",
+        ":errwrap",
+    ],
 )
 
 go_module(
