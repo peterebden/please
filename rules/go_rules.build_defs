@@ -541,12 +541,11 @@ def go_module(name:str, path:str, version:str, repo:str=None, hashes:list=None, 
         infer_build = True,
         deps = deps,
     )
-    prefix = 'src/' + path
     sr = subrepo(
         name = name,
         dep = get_rule,
-        path = prefix,
-        prefix = prefix,
+        path = 'src/' + path,
+        prefix = path,
         config = {"go.importpath": path},
     )
     if binary:

@@ -65,7 +65,7 @@ func write(rootImportPath, pkgName, dir string, deps []string, provides, binarie
 		importPath := path.Join(rootImportPath, pkgName)
 		dirName := path.Base(importPath)
 		m[importPath] = "//" + pkgName + ":" + dirName
-		ourpkg := &pkgInfo{Pkg: pkg}
+		ourpkg := &pkgInfo{Pkg: pkg, Binary: name == "main"}
 		if _, present := pkgs[dirName]; !present {
 			name = dirName
 		}
@@ -137,7 +137,7 @@ type pkgInfo struct {
 	Pkg                      *ast.Package
 	LocalDeps, Imports       []string
 	CFiles, HFiles, AsmFiles []string
-	Cgo                      bool
+	Cgo, Binary              bool
 }
 
 func nonTestOnly(info os.FileInfo) bool {
@@ -149,7 +149,7 @@ var tmpl = template.Must(template.New("build").Funcs(template.FuncMap{
 }).Parse(`
 package(go_import_path = "{{ .ImportPath }}")
 {{ range $pkgName, $pkg := .Pkgs }}
-{{ if eq $pkgName "main" }}go_binary({{ else }}go_library({{ end }}
+{{ if $pkg.Binary }}go_binary({{ else }}go_library({{ end }}
     name = "{{ $pkgName }}",
     srcs = [
         {{- range $src, $file := $pkg.Pkg.Files }}
