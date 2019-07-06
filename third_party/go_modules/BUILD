@@ -346,12 +346,19 @@ go_module(
     deps = [
         ":radix",
         ":errwrap",
+        ":wordwrap",
     ],
 )
 
 go_module(
     name = "radix",
     path = "github.com/armon/go-radix",
+    version = "v1.0.0",
+)
+
+go_module(
+    name = "wordwrap",
+    path = "github.com/mitchellh/go-wordwrap",
     version = "v1.0.0",
 )
 

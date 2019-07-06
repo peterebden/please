@@ -162,7 +162,7 @@ func IterSources(graph *BuildGraph, target *BuildTarget) <-chan SourcePair {
 					donePaths[tmpPath] = true
 				}
 				for _, link := range dependency.OutputLinks {
-					if tmpPath := path.Join(tmpDir, prefix, link, dep); !donePaths[tmpPath] {
+					if tmpPath := path.Join(tmpDir, link, dep); !donePaths[tmpPath] {
 						ch <- SourcePair{depPath, tmpPath}
 					}
 				}
