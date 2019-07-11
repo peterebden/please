@@ -207,6 +207,7 @@ filegroup(
         "{{ $k }}": "{{ $v }}",
         {{- end }}
     },
+    binary = True,
     visibility = ["PUBLIC"],
 )
 {{ end }}

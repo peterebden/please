@@ -104,14 +104,14 @@ go_module(
     version = "v1.10.0",
     deps = [
         ":protobuf",
-        ":rpcstatus",
+        ":genproto",
     ],
 )
 
 #TODO: build from the actual proto.
 go_module(
-    name = "rpcstatus",
-    path = "google.golang.org/genproto/googleapis/rpc/status",
+    name = "genproto",
+    path = "google.golang.org/genproto",
     version = "2b5a72b8730b0b16380010cfe5286c42108d88e7",
     deps = [":protobuf"],
 )
@@ -120,6 +120,7 @@ go_module(
     name = "protobuf",
     path = "github.com/golang/protobuf",
     version = "v1.1.0",
+    deps = [":genproto"],
 )
 
 go_module_binary(
