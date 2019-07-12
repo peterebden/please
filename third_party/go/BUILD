@@ -594,8 +594,24 @@ go_get(
     get = "github.com/bazelbuild/remote-apis",
     revision = "e7282cf0f0e16e7ba84209be5417279e6815bee7",
     deps = [
-        ":protobuf",
         ":grpc",
         ":genproto",
+        ":protobuf",
+        ":rpcstatus",
+    ],
+)
+
+go_get(
+    name = "genproto",
+    get = "google.golang.org/genproto",
+    repo = "github.com/googleapis/go-genproto",
+    install = [
+        "googleapis/api/annotations",
+        "googleapis/longrunning",
+    ],
+    revision = "3bdd9d9f5532d75d09efb230bd767d265245cfe5",
+    deps = [
+        ":grpc",
+        ":protobuf",
     ],
 )
