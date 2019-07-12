@@ -588,3 +588,14 @@ go_get(
     revision = "v1.0.0",
     deps = [":gogo-protobuf"],
 )
+
+go_get(
+    name = "remote-apis",
+    get = "github.com/bazelbuild/remote-apis",
+    revision = "e7282cf0f0e16e7ba84209be5417279e6815bee7",
+    deps = [
+        ":protobuf",
+        ":grpc",
+        ":genproto",
+    ],
+)
