@@ -116,7 +116,6 @@ go_get(
         "encoding",
         "encoding/gzip",
         "encoding/proto",
-        "grpclb/grpc_lb_v1/messages",
         "grpclog",
         "health",
         "health/grpc_health_v1",
@@ -131,13 +130,13 @@ go_get(
         "stats",
         "status",
         "tap",
-        "transport",
     ],
     repo = "github.com/grpc/grpc-go",
-    revision = "v1.10.0",
+    revision = "v1.22.0",
     deps = [
         ":protobuf",
         ":rpcstatus",
+        ":unix",
     ],
 )
 
@@ -152,7 +151,7 @@ go_get(
 go_get(
     name = "protobuf",
     get = "github.com/golang/protobuf/...",
-    revision = "v1.1.0",
+    revision = "v1.3.2",
     strip = [
         "proto/proto3_proto",
         "conformance",
@@ -591,26 +590,35 @@ go_get(
 
 go_get(
     name = "remote-apis",
-    get = "github.com/bazelbuild/remote-apis",
+    get = "github.com/bazelbuild/remote-apis/build/...",
     revision = "e7282cf0f0e16e7ba84209be5417279e6815bee7",
     deps = [
+        ":annotations",
         ":grpc",
-        ":genproto",
+        ":longrunning",
         ":protobuf",
         ":rpcstatus",
     ],
 )
 
+# TODO(peterebden): Splitting up this & the other bits of genproto is a bit of
+#                   a hack. Replace once we have a better way of describing Go modules.
 go_get(
-    name = "genproto",
-    get = "google.golang.org/genproto",
-    repo = "github.com/googleapis/go-genproto",
-    install = [
-        "googleapis/api/annotations",
-        "googleapis/longrunning",
-    ],
+    name = "annotations",
+    get = "google.golang.org/genproto/googleapis/api/annotations",
     revision = "3bdd9d9f5532d75d09efb230bd767d265245cfe5",
     deps = [
+        ":grpc",
+        ":protobuf",
+    ],
+)
+
+go_get(
+    name = "longrunning",
+    get = "google.golang.org/genproto/googleapis/longrunning",
+    revision = "3bdd9d9f5532d75d09efb230bd767d265245cfe5",
+    deps = [
+        ":annotations",
         ":grpc",
         ":protobuf",
     ],
