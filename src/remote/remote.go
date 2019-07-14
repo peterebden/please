@@ -47,7 +47,7 @@ type Client struct {
 // New returns a new Client instance.
 // It begins the process of contacting the remote server but does not wait for it.
 func New(config *core.Configuration) *Client {
-	c := &Client{}
+	c := &Client{config: config}
 	go c.CheckInitialised() // Kick off init now, but we don't have to wait for it.
 	return c
 }
@@ -78,7 +78,7 @@ func (c *Client) init() {
 		if err != nil {
 			return err
 		} else if lessThan(&apiVersion, resp.LowApiVersion) || lessThan(resp.HighApiVersion, &apiVersion) {
-			return fmt.Errorf("Unsupported API version; we require %s but server only supports %s - %s", apiVersion, resp.LowApiVersion, resp.HighApiVersion)
+			return fmt.Errorf("Unsupported API version; we require %s but server only supports %s - %s", printVer(&apiVersion), printVer(resp.LowApiVersion), printVer(resp.HighApiVersion))
 		}
 		caps := resp.CacheCapabilities
 		if caps == nil {
@@ -134,4 +134,14 @@ func lessThan(a, b *semver.SemVer) bool {
 		return false
 	}
 	return a.Prerelease < b.Prerelease
+}
+
+// printVer pretty-prints a semver message.
+// The default stringing of them is so bad as to be completely unreadable.
+func printVer(v *semver.SemVer) string {
+	msg := fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
+	if v.Prerelease != "" {
+		msg += "-" + v.Prerelease
+	}
+	return msg
 }

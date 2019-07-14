@@ -15,10 +15,34 @@ import (
 )
 
 func TestInit(t *testing.T) {
+	c := newClient()
+	assert.NoError(t, c.CheckInitialised())
+}
+
+func TestBadAPIVersion(t *testing.T) {
+	defer server.Reset()
+	server.HighApiVersion.Major = 1
+	server.LowApiVersion.Major = 1
+	c := newClient()
+	assert.Error(t, c.CheckInitialised())
+	assert.Contains(t, c.CheckInitialised().Error(), "1.0.0 - 1.1.0")
+}
+
+func TestUnsupportedDigest(t *testing.T) {
+	defer server.Reset()
+	server.DigestFunction = []pb.DigestFunction_Value{
+		pb.DigestFunction_SHA256,
+		pb.DigestFunction_SHA384,
+		pb.DigestFunction_SHA512,
+	}
+	c := newClient()
+	assert.Error(t, c.CheckInitialised())
+}
+
+func newClient() *Client {
 	config := core.DefaultConfiguration()
 	config.Remote.URL = "127.0.0.1:9987"
-	c := New(config)
-	assert.NoError(t, c.CheckInitialised())
+	return New(config)
 }
 
 // A capsServer implements the server interface for the Capabilities service.
