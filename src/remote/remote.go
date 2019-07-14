@@ -36,8 +36,12 @@ type Client struct {
 	actionCacheClient pb.ActionCacheClient
 	storageClient     pb.ContentAddressableStorageClient
 	initOnce          sync.Once
-	config            *core.Configuration
+	state             *core.BuildState
 	err               error // for initialisation
+
+	// This is for servers have have multiple instances. Right now we never set it but
+	// we keep this here to remind us where it would need to go in the API.
+	instance string
 
 	// Server-sent cache properties
 	maxBlobBatchSize int64
@@ -46,8 +50,8 @@ type Client struct {
 
 // New returns a new Client instance.
 // It begins the process of contacting the remote server but does not wait for it.
-func New(config *core.Configuration) *Client {
-	c := &Client{config: config}
+func New(state *core.BuildState) *Client {
+	c := &Client{state: state}
 	go c.CheckInitialised() // Kick off init now, but we don't have to wait for it.
 	return c
 }
@@ -63,7 +67,7 @@ func (c *Client) init() {
 	c.err = func() error {
 		// TODO(peterebden): We may need to add the ability to have multiple URLs which we
 		//                   would then query for capabilities to discover which is which.
-		conn, err := grpc.Dial(c.config.Remote.URL.String(),
+		conn, err := grpc.Dial(c.state.Config.Remote.URL.String(),
 			grpc.WithTimeout(dialTimeout),
 			grpc.WithInsecure(),
 			grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(grpc_retry.WithMax(maxRetries))))
@@ -74,7 +78,9 @@ func (c *Client) init() {
 		// execution, caching or both.
 		ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
 		defer cancel()
-		resp, err := pb.NewCapabilitiesClient(conn).GetCapabilities(ctx, &pb.GetCapabilitiesRequest{})
+		resp, err := pb.NewCapabilitiesClient(conn).GetCapabilities(ctx, &pb.GetCapabilitiesRequest{
+			InstanceName: c.instance,
+		})
 		if err != nil {
 			return err
 		} else if lessThan(&apiVersion, resp.LowApiVersion) || lessThan(resp.HighApiVersion, &apiVersion) {
@@ -116,6 +122,14 @@ func (c *Client) chooseDigest(fns []pb.DigestFunction_Value) error {
 }
 
 func (c *Client) GetArtifact() {
+}
+
+// Store stores a set of artifacts for a single build target.
+//
+// localFiles are the paths to files on the local filesystem; remoteFiles are corresponding
+// paths to store remotely.
+func (c *Client) Store(target *core.BuildTarget, key []byte, localFiles, remoteFiles []string) error {
+	return nil
 }
 
 // lessThan returns true if the given semver instance is less than another one.

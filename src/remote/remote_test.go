@@ -40,9 +40,9 @@ func TestUnsupportedDigest(t *testing.T) {
 }
 
 func newClient() *Client {
-	config := core.DefaultConfiguration()
-	config.Remote.URL = "127.0.0.1:9987"
-	return New(config)
+	state := core.NewDefaultBuildState()
+	state.Config.Remote.URL = "127.0.0.1:9987"
+	return New(state)
 }
 
 // A capsServer implements the server interface for the Capabilities service.
