@@ -371,6 +371,10 @@ type Configuration struct {
 		DisableCoverage []string     `help:"Disables coverage for tests that have any of these labels spcified."`
 		Upload          cli.URL      `help:"URL to upload test results to (in XML format)"`
 	}
+	Remote struct {
+		URL          cli.URL `help:"URL for the remote server. If this is set but no executors are configured then it can still act as a remote cache."`
+		NumExecutors int     `help:"Maximum number of remote executors to use simultaneously."`
+	} `help:"Settings related to remote execution & caching using the Google remote execution APIs. This section is still experimental and subject to change."`
 	Size  map[string]*Size `help:"Named sizes of targets; these are the definitions of what can be passed to the 'size' argument."`
 	Cover struct {
 		FileExtension    []string `help:"Extensions of files to consider for coverage.\nDefaults to a reasonably obvious set for the builtin rules including .go, .py, .java, etc."`
