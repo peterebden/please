@@ -5,7 +5,11 @@ package remote
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path"
 	"sync"
 	"time"
 
@@ -22,6 +26,9 @@ var log = logging.MustGetLogger("remote")
 
 // Timeout to initially contact the server.
 const dialTimeout = 5 * time.Second
+
+// Timeout for actual requests
+const reqTimeout = 2 * time.Minute
 
 // Maximum number of times we retry a request.
 const maxRetries = 3
@@ -125,37 +132,221 @@ func (c *Client) GetArtifact() {
 }
 
 // Store stores a set of artifacts for a single build target.
-//
-// localFiles are the paths to files on the local filesystem; remoteFiles are corresponding
-// paths to store remotely.
-func (c *Client) Store(target *core.BuildTarget, key []byte, localFiles, remoteFiles []string) error {
+func (c *Client) Store(target *core.BuildTarget, key []byte, files []string) error {
+	// v0.1: just do BatchUpdateBlobs  <-- we are here
+	// v0.2: honour the max size to do ByteStreams
+	// v0.3: get the action cache involved
+	reqs := make([]*pb.BatchUpdateBlobsRequest_Request, 0, len(files))
+	ar := &pb.ActionResult{
+		// We never cache any failed actions so ExitCode is implicitly 0.
+		ExecutionMetadata: &pb.ExecutedActionMetadata{
+			Worker: c.state.Config.Remote.Name,
+			// TODO(peterebden): Add some kind of temporary metadata so we can know at least
+			//                   the start/completed timestamps and stdout/stderr.
+			//                   We will need stdout at least for post-build functions.
+			OutputUploadStartTimestamp: toTimestamp(time.Now()),
+		},
+	}
+	var totalSize int64
+	for i, file := range files {
+		// Find out how big the file is upfront, if it's huge we don't want to read it
+		// all into RAM at once (we will end up using this ByteStream malarkey instead).
+		info, err := os.Lstat(file)
+		if err != nil {
+			return err
+		} else if mode := info.Mode(); mode&os.ModeDir != 0 {
+			// It's a directory, needs special treatment
+			root, children, err := c.digestDir(file, nil)
+			if err != nil {
+				return err
+			}
+			digest := digestMessage(&pb.Tree{
+				Root:     root,
+				Children: children,
+			})
+			ar.OutputDirectories = append(ar.OutputDirectories, &pb.OutputDirectory{
+				Path:       file,
+				TreeDigest: digest,
+			})
+			continue
+		} else if mode&os.ModeSymlink != 0 {
+			target, err := os.Readlink(file)
+			if err != nil {
+				return err
+			}
+			// TODO(peterebden): Work out if we need to give a shit about
+			//                   OutputDirectorySymlinks or not. Seems like we shouldn't
+			//                   need to care since symlinks don't know the type of thing
+			//                   they point to?
+			ar.OutputFileSymlinks = append(ar.OutputFileSymlinks, &pb.OutputSymlink{
+				Path:   file,
+				Target: target,
+			})
+			continue
+		} else if size := info.Size(); size > c.maxBlobBatchSize {
+			// This blob individually exceeds the size, have to stream it.
+			h, err := c.storeByteStream(file, size)
+			if err != nil {
+				return err
+			}
+			// Still need to save this for later
+			ar.OutputFiles = append(ar.OutputFiles, &pb.OutputFile{
+				Path: file,
+				Digest: &pb.Digest{
+					Hash:      hex.EncodeToString(h),
+					SizeBytes: size,
+				},
+				IsExecutable: (info.Mode() & 0111) != 0,
+			})
+			continue
+		} else if size+totalSize > c.maxBlobBatchSize {
+			// We have exceeded the total but this blob on its own is OK.
+			// Send what we have so far then deal with this one.
+			if err := c.sendBlobs(reqs); err != nil {
+				return err
+			}
+			reqs = make([]*pb.BatchUpdateBlobsRequest_Request, 0, len(files)-i)
+			totalSize = 0
+		}
+		req, digest, err := c.digestFile(file, info.Size())
+		if err != nil {
+			return err
+		}
+		reqs = append(reqs, req)
+		ar.OutputFiles = append(ar.OutputFiles, &pb.OutputFile{
+			Path:         file,
+			Digest:       digest,
+			IsExecutable: (info.Mode() & 0111) != 0,
+		})
+	}
+	if len(reqs) > 0 {
+		return c.sendBlobs(reqs)
+	}
+	// OK, now the blobs are uploaded, we also need to upload the ActionResult which
+	// describes more of the metadata of the build action.
+	ctx, cancel := context.WithTimeout(context.Background(), reqTimeout)
+	defer cancel()
+	_, err := c.actionCacheClient.UpdateActionResult(ctx, &pb.UpdateActionResultRequest{
+		InstanceName: c.instance,
+		ActionDigest: &pb.Digest{
+			Hash: hex.EncodeToString(key),
+			// Assume we don't need SizeBytes here since there is no real "size" as such?
+		},
+		ActionResult: ar,
+	})
+	return err
+}
+
+// sendBlobs dispatches a set of blobs to the remote CAS server.
+func (c *Client) sendBlobs(reqs []*pb.BatchUpdateBlobsRequest_Request) error {
+	ctx, cancel := context.WithTimeout(context.Background(), reqTimeout)
+	defer cancel()
+	resp, err := c.storageClient.BatchUpdateBlobs(ctx, &pb.BatchUpdateBlobsRequest{
+		InstanceName: c.instance,
+		Requests:     reqs,
+	})
+	if err != nil {
+		return err
+	}
+	// TODO(peterebden): this is not really great handling - we should really use Details
+	//                   instead of Message (since this ends up being user-facing) and
+	//                   shouldn't just take the first one. This will do for now though.
+	for _, r := range resp.Responses {
+		if r.Status.Code != 0 {
+			return fmt.Errorf("%s", r.Status.Message)
+		}
+	}
 	return nil
 }
 
-// lessThan returns true if the given semver instance is less than another one.
-func lessThan(a, b *semver.SemVer) bool {
-	if a.Major < b.Major {
-		return true
-	} else if a.Major > b.Major {
-		return false
-	} else if a.Minor < b.Minor {
-		return true
-	} else if a.Minor > b.Minor {
-		return false
-	} else if a.Patch < b.Patch {
-		return true
-	} else if a.Patch > b.Patch {
-		return false
-	}
-	return a.Prerelease < b.Prerelease
+// storeByteStream sends a single file as a bytestream. This is required when
+// it's over the size limit for BatchUpdateBlobs.
+// It returns the hash of the stored file.
+func (c *Client) storeByteStream(file string, size int64) ([]byte, error) {
+	return nil, fmt.Errorf("Unimplemented")
 }
 
-// printVer pretty-prints a semver message.
-// The default stringing of them is so bad as to be completely unreadable.
-func printVer(v *semver.SemVer) string {
-	msg := fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
-	if v.Prerelease != "" {
-		msg += "-" + v.Prerelease
+// digestFile creates an UpdateBlobsRequest and a Digest from a single file.
+// It must be a real file (not a dir or symlink) and must be under the size limit.
+func (c *Client) digestFile(file string, size int64) (*pb.BatchUpdateBlobsRequest_Request, *pb.Digest, error) {
+	// TODO(peterebden): Unify this into PathHasher somehow so we only read the
+	//                   file once (i.e. read it and hash as we go).
+	b, err := ioutil.ReadFile(file)
+	if err != nil {
+		return nil, nil, err
 	}
-	return msg
+	h, err := c.state.PathHasher.Hash(file, false, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	digest := &pb.Digest{
+		Hash:      hex.EncodeToString(h),
+		SizeBytes: size,
+	}
+	return &pb.BatchUpdateBlobsRequest_Request{
+		Digest: digest,
+		Data:   b,
+	}, digest, nil
+}
+
+// digestDir calculates the digest for a directory.
+// It returns Directory protos for the directory and all its (recursive) children.
+func (c *Client) digestDir(dir string, children []*pb.Directory) (*pb.Directory, []*pb.Directory, error) {
+	entries, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	// We have to upload all the files as we go along too.
+	reqs := make([]*pb.BatchUpdateBlobsRequest_Request, 0, len(entries))
+	var totalSize int64
+	d := &pb.Directory{}
+	for i, entry := range entries {
+		name := entry.Name()
+		fullname := path.Join(dir, name)
+		if mode := entry.Mode(); mode&os.ModeDir != 0 {
+			dir, descendants, err := c.digestDir(fullname, children)
+			if err != nil {
+				return nil, nil, err
+			}
+			d.Directories = append(d.Directories, &pb.DirectoryNode{
+				Name:   name,
+				Digest: digestMessage(dir),
+			})
+			children = append(children, descendants...)
+			continue
+		} else if mode&os.ModeSymlink != 0 {
+			target, err := os.Readlink(fullname)
+			if err != nil {
+				return nil, nil, err
+			}
+			d.Symlinks = append(d.Symlinks, &pb.SymlinkNode{
+				Name:   name,
+				Target: target,
+			})
+			continue
+		} else if size := entry.Size(); size > c.maxBlobBatchSize {
+			// This blob individually exceeds the size, have to stream it.
+			if _, err := c.storeByteStream(fullname, size); err != nil {
+				return nil, nil, err
+			}
+			continue
+		} else if size+totalSize > c.maxBlobBatchSize {
+			// We have exceeded the total but this blob on its own is OK.
+			// Send what we have so far then deal with this one.
+			if err := c.sendBlobs(reqs); err != nil {
+				return nil, nil, err
+			}
+			reqs = make([]*pb.BatchUpdateBlobsRequest_Request, 0, len(entries)-i)
+			totalSize = 0
+		}
+		req, _, err := c.digestFile(fullname, entry.Size())
+		if err != nil {
+			return nil, nil, err
+		}
+		reqs = append(reqs, req)
+	}
+	if len(reqs) > 0 {
+		return d, children, c.sendBlobs(reqs)
+	}
+	return d, children, nil
 }
