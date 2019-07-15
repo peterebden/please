@@ -53,6 +53,9 @@ type Client struct {
 	// Server-sent cache properties
 	maxBlobBatchSize int64
 	cacheWritable    bool
+
+	// Cache this for later
+	bashPath string
 }
 
 // New returns a new Client instance.
@@ -106,7 +109,10 @@ func (c *Client) init() {
 		c.maxBlobBatchSize = caps.MaxBatchTotalSizeBytes
 		c.actionCacheClient = pb.NewActionCacheClient(conn)
 		c.storageClient = pb.NewContentAddressableStorageClient(conn)
-		return nil
+		// Look this up just once now.
+		bash, err := core.LookBuildPath("bash", c.state.Config)
+		c.bashPath = bash
+		return err
 	}()
 	if c.err != nil {
 		log.Error("Error setting up remote execution client: %s", c.err)
@@ -222,16 +228,17 @@ func (c *Client) Store(target *core.BuildTarget, key []byte, files []string) err
 	if len(reqs) > 0 {
 		return c.sendBlobs(reqs)
 	}
-	// OK, now the blobs are uploaded, we also need to upload the ActionResult which
-	// describes more of the metadata of the build action.
+	// OK, now the blobs are uploaded, we also need to upload the Action itself.
+	digest, err := c.uploadAction(target, key)
+	if err != nil {
+		return err
+	}
+	// Now we can use that to upload the result itself.
 	ctx, cancel := context.WithTimeout(context.Background(), reqTimeout)
 	defer cancel()
-	_, err := c.actionCacheClient.UpdateActionResult(ctx, &pb.UpdateActionResultRequest{
+	_, err = c.actionCacheClient.UpdateActionResult(ctx, &pb.UpdateActionResultRequest{
 		InstanceName: c.instance,
-		ActionDigest: &pb.Digest{
-			Hash: hex.EncodeToString(key),
-			// Assume we don't need SizeBytes here since there is no real "size" as such?
-		},
+		ActionDigest: digest,
 		ActionResult: ar,
 	})
 	return err

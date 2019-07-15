@@ -1,9 +1,9 @@
 go_library(
     name = "remote",
-    srcs = [
-        "remote.go",
-        "utils.go",
-    ],
+    srcs = glob(
+        ["*.go"],
+        exclude = ["*_test.go"],
+    ),
     deps = [
         "//src/core",
         "//third_party/go:grpc",

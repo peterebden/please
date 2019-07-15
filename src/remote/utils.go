@@ -15,6 +15,12 @@ import (
 // digestMessage calculates the digest of a proto message as described in the
 // Digest message's comments.
 func digestMessage(msg proto.Message) *pb.Digest {
+	digest, _ := digestMessageContents(msg)
+	return digest
+}
+
+// digestMessageContents is like DigestMessage but returns the serialised contents as well.
+func digestMessageContents(msg proto.Message) (*pb.Digest, []byte) {
 	b, err := proto.Marshal(msg)
 	if err != nil {
 		// Not really sure if there is a valid possibility to bring us here (given that
@@ -25,7 +31,7 @@ func digestMessage(msg proto.Message) *pb.Digest {
 	return &pb.Digest{
 		Hash:      hex.EncodeToString(sum[:]),
 		SizeBytes: int64(len(b)),
-	}
+	}, b
 }
 
 // lessThan returns true if the given semver instance is less than another one.

@@ -45,13 +45,13 @@ func newClient() *Client {
 	return New(state)
 }
 
-// A capsServer implements the server interface for the Capabilities service.
-type capsServer struct {
+// A testServer implements the server interface for the various servers we test against.
+type testServer struct {
 	DigestFunction                []pb.DigestFunction_Value
 	LowApiVersion, HighApiVersion semver.SemVer
 }
 
-func (s *capsServer) GetCapabilities(ctx context.Context, req *pb.GetCapabilitiesRequest) (*pb.ServerCapabilities, error) {
+func (s *testServer) GetCapabilities(ctx context.Context, req *pb.GetCapabilitiesRequest) (*pb.ServerCapabilities, error) {
 	return &pb.ServerCapabilities{
 		CacheCapabilities: &pb.CacheCapabilities{
 			DigestFunction: s.DigestFunction,
@@ -65,7 +65,7 @@ func (s *capsServer) GetCapabilities(ctx context.Context, req *pb.GetCapabilitie
 	}, nil
 }
 
-func (s *capsServer) Reset() {
+func (s *testServer) Reset() {
 	s.DigestFunction = []pb.DigestFunction_Value{
 		pb.DigestFunction_SHA1,
 		pb.DigestFunction_SHA256,
@@ -74,7 +74,7 @@ func (s *capsServer) Reset() {
 	s.HighApiVersion = semver.SemVer{Major: 2, Minor: 1}
 }
 
-var server = &capsServer{}
+var server = &testServer{}
 
 func TestMain(m *testing.M) {
 	server.Reset()
