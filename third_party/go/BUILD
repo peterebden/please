@@ -626,3 +626,14 @@ go_get(
         ":protobuf",
     ],
 )
+
+go_get(
+    name = "bytestream",
+    get = "google.golang.org/genproto/googleapis/bytestream",
+    revision = "3bdd9d9f5532d75d09efb230bd767d265245cfe5",
+    deps = [
+        ":annotations",
+        ":grpc",
+        ":protobuf",
+    ],
+)

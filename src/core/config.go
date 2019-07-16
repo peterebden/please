@@ -202,6 +202,7 @@ func defaultPathIfExists(conf *string, dir, file string) {
 }
 
 // DefaultConfiguration returns the default configuration object with no overrides.
+// N.B. Slice fields are not populated by this (since it interferes with reading them)
 func DefaultConfiguration() *Configuration {
 	config := Configuration{buildEnvStored: &storedBuildEnv{}}
 	config.Please.SelfUpdate = true

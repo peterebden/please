@@ -40,7 +40,10 @@ func TestUnsupportedDigest(t *testing.T) {
 }
 
 func newClient() *Client {
-	state := core.NewDefaultBuildState()
+	config := core.DefaultConfiguration()
+	config.Build.Path = []string{"/usr/local/bin", "/usr/bin", "/bin"}
+	// Can't use NewDefaultBuildState since we need to modify the config first.
+	state := core.NewBuildState(1, nil, 4, config)
 	state.Config.Remote.URL = "127.0.0.1:9987"
 	return New(state)
 }

@@ -16,6 +16,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.0.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/hashicorp/go-multierror v1.0.0
+	github.com/hashicorp/go-uuid v1.0.0
 	github.com/hashicorp/memberlist v0.1.3
 	github.com/jessevdk/go-flags v1.4.0
 	github.com/karrick/godirwalk v1.7.8
@@ -37,6 +38,7 @@ require (
 	golang.org/x/net v0.0.0-20190125091013-d26f9f9a57f3
 	golang.org/x/sync v0.0.0-20181221193216-37e7f081c4d4
 	golang.org/x/tools v0.0.0-20190131163942-067a2f313b69
+	google.golang.org/genproto v0.0.0-20180817151627-c66870c02cf8
 	google.golang.org/grpc v1.18.0
 	gopkg.in/op/go-logging.v1 v1.0.0-20160211212156-b2cb9fa56473
 	gopkg.in/yaml.v2 v2.2.2 // indirect
