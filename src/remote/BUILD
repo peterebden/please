@@ -24,6 +24,7 @@ go_test(
         "//src/core",
         "//third_party/go:grpc",
         "//third_party/go:remote-apis",
+        "//third_party/go:rpcstatus",
         "//third_party/go:testify",
     ],
 )
