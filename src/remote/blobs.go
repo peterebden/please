@@ -12,9 +12,8 @@ import (
 
 	pb "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	bs "google.golang.org/genproto/googleapis/bytestream"
-	// TODO(peterebden): not sure this is my UUID package of choice, but it's the only
-	//                   one I have downloaded right now!
-	"github.com/hashicorp/go-uuid"
+
+	"github.com/thought-machine/please/src/fs"
 )
 
 // chunkSize is the size of a chunk that we send when using the ByteStream APIs.
@@ -27,6 +26,7 @@ type blob struct {
 	Digest pb.Digest
 	Data   []byte
 	File   string
+	Mode   os.FileMode // Only used when receiving blobs, to determine what the output file mode should be
 }
 
 // uploadBlobs uploads a series of blobs to the remote.
@@ -114,6 +114,33 @@ func (c *Client) sendBlobs(reqs []*pb.BatchUpdateBlobsRequest_Request) error {
 	return nil
 }
 
+// receiveBlobs retrieves a set of blobs from the remote CAS server.
+func (c *Client) receiveBlobs(digests []*pb.Digest, filenames map[string]string, modes map[string]os.FileMode) error {
+	ctx, cancel := context.WithTimeout(context.Background(), reqTimeout)
+	defer cancel()
+	resp, err := c.storageClient.BatchReadBlobs(ctx, &pb.BatchReadBlobsRequest{
+		InstanceName: c.instance,
+		Digests:      digests,
+	})
+	if err != nil {
+		return err
+	}
+	// TODO(peterebden): as above, could probably handle this a bit better.
+	for _, r := range resp.Responses {
+		if r.Status.Code != 0 {
+			return fmt.Errorf("%s", r.Status.Message)
+		}
+		filename := filenames[r.Digest.Hash]
+		mode := modes[r.Digest.Hash]
+		if err := fs.EnsureDir(filename); err != nil {
+			return err
+		} else if err := fs.WriteFile(bytes.NewReader(r.Data), filename, mode); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // storeByteStream sends a single file as a bytestream. This is required when
 // it's over the size limit for BatchUpdateBlobs.
 func (c *Client) storeByteStream(b *blob) error {
@@ -144,12 +171,7 @@ func (c *Client) reallyStoreByteStream(b *blob, r io.ReadSeeker) error {
 		}
 		b.Digest.Hash = hex.EncodeToString(h)
 	}
-	// This is specified in remote_execution.proto, including the UUID.
-	id, err := uuid.GenerateUUID()
-	if err != nil {
-		return err
-	}
-	name := fmt.Sprintf("%s/uploads/%s/blobs/%s/%d", c.instance, id, b.Digest.Hash, b.Digest.SizeBytes)
+	name := c.byteStreamResourceName(&b.Digest)
 	ctx, cancel := context.WithTimeout(context.Background(), reqTimeout)
 	defer cancel()
 	stream, err := c.bsClient.Write(ctx)
@@ -163,7 +185,8 @@ func (c *Client) reallyStoreByteStream(b *blob, r io.ReadSeeker) error {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			// TODO(peterebden): How should we indicate failure to the server?
+			// TODO(peterebden): Error handling & retryability (i.e. it's possible to resume
+			//                   a failed upload).
 			return err
 		} else if err := stream.Send(&bs.WriteRequest{
 			ResourceName: name,
@@ -179,4 +202,103 @@ func (c *Client) reallyStoreByteStream(b *blob, r io.ReadSeeker) error {
 	}
 	_, err = stream.CloseAndRecv()
 	return err
+}
+
+// byteStreamResourceName returns the resource name for a file uploaded / downloaded
+// as a bytestream. The scheme is specified by the remote execution API.
+func (c *Client) byteStreamResourceName(digest *pb.Digest) string {
+	// TODO(peterebden): find out if there is a better scheme we can use then hardcoding
+	//                   this. It seems to be technically OK but seems against the spirit
+	//                   of it - but it is unclear how we can get the object back again
+	//                   without knowing the id we used previously.
+	const uuid = "1b7abfb8-744a-4a2a-9b91-f0cb9eb69e19"
+	name := fmt.Sprintf("uploads/%s/blobs/%s/%d", uuid, digest.Hash, digest.SizeBytes)
+	if c.instance != "" {
+		name = c.instance + "/" + name
+	}
+	return name
+}
+
+// downloadBlobs downloads a series of blobs from the CAS server.
+// Each blob given must have the File and Digest properties completely set, but
+// Data is not required.
+// The given function is a callback that receives a channel to send these blobs on; it
+// should close it when finished.
+func (c *Client) downloadBlobs(f func(ch chan<- *blob) error) (err error) {
+	ch := make(chan *blob, 10)
+	var wg sync.WaitGroup
+	go func() {
+		err = f(ch)
+		wg.Done()
+	}()
+
+	digests := []*pb.Digest{}
+	filenames := map[string]string{}  // map of hash -> output filename
+	modes := map[string]os.FileMode{} // map of hash -> file mode
+	var totalSize int64
+	for b := range ch {
+		filenames[b.Digest.Hash] = b.File
+		modes[b.Digest.Hash] = b.Mode
+		if b.Digest.SizeBytes > c.maxBlobBatchSize {
+			// This blob individually exceeds the size, have to use this
+			// ByteStream malarkey instead.
+			if err := c.retrieveByteStream(b); err != nil {
+				return err
+			}
+		} else if b.Digest.SizeBytes+totalSize > c.maxBlobBatchSize {
+			// We have exceeded the total but this blob on its own is OK.
+			// Send what we have so far then deal with this one.
+			if err := c.receiveBlobs(digests, filenames, modes); err != nil {
+				return err
+			}
+			digests = []*pb.Digest{}
+			totalSize = 0
+		}
+		digests = append(digests, &b.Digest)
+	}
+	if len(digests) > 0 {
+		if err := c.receiveBlobs(digests, filenames, modes); err != nil {
+			return err
+		}
+	}
+	wg.Wait()
+	return
+}
+
+// retrieveByteStream receives a file back from the server as a byte stream.
+func (c *Client) retrieveByteStream(b *blob) error {
+	ctx, cancel := context.WithTimeout(context.Background(), reqTimeout)
+	defer cancel()
+	stream, err := c.bsClient.Read(ctx, &bs.ReadRequest{
+		ResourceName: c.byteStreamResourceName(&b.Digest),
+	})
+	if err != nil {
+		return err
+	}
+	return fs.WriteFile(&byteStreamReader{stream: stream}, b.File, b.Mode)
+}
+
+// A byteStreamReader abstracts over the bytestream gRPC API to turn it into an
+// io.Reader which we can then pass to other things which are ignorant of its true nature.
+type byteStreamReader struct {
+	stream bs.ByteStream_ReadClient
+	buf    []byte
+}
+
+// Read implements the io.Reader interface
+func (r *byteStreamReader) Read(into []byte) (int, error) {
+	l := len(into)
+	for l > len(r.buf) {
+		resp, err := r.stream.Recv()
+		if err == io.EOF {
+			copy(into, r.buf)
+			return len(r.buf), err
+		} else if err != nil {
+			return 0, err
+		}
+		r.buf = append(r.buf, resp.Data...)
+	}
+	copy(into, r.buf[:l])
+	r.buf = r.buf[l:]
+	return l, nil
 }

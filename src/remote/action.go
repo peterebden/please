@@ -15,38 +15,13 @@ import (
 func (c *Client) uploadAction(target *core.BuildTarget, stamp []byte) (digest *pb.Digest, err error) {
 	err = c.uploadBlobs(func(ch chan<- *blob) error {
 		defer close(ch)
-		inputRoot, err := c.buildInputRoot(target)
+		inputRoot, err := c.buildInputRoot(target, true)
 		if err != nil {
 			return err
 		}
 		inputRootDigest, inputRootMsg := digestMessageContents(inputRoot)
 		ch <- &blob{Data: inputRootMsg, Digest: *inputRootDigest}
-		command := &pb.Command{
-			Platform: &pb.Platform{
-				Properties: []*pb.Platform_Property{
-					{
-						Name:  "OSFamily",
-						Value: translateOS(target.Subrepo),
-					},
-					// We don't really keep information around about ISA. Can look at adding
-					// that later if it becomes relevant & interesting.
-				},
-			},
-			// We have to run everything through bash since our commands are arbitrary.
-			// Unfortunately we can't just say "bash", we need an absolute path which is
-			// a bit weird since it assumes that our absolute path is the same as the
-			// remote one (which is probably OK on the same OS, but not between say Linux and
-			// FreeBSD where bash is not idiomatically in the same place).
-			Arguments: []string{
-				c.bashPath, "--noprofile", "--norc", "-u", "-o", "pipefail", "-c", target.GetCommand(c.state),
-			},
-			EnvironmentVariables: buildEnv(c.state, target, stamp),
-			OutputFiles:          target.Outputs(),
-			// TODO(peterebden): We will need to deal with OutputDirectories somehow.
-			//                   Unfortunately it's unclear how to do that without introducing
-			//                   a requirement on our rules that they specify them explicitly :(
-		}
-		commandDigest, commandMsg := digestMessageContents(command)
+		commandDigest, commandMsg := digestMessageContents(c.buildCommand(target, stamp))
 		ch <- &blob{Data: commandMsg, Digest: *commandDigest}
 		action := &pb.Action{
 			CommandDigest:   commandDigest,
@@ -61,8 +36,37 @@ func (c *Client) uploadAction(target *core.BuildTarget, stamp []byte) (digest *p
 	return
 }
 
-// buildInputRoot constructs the directory that is the input root and uploads it.
-func (c *Client) buildInputRoot(target *core.BuildTarget) (*pb.Directory, error) {
+// buildCommand builds the command for a single target.
+func (c *Client) buildCommand(target *core.BuildTarget, stamp []byte) *pb.Command {
+	return &pb.Command{
+		Platform: &pb.Platform{
+			Properties: []*pb.Platform_Property{
+				{
+					Name:  "OSFamily",
+					Value: translateOS(target.Subrepo),
+				},
+				// We don't really keep information around about ISA. Can look at adding
+				// that later if it becomes relevant & interesting.
+			},
+		},
+		// We have to run everything through bash since our commands are arbitrary.
+		// Unfortunately we can't just say "bash", we need an absolute path which is
+		// a bit weird since it assumes that our absolute path is the same as the
+		// remote one (which is probably OK on the same OS, but not between say Linux and
+		// FreeBSD where bash is not idiomatically in the same place).
+		Arguments: []string{
+			c.bashPath, "--noprofile", "--norc", "-u", "-o", "pipefail", "-c", target.GetCommand(c.state),
+		},
+		EnvironmentVariables: buildEnv(c.state, target, stamp),
+		OutputFiles:          target.Outputs(),
+		// TODO(peterebden): We will need to deal with OutputDirectories somehow.
+		//                   Unfortunately it's unclear how to do that without introducing
+		//                   a requirement on our rules that they specify them explicitly :(
+	}
+}
+
+// buildInputRoot constructs the directory that is the input root and optionally uploads it.
+func (c *Client) buildInputRoot(target *core.BuildTarget, upload bool) (*pb.Directory, error) {
 	return &pb.Directory{}, nil
 }
 

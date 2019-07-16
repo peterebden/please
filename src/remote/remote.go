@@ -4,6 +4,7 @@
 package remote
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -14,12 +15,14 @@ import (
 
 	pb "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/bazelbuild/remote-apis/build/bazel/semver"
+	"github.com/golang/protobuf/ptypes"
 	"github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	bs "google.golang.org/genproto/googleapis/bytestream"
 	"google.golang.org/grpc"
 	"gopkg.in/op/go-logging.v1"
 
 	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/src/fs"
 )
 
 var log = logging.MustGetLogger("remote")
@@ -215,6 +218,48 @@ func (c *Client) Store(target *core.BuildTarget, key []byte, files []string) err
 		ActionResult: ar,
 	})
 	return err
+}
+
+// Retrieve fetches back a set of artifacts for a single build target.
+// Its outputs are written out to their final locations.
+func (c *Client) Retrieve(target *core.BuildTarget, key []byte, files []string) error {
+	inputRoot, err := c.buildInputRoot(target, false)
+	if err != nil {
+		return err
+	}
+	digest := digestMessage(&pb.Action{
+		CommandDigest:   digestMessage(c.buildCommand(target, key)),
+		InputRootDigest: digestMessage(inputRoot),
+		Timeout:         ptypes.DurationProto(target.BuildTimeout),
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), reqTimeout)
+	defer cancel()
+	resp, err := c.actionCacheClient.GetActionResult(ctx, &pb.GetActionResultRequest{
+		InstanceName: c.instance,
+		ActionDigest: digest,
+		InlineStdout: target.PostBuildFunction != nil, // We only care in this case.
+	})
+	if err != nil {
+		return err
+	}
+	outDir := target.OutDir()
+	mode := target.OutMode()
+	return c.downloadBlobs(func(ch chan<- *blob) error {
+		for _, file := range resp.OutputFiles {
+			dest := path.Join(outDir, file.Path)
+			addPerms := extraPerms(file)
+			if file.Contents != nil {
+				// Inlining must have been requested. Can write it directly.
+				if err := fs.EnsureDir(dest); err != nil {
+					return err
+				}
+				return fs.WriteFile(bytes.NewReader(file.Contents), dest, mode|addPerms)
+			}
+			ch <- &blob{Digest: *file.Digest, File: dest, Mode: mode | addPerms}
+		}
+		close(ch)
+		return nil
+	})
 }
 
 // digestDir calculates the digest for a directory.

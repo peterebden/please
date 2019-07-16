@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"time"
 
 	pb "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
@@ -68,4 +69,12 @@ func toTimestamp(t time.Time) *timestamp.Timestamp {
 		Seconds: t.Unix(),
 		Nanos:   int32(t.Nanosecond()),
 	}
+}
+
+// extraPerms returns any additional permission bits we should apply for this file.
+func extraPerms(file *pb.OutputFile) os.FileMode {
+	if file.IsExecutable {
+		return 0111
+	}
+	return 0
 }
