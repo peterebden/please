@@ -2,21 +2,23 @@ package remote
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"testing"
 
+	pb "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
+	"github.com/bazelbuild/remote-apis/build/bazel/semver"
 	"github.com/stretchr/testify/assert"
+	bs "google.golang.org/genproto/googleapis/bytestream"
 	rpcstatus "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
-	"github.com/bazelbuild/remote-apis/build/bazel/semver"
 	"github.com/thought-machine/please/src/core"
-	bs "google.golang.org/genproto/googleapis/bytestream"
 )
 
 func TestInit(t *testing.T) {
@@ -44,6 +46,30 @@ func TestUnsupportedDigest(t *testing.T) {
 	assert.Error(t, c.CheckInitialised())
 }
 
+func TestStoreAndRetrieve(t *testing.T) {
+	c := newClient()
+	c.CheckInitialised()
+	target := core.NewBuildTarget(core.BuildLabel{PackageName: "package", Name: "target1"})
+	target.AddSource(core.FileLabel{File: "src1.txt", Package: "package"})
+	target.AddSource(core.FileLabel{File: "src2.txt", Package: "package"})
+	target.AddOutput("out1.txt")
+	// The hash is arbitrary as far as this package is concerned.
+	key, _ := hex.DecodeString("2dd283abb148ebabcd894b306e3d86d0390c82a7")
+	err := c.Store(target, key, []string{"plz-out/gen/package/out1.txt"})
+	assert.NoError(t, err)
+	// Remove the old file, but remember its contents so we can compare later.
+	contents, err := ioutil.ReadFile("plz-out/gen/package/out1.txt")
+	assert.NoError(t, err)
+	err = os.Remove("plz-out/gen/package/out1.txt")
+	assert.NoError(t, err)
+	// Now retrieve back the output of this thing.
+	err = c.Retrieve(target, key)
+	assert.NoError(t, err)
+	cachedContents, err := ioutil.ReadFile("plz-out/gen/package/out1.txt")
+	assert.NoError(t, err)
+	assert.Equal(t, contents, cachedContents)
+}
+
 func newClient() *Client {
 	config := core.DefaultConfiguration()
 	config.Build.Path = []string{"/usr/local/bin", "/usr/bin", "/bin"}
@@ -69,7 +95,7 @@ func (s *testServer) GetCapabilities(ctx context.Context, req *pb.GetCapabilitie
 			ActionCacheUpdateCapabilities: &pb.ActionCacheUpdateCapabilities{
 				UpdateEnabled: true,
 			},
-			MaxBatchTotalSizeBytes: 4096,
+			MaxBatchTotalSizeBytes: 2048,
 		},
 		LowApiVersion:  &s.LowApiVersion,
 		HighApiVersion: &s.HighApiVersion,
@@ -116,7 +142,9 @@ func (s *testServer) BatchUpdateBlobs(ctx context.Context, req *pb.BatchUpdateBl
 		Responses: make([]*pb.BatchUpdateBlobsResponse_Response, len(req.Requests)),
 	}
 	for i, r := range req.Requests {
-		resp.Responses[i].Status = &rpcstatus.Status{}
+		resp.Responses[i] = &pb.BatchUpdateBlobsResponse_Response{
+			Status: &rpcstatus.Status{},
+		}
 		if len(r.Data) != int(r.Digest.SizeBytes) {
 			resp.Responses[i].Status.Code = int32(codes.InvalidArgument)
 			resp.Responses[i].Status.Message = fmt.Sprintf("Blob sizes do not match (%d / %d)", len(r.Data), r.Digest.SizeBytes)
@@ -132,8 +160,10 @@ func (s *testServer) BatchReadBlobs(ctx context.Context, req *pb.BatchReadBlobsR
 		Responses: make([]*pb.BatchReadBlobsResponse_Response, len(req.Digests)),
 	}
 	for i, d := range req.Digests {
-		resp.Responses[i].Status = &rpcstatus.Status{}
-		resp.Responses[i].Digest = d
+		resp.Responses[i] = &pb.BatchReadBlobsResponse_Response{
+			Status: &rpcstatus.Status{},
+			Digest: d,
+		}
 		if data, present := s.blobs[d.Hash]; present {
 			resp.Responses[i].Data = data
 		} else {
@@ -232,6 +262,9 @@ func TestMain(m *testing.M) {
 	pb.RegisterContentAddressableStorageServer(s, server)
 	bs.RegisterByteStreamServer(s, server)
 	go s.Serve(lis)
+	if err := os.Chdir("src/remote/test_data"); err != nil {
+		log.Fatalf("Failed to chdir: %s", err)
+	}
 	code := m.Run()
 	s.Stop()
 	os.Exit(code)

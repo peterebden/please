@@ -6,6 +6,7 @@ package remote
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -193,12 +194,23 @@ func (c *Client) Store(target *core.BuildTarget, key []byte, files []string) err
 				})
 				continue
 			}
-			// It's a real file, bung it onto the channel. We don't need to fill in the
-			// contents or the hash, they'll be done for us.
+			// It's a real file, bung it onto the channel.
+			h, err := c.state.PathHasher.Hash(file, false, true)
+			if err != nil {
+				return err
+			}
+			digest := &pb.Digest{
+				SizeBytes: info.Size(),
+				Hash:      hex.EncodeToString(h),
+			}
 			ch <- &blob{
 				File:   file,
-				Digest: pb.Digest{SizeBytes: info.Size()},
+				Digest: *digest,
 			}
+			ar.OutputFiles = append(ar.OutputFiles, &pb.OutputFile{
+				Path:   file,
+				Digest: digest,
+			})
 		}
 		return nil
 	}); err != nil {
@@ -222,7 +234,7 @@ func (c *Client) Store(target *core.BuildTarget, key []byte, files []string) err
 
 // Retrieve fetches back a set of artifacts for a single build target.
 // Its outputs are written out to their final locations.
-func (c *Client) Retrieve(target *core.BuildTarget, key []byte, files []string) error {
+func (c *Client) Retrieve(target *core.BuildTarget, key []byte) error {
 	inputRoot, err := c.buildInputRoot(target, false)
 	if err != nil {
 		return err
@@ -242,20 +254,18 @@ func (c *Client) Retrieve(target *core.BuildTarget, key []byte, files []string) 
 	if err != nil {
 		return err
 	}
-	outDir := target.OutDir()
 	mode := target.OutMode()
 	return c.downloadBlobs(func(ch chan<- *blob) error {
 		for _, file := range resp.OutputFiles {
-			dest := path.Join(outDir, file.Path)
 			addPerms := extraPerms(file)
 			if file.Contents != nil {
 				// Inlining must have been requested. Can write it directly.
-				if err := fs.EnsureDir(dest); err != nil {
+				if err := fs.EnsureDir(file.Path); err != nil {
 					return err
 				}
-				return fs.WriteFile(bytes.NewReader(file.Contents), dest, mode|addPerms)
+				return fs.WriteFile(bytes.NewReader(file.Contents), file.Path, mode|addPerms)
 			}
-			ch <- &blob{Digest: *file.Digest, File: dest, Mode: mode | addPerms}
+			ch <- &blob{Digest: *file.Digest, File: file.Path, Mode: mode | addPerms}
 		}
 		close(ch)
 		return nil

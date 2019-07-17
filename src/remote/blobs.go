@@ -36,6 +36,7 @@ type blob struct {
 func (c *Client) uploadBlobs(f func(ch chan<- *blob) error) (err error) {
 	ch := make(chan *blob, 10) // Buffer it a bit but don't get too far ahead.
 	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
 		err = f(ch)
 		wg.Done()
@@ -71,7 +72,7 @@ func (c *Client) uploadBlobs(f func(ch chan<- *blob) error) (err error) {
 		// Similarly the data might or might not be available.
 		// TODO(peterebden): Unify this into PathHasher somehow so we only read the
 		//                   file once (i.e. read it and hash as we go).
-		if len(b.Data) == 0 {
+		if b.Data == nil {
 			data, err := ioutil.ReadFile(b.File)
 			if err != nil {
 				return err
@@ -197,7 +198,7 @@ func (c *Client) reallyStoreByteStream(b *blob, r io.ReadSeeker) error {
 		}
 		offset += n
 	}
-	if err := stream.Send(&bs.WriteRequest{FinishWrite: true}); err != nil {
+	if err := stream.Send(&bs.WriteRequest{FinishWrite: true, WriteOffset: int64(offset)}); err != nil {
 		return err
 	}
 	_, err = stream.CloseAndRecv()
@@ -227,6 +228,7 @@ func (c *Client) byteStreamResourceName(digest *pb.Digest) string {
 func (c *Client) downloadBlobs(f func(ch chan<- *blob) error) (err error) {
 	ch := make(chan *blob, 10)
 	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
 		err = f(ch)
 		wg.Done()

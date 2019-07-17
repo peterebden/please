@@ -67,6 +67,7 @@ func (c *Client) buildCommand(target *core.BuildTarget, stamp []byte) *pb.Comman
 
 // buildInputRoot constructs the directory that is the input root and optionally uploads it.
 func (c *Client) buildInputRoot(target *core.BuildTarget, upload bool) (*pb.Directory, error) {
+	// TODO(peterebden): Implement!
 	return &pb.Directory{}, nil
 }
 
