@@ -8,9 +8,9 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"sync"
 
 	pb "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
+	"golang.org/x/sync/errgroup"
 	bs "google.golang.org/genproto/googleapis/bytestream"
 
 	"github.com/thought-machine/please/src/fs"
@@ -33,15 +33,73 @@ type blob struct {
 // It handles all the logic around the various upload methods etc.
 // The given function is a callback that receives a channel to send these blobs on; it
 // should close it when finished.
-func (c *Client) uploadBlobs(f func(ch chan<- *blob) error) (err error) {
-	ch := make(chan *blob, 10) // Buffer it a bit but don't get too far ahead.
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		err = f(ch)
-		wg.Done()
-	}()
+func (c *Client) uploadBlobs(f func(ch chan<- *blob) error) error {
+	const buffer = 10 // Buffer it a bit but don't get too far ahead.
+	chIn := make(chan *blob, buffer)
+	chOut := make(chan *blob, buffer)
+	var g errgroup.Group
+	g.Go(func() error { return f(chIn) })
+	g.Go(func() error { return c.reallyUploadBlobs(chOut) })
 
+	// This function filters a set of blobs through FindMissingBlobs to find out which
+	// ones we actually need to upload. The assumption is that most of the time the
+	// server will already have a subset of the blobs we're going to upload so we don't
+	// want to send them all again.
+	filter := func(blobs []*blob) {
+		req := &pb.FindMissingBlobsRequest{
+			InstanceName: c.instance,
+			BlobDigests:  make([]*pb.Digest, len(blobs)),
+		}
+		m := make(map[string]*blob, len(blobs))
+		for i, b := range blobs {
+			req.BlobDigests[i] = b.Digest
+			m[b.Digest.Hash] = b
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), reqTimeout)
+		defer cancel()
+		resp, err := c.storageClient.FindMissingBlobs(ctx, req)
+		if err != nil {
+			log.Warning("Error filtering blobs for remote execution: %s", err)
+			// Continue and send all of these, it is not necessarily fatal (although it
+			// will probably blow up later, but easier not to handle that error here)
+			for _, b := range blobs {
+				chOut <- b
+			}
+			return
+		}
+		for _, d := range resp.MissingBlobDigests {
+			chOut <- m[d.Hash]
+		}
+	}
+
+	// Buffer them up a bit, the request supports checking multiple at once which is
+	// likely more efficient than doing them all one at a time.
+	blobs := make([]*blob, 0, buffer)
+	for b := range chIn {
+		// The actual hash might or might not be set.
+		if len(b.Digest.Hash) == 0 {
+			h, err := c.state.PathHasher.Hash(b.File, false, true)
+			if err != nil {
+				return err
+			}
+			b.Digest.Hash = hex.EncodeToString(h)
+		}
+		blobs = append(blobs, b)
+		if len(blobs) == buffer {
+			filter(blobs)
+			blobs = blobs[:0]
+		}
+	}
+	if len(blobs) != 0 {
+		filter(blobs)
+	}
+	close(chOut)
+	return g.Wait()
+}
+
+// reallyUploadBlobs actually does the upload of the individual blobs, after they have
+// been filtered through FindMissingBlobs.
+func (c *Client) reallyUploadBlobs(ch <-chan *blob) error {
 	reqs := []*pb.BatchUpdateBlobsRequest_Request{}
 	var totalSize int64
 	for b := range ch {
@@ -60,18 +118,8 @@ func (c *Client) uploadBlobs(f func(ch chan<- *blob) error) (err error) {
 			reqs = []*pb.BatchUpdateBlobsRequest_Request{}
 			totalSize = 0
 		}
-		// This file is small enough to be read & stored as part of the reqest.
-		// The actual hash might or might not be set.
-		if len(b.Digest.Hash) == 0 {
-			h, err := c.state.PathHasher.Hash(b.File, false, true)
-			if err != nil {
-				return err
-			}
-			b.Digest.Hash = hex.EncodeToString(h)
-		}
+		// This file is small enough to be read & stored as part of the request.
 		// Similarly the data might or might not be available.
-		// TODO(peterebden): Unify this into PathHasher somehow so we only read the
-		//                   file once (i.e. read it and hash as we go).
 		if b.Data == nil {
 			data, err := ioutil.ReadFile(b.File)
 			if err != nil {
@@ -85,12 +133,9 @@ func (c *Client) uploadBlobs(f func(ch chan<- *blob) error) (err error) {
 		})
 	}
 	if len(reqs) > 0 {
-		if err := c.sendBlobs(reqs); err != nil {
-			return err
-		}
+		return c.sendBlobs(reqs)
 	}
-	wg.Wait()
-	return
+	return nil
 }
 
 // sendBlobs dispatches a set of blobs to the remote CAS server.
@@ -161,17 +206,6 @@ func (c *Client) storeByteStream(b *blob) error {
 }
 
 func (c *Client) reallyStoreByteStream(b *blob, r io.ReadSeeker) error {
-	// The hash might not be set if it's a file.
-	// Annoyingly this means we have to read it twice - once to hash it and again to
-	// actually upload it :( There isn't any obvious way around this (other than keeping
-	// it in memory, but given possibly arbitrarily large files that seems like a bad idea).
-	if len(b.Digest.Hash) == 0 {
-		h, err := c.state.PathHasher.Hash(b.File, false, true)
-		if err != nil {
-			return err
-		}
-		b.Digest.Hash = hex.EncodeToString(h)
-	}
 	name := c.byteStreamResourceName(b.Digest)
 	ctx, cancel := context.WithTimeout(context.Background(), reqTimeout)
 	defer cancel()
@@ -225,14 +259,10 @@ func (c *Client) byteStreamResourceName(digest *pb.Digest) string {
 // Data is not required.
 // The given function is a callback that receives a channel to send these blobs on; it
 // should close it when finished.
-func (c *Client) downloadBlobs(f func(ch chan<- *blob) error) (err error) {
+func (c *Client) downloadBlobs(f func(ch chan<- *blob) error) error {
 	ch := make(chan *blob, 10)
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		err = f(ch)
-		wg.Done()
-	}()
+	var g errgroup.Group
+	g.Go(func() error { return f(ch) })
 
 	digests := []*pb.Digest{}
 	filenames := map[string]string{}  // map of hash -> output filename
@@ -263,8 +293,7 @@ func (c *Client) downloadBlobs(f func(ch chan<- *blob) error) (err error) {
 			return err
 		}
 	}
-	wg.Wait()
-	return
+	return g.Wait()
 }
 
 // retrieveByteStream receives a file back from the server as a byte stream.
