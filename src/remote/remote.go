@@ -205,7 +205,7 @@ func (c *Client) Store(target *core.BuildTarget, key []byte, files []string) err
 			}
 			ch <- &blob{
 				File:   file,
-				Digest: *digest,
+				Digest: digest,
 			}
 			ar.OutputFiles = append(ar.OutputFiles, &pb.OutputFile{
 				Path:   file,
@@ -265,7 +265,7 @@ func (c *Client) Retrieve(target *core.BuildTarget, key []byte) error {
 				}
 				return fs.WriteFile(bytes.NewReader(file.Contents), file.Path, mode|addPerms)
 			}
-			ch <- &blob{Digest: *file.Digest, File: file.Path, Mode: mode | addPerms}
+			ch <- &blob{Digest: file.Digest, File: file.Path, Mode: mode | addPerms}
 		}
 		close(ch)
 		return nil
@@ -308,7 +308,7 @@ func (c *Client) digestDir(dir string, children []*pb.Directory) (*pb.Directory,
 			}
 			ch <- &blob{
 				File:   fullname,
-				Digest: pb.Digest{SizeBytes: entry.Size()},
+				Digest: &pb.Digest{SizeBytes: entry.Size()},
 			}
 		}
 		return nil

@@ -23,7 +23,7 @@ const chunkSize = 128 * 1024
 // It contains the digest of each plus its content or a filename to read it from.
 // If the filename is present then the digest's hash may not be populated.
 type blob struct {
-	Digest pb.Digest
+	Digest *pb.Digest
 	Data   []byte
 	File   string
 	Mode   os.FileMode // Only used when receiving blobs, to determine what the output file mode should be
@@ -80,7 +80,7 @@ func (c *Client) uploadBlobs(f func(ch chan<- *blob) error) (err error) {
 			b.Data = data
 		}
 		reqs = append(reqs, &pb.BatchUpdateBlobsRequest_Request{
-			Digest: &b.Digest,
+			Digest: b.Digest,
 			Data:   b.Data,
 		})
 	}
@@ -172,7 +172,7 @@ func (c *Client) reallyStoreByteStream(b *blob, r io.ReadSeeker) error {
 		}
 		b.Digest.Hash = hex.EncodeToString(h)
 	}
-	name := c.byteStreamResourceName(&b.Digest)
+	name := c.byteStreamResourceName(b.Digest)
 	ctx, cancel := context.WithTimeout(context.Background(), reqTimeout)
 	defer cancel()
 	stream, err := c.bsClient.Write(ctx)
@@ -256,7 +256,7 @@ func (c *Client) downloadBlobs(f func(ch chan<- *blob) error) (err error) {
 			digests = []*pb.Digest{}
 			totalSize = 0
 		}
-		digests = append(digests, &b.Digest)
+		digests = append(digests, b.Digest)
 	}
 	if len(digests) > 0 {
 		if err := c.receiveBlobs(digests, filenames, modes); err != nil {
@@ -272,7 +272,7 @@ func (c *Client) retrieveByteStream(b *blob) error {
 	ctx, cancel := context.WithTimeout(context.Background(), reqTimeout)
 	defer cancel()
 	stream, err := c.bsClient.Read(ctx, &bs.ReadRequest{
-		ResourceName: c.byteStreamResourceName(&b.Digest),
+		ResourceName: c.byteStreamResourceName(b.Digest),
 	})
 	if err != nil {
 		return err

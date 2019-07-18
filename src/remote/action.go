@@ -1,6 +1,9 @@
 package remote
 
 import (
+	"encoding/hex"
+	"os"
+	"path"
 	"runtime"
 	"sort"
 	"strings"
@@ -20,16 +23,16 @@ func (c *Client) uploadAction(target *core.BuildTarget, stamp []byte) (digest *p
 			return err
 		}
 		inputRootDigest, inputRootMsg := digestMessageContents(inputRoot)
-		ch <- &blob{Data: inputRootMsg, Digest: *inputRootDigest}
+		ch <- &blob{Data: inputRootMsg, Digest: inputRootDigest}
 		commandDigest, commandMsg := digestMessageContents(c.buildCommand(target, stamp))
-		ch <- &blob{Data: commandMsg, Digest: *commandDigest}
+		ch <- &blob{Data: commandMsg, Digest: commandDigest}
 		action := &pb.Action{
 			CommandDigest:   commandDigest,
 			InputRootDigest: inputRootDigest,
 			Timeout:         ptypes.DurationProto(target.BuildTimeout),
 		}
 		actionDigest, actionMsg := digestMessageContents(action)
-		ch <- &blob{Data: actionMsg, Digest: *actionDigest}
+		ch <- &blob{Data: actionMsg, Digest: actionDigest}
 		digest = actionDigest
 		return nil
 	})
@@ -67,8 +70,79 @@ func (c *Client) buildCommand(target *core.BuildTarget, stamp []byte) *pb.Comman
 
 // buildInputRoot constructs the directory that is the input root and optionally uploads it.
 func (c *Client) buildInputRoot(target *core.BuildTarget, upload bool) (*pb.Directory, error) {
-	// TODO(peterebden): Implement!
-	return &pb.Directory{}, nil
+	// This is pretty awkward; we need to recursively build this whole set of directories
+	// which does not match up to how we represent it (which is a series of files, with
+	// no corresponding directories, that are not usefully ordered for this purpose).
+	dirs := map[string]*pb.Directory{}
+	strip := len(target.TmpDir()) + 1 // Amount we have to strip off the start of the temp paths
+	root := &pb.Directory{}
+	dirs["."] = root // Ensure the root is in there
+	err := c.uploadBlobs(func(ch chan<- *blob) error {
+		defer close(ch)
+		for source := range core.IterSources(c.state.Graph, target) {
+			// Ensure all parent directories exist
+			child := ""
+			dir := path.Dir(source.Tmp[strip:])
+			for d := dir; ; d = path.Dir(d) {
+				parent, present := dirs[d]
+				if !present {
+					parent = &pb.Directory{}
+					dirs[d] = parent
+				}
+				if child != "" {
+					parent.Directories = append(parent.Directories, &pb.DirectoryNode{Name: child})
+				}
+				child = d
+				if d == "." {
+					break
+				}
+			}
+			// Now handle the file itself
+			h, err := c.state.PathHasher.Hash(source.Src, false, true)
+			if err != nil {
+				return err
+			}
+			d := dirs[dir]
+			info, err := os.Stat(source.Src)
+			if err != nil {
+				return err
+			}
+			digest := &pb.Digest{
+				Hash:      hex.EncodeToString(h),
+				SizeBytes: info.Size(),
+			}
+			d.Files = append(d.Files, &pb.FileNode{
+				Name:         path.Base(source.Tmp),
+				Digest:       digest,
+				IsExecutable: target.IsBinary,
+			})
+			if upload {
+				ch <- &blob{
+					File:   source.Src,
+					Digest: digest,
+				}
+			}
+		}
+		// Now the protos are complete we need to calculate all the digests...
+		var dfs func(string) *pb.Digest
+		dfs = func(name string) *pb.Digest {
+			dir := dirs[name]
+			for _, d := range dir.Directories {
+				d.Digest = dfs(path.Join(name, d.Name))
+			}
+			digest, contents := digestMessageContents(dir)
+			if upload {
+				ch <- &blob{
+					Digest: digest,
+					Data:   contents,
+				}
+			}
+			return digest
+		}
+		dfs(".")
+		return nil
+	})
+	return root, err
 }
 
 // translateOS converts the OS name of a subrepo into a Bazel-style OS name.
