@@ -118,23 +118,27 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 	haveRunPostBuildFunction := false
 	if !target.IsFilegroup && !needsBuilding(state, target, false) {
 		log.Debug("Not rebuilding %s, nothing's changed", target.Label)
-		if postBuildOutput, err = runPostBuildFunctionIfNeeded(tid, state, target, ""); err != nil {
-			log.Warning("Missing post-build output for %s; will rebuild.", target.Label)
-		} else {
-			// If a post-build function ran it may modify the rule definition. In that case we
-			// need to check again whether the rule needs building.
-			if target.PostBuildFunction == nil || !needsBuilding(state, target, true) {
-				if target.IsFilegroup {
-					// Small optimisation to ensure we don't need to rehash things unnecessarily.
-					copyFilegroupHashes(state, target)
-				}
-				target.SetState(core.Reused)
-				state.LogBuildResult(tid, target.Label, core.TargetCached, "Unchanged")
-				buildLinks(state, target)
-				return nil // Nothing needs to be done.
+		if target.PostBuildFunction != nil {
+			postBuildOutput, err := loadPostBuildOutput(target)
+			if err != nil {
+				log.Warning("Missing post-build output for %s; will rebuild.", target.Label)
+			} else if err := runPostBuildFunctionIfNeeded(tid, state, target, postBuildOutput); err != nil {
+				log.Warning("Error from post-build function for %s: %s; will rebuild", target.Label, err)
 			}
-			log.Debug("Rebuilding %s after post-build function", target.Label)
 		}
+		// If a post-build function ran it may modify the rule definition. In that case we
+		// need to check again whether the rule needs building.
+		if target.PostBuildFunction == nil || !needsBuilding(state, target, true) {
+			if target.IsFilegroup {
+				// Small optimisation to ensure we don't need to rehash things unnecessarily.
+				copyFilegroupHashes(state, target)
+			}
+			target.SetState(core.Reused)
+			state.LogBuildResult(tid, target.Label, core.TargetCached, "Unchanged")
+			buildLinks(state, target)
+			return nil // Nothing needs to be done.
+		}
+		log.Debug("Rebuilding %s after post-build function", target.Label)
 		haveRunPostBuildFunction = true
 	}
 	if target.IsFilegroup {
@@ -196,7 +200,9 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		if target.PostBuildFunction != nil && !haveRunPostBuildFunction {
 			log.Debug("Checking for post-build output for %s in cache...", target.Label)
 			if metadata := state.Cache.Retrieve(target, cacheKey); metadata != nil {
-				if postBuildOutput, err = runPostBuildFunctionIfNeeded(tid, state, target, string(metadata.Stdout)); err != nil {
+				storePostBuildOutput(target, metadata.Stdout)
+				postBuildOutput = string(metadata.Stdout)
+				if err := runPostBuildFunctionIfNeeded(tid, state, target, postBuildOutput); err != nil {
 					return err
 				} else if retrieveArtifacts() {
 					return writeRuleHash(state, target)
@@ -561,15 +567,11 @@ func checkRuleHashesOfType(target *core.BuildTarget, outputs []string, hasher *f
 }
 
 // Runs the post-build function for a target if it's got one.
-func runPostBuildFunctionIfNeeded(tid int, state *core.BuildState, target *core.BuildTarget, prevOutput string) (string, error) {
+func runPostBuildFunctionIfNeeded(tid int, state *core.BuildState, target *core.BuildTarget, out string) error {
 	if target.PostBuildFunction != nil {
-		out, err := loadPostBuildOutput(target)
-		if err != nil {
-			return "", err
-		}
-		return out, runPostBuildFunction(tid, state, target, out, prevOutput)
+		return runPostBuildFunction(tid, state, target, out, "")
 	}
-	return "", nil
+	return nil
 }
 
 // Runs the post-build function for a target.
