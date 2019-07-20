@@ -20,6 +20,7 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	bs "google.golang.org/genproto/googleapis/bytestream"
 	"google.golang.org/grpc"
+	_ "google.golang.org/grpc/encoding/gzip" // Registers the gzip compressor at init
 	"gopkg.in/op/go-logging.v1"
 
 	"github.com/thought-machine/please/src/core"
@@ -63,12 +64,23 @@ type Client struct {
 	bashPath string
 }
 
+// instance is the singleton client instance for Get()
+var instance *Client
+
 // New returns a new Client instance.
 // It begins the process of contacting the remote server but does not wait for it.
 func New(state *core.BuildState) *Client {
 	c := &Client{state: state}
 	go c.CheckInitialised() // Kick off init now, but we don't have to wait for it.
 	return c
+}
+
+// Get is like New but it populates and retrieves a singleton instance.
+func Get(state *core.BuildState) *Client {
+	if instance == nil {
+		instance = New(state)
+	}
+	return instance
 }
 
 // CheckInitialised checks that the client has connected to the server correctly.

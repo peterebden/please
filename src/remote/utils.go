@@ -11,6 +11,8 @@ import (
 	"github.com/bazelbuild/remote-apis/build/bazel/semver"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/timestamp"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // digestMessage calculates the digest of a proto message as described in the
@@ -77,4 +79,10 @@ func extraPerms(file *pb.OutputFile) os.FileMode {
 		return 0111
 	}
 	return 0
+}
+
+// IsNotFound returns true if a given error is a "not found" error (which may be treated
+// differently, for example if trying to retrieve artifacts that may not be there).
+func IsNotFound(err error) bool {
+	return status.Code(err) == codes.NotFound
 }
