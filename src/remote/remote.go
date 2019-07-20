@@ -6,6 +6,7 @@ package remote
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
@@ -152,22 +153,18 @@ func (c *Client) chooseDigest(fns []pb.DigestFunction_Value) error {
 	return fmt.Errorf("No acceptable hash function available; server supports %s but we require SHA1", fns)
 }
 
-func (c *Client) GetArtifact() {
-}
-
 // Store stores a set of artifacts for a single build target.
-func (c *Client) Store(target *core.BuildTarget, key []byte, files []string) error {
-	// v0.1: just do BatchUpdateBlobs  <-- we are here
-	// v0.2: honour the max size to do ByteStreams
-	// v0.3: get the action cache involved
+func (c *Client) Store(target *core.BuildTarget, key []byte, metadata *core.BuildMetadata, files []string) error {
+	if err := c.CheckInitialised(); err != nil {
+		return err
+	}
 	ar := &pb.ActionResult{
 		// We never cache any failed actions so ExitCode is implicitly 0.
 		ExecutionMetadata: &pb.ExecutedActionMetadata{
-			Worker: c.state.Config.Remote.Name,
-			// TODO(peterebden): Add some kind of temporary metadata so we can know at least
-			//                   the start/completed timestamps and stdout/stderr.
-			//                   We will need stdout at least for post-build functions.
-			OutputUploadStartTimestamp: toTimestamp(time.Now()),
+			Worker:                      c.state.Config.Remote.Name,
+			OutputUploadStartTimestamp:  toTimestamp(time.Now()),
+			ExecutionStartTimestamp:     toTimestamp(metadata.StartTime),
+			ExecutionCompletedTimestamp: toTimestamp(metadata.EndTime),
 		},
 	}
 	if err := c.uploadBlobs(func(ch chan<- *blob) error {
@@ -223,6 +220,18 @@ func (c *Client) Store(target *core.BuildTarget, key []byte, files []string) err
 				Path:   file,
 				Digest: digest,
 			})
+			if len(metadata.Stdout) > 0 {
+				h := sha1.Sum(metadata.Stdout)
+				digest := &pb.Digest{
+					SizeBytes: int64(len(metadata.Stdout)),
+					Hash:      hex.EncodeToString(h[:]),
+				}
+				ch <- &blob{
+					Data:   metadata.Stdout,
+					Digest: digest,
+				}
+				ar.StdoutDigest = digest
+			}
 		}
 		return nil
 	}); err != nil {
@@ -246,10 +255,10 @@ func (c *Client) Store(target *core.BuildTarget, key []byte, files []string) err
 
 // Retrieve fetches back a set of artifacts for a single build target.
 // Its outputs are written out to their final locations.
-func (c *Client) Retrieve(target *core.BuildTarget, key []byte) error {
+func (c *Client) Retrieve(target *core.BuildTarget, key []byte) (*core.BuildMetadata, error) {
 	inputRoot, err := c.buildInputRoot(target, false)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	digest := digestMessage(&pb.Action{
 		CommandDigest:   digestMessage(c.buildCommand(target, key)),
@@ -264,10 +273,15 @@ func (c *Client) Retrieve(target *core.BuildTarget, key []byte) error {
 		InlineStdout: target.PostBuildFunction != nil, // We only care in this case.
 	})
 	if err != nil {
-		return err
+		return nil, err
+	}
+	metadata := &core.BuildMetadata{
+		StartTime: toTime(resp.ExecutionMetadata.ExecutionStartTimestamp),
+		EndTime:   toTime(resp.ExecutionMetadata.ExecutionCompletedTimestamp),
+		Stdout:    resp.StdoutRaw, // TODO(peterebden): Fall back to the digest when needed.
 	}
 	mode := target.OutMode()
-	return c.downloadBlobs(func(ch chan<- *blob) error {
+	return metadata, c.downloadBlobs(func(ch chan<- *blob) error {
 		for _, file := range resp.OutputFiles {
 			addPerms := extraPerms(file)
 			if file.Contents != nil {

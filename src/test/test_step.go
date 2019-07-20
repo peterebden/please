@@ -49,7 +49,7 @@ func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.B
 	outputFile := path.Join(target.TestDir(), "test.results")
 	coverageFile := path.Join(target.TestDir(), "test.coverage")
 	needCoverage := state.NeedCoverage && !target.NoTestOutput && !target.HasAnyLabel(state.Config.Test.DisableCoverage)
-	metadata := core.BuildMetadata{Test: true, StartTime: time.Now()}
+	metadata := &core.BuildMetadata{Test: true, StartTime: time.Now()}
 
 	// If the user passed --shell then just prepare the directory.
 	if state.PrepareShell {
@@ -113,7 +113,9 @@ func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.B
 			}
 			outs = append(outs, output)
 		}
-		state.Cache.Store(target, hash, metadata, outs)
+		if state.Cache != nil {
+			state.Cache.Store(target, hash, metadata, outs)
+		}
 		return true
 	}
 
@@ -132,21 +134,7 @@ func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.B
 		}
 		log.Debug("Output file %s does not exist for %s", cachedOutputFile, target.Label)
 		// Check the cache for these artifacts.
-		if state.Cache == nil {
-			return true
-		}
-		if !state.Cache.RetrieveExtra(target, hash, resultsFileName) {
-			return true
-		}
-		if needCoverage && !state.Cache.RetrieveExtra(target, hash, coverageFileName) {
-			return true
-		}
-		for _, output := range target.TestOutputs {
-			if !state.Cache.RetrieveExtra(target, hash, output) {
-				return true
-			}
-		}
-		return false
+		return state.Cache == nil || state.Cache.Retrieve(target, hash) == nil
 	}
 
 	// Don't cache when doing multiple runs, presumably the user explicitly wants to check it.

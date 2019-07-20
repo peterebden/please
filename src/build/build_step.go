@@ -77,7 +77,7 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		}
 	}()
 
-	metadata := core.BuildMetadata{StartTime: time.Now()}
+	metadata := &core.BuildMetadata{StartTime: time.Now()}
 
 	if err := target.CheckDependencyVisibility(state); err != nil {
 		return err
@@ -196,7 +196,7 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		if target.PostBuildFunction != nil && !haveRunPostBuildFunction {
 			log.Debug("Checking for post-build output for %s in cache...", target.Label)
 			if metadata := state.Cache.Retrieve(target, cacheKey); metadata != nil {
-				if postBuildOutput, err = runPostBuildFunctionIfNeeded(tid, state, target, metadata.Stdout); err != nil {
+				if postBuildOutput, err = runPostBuildFunctionIfNeeded(tid, state, target, string(metadata.Stdout)); err != nil {
 					return err
 				} else if retrieveArtifacts() {
 					return writeRuleHash(state, target)
@@ -224,13 +224,13 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		if err := runPostBuildFunction(tid, state, target, string(out), postBuildOutput); err != nil {
 			return err
 		}
-		metadata.Stdout = string(out)
+		metadata.Stdout = out
 		storePostBuildOutput(target, out)
 	}
 	metadata.EndTime = time.Now()
 	checkLicences(state, target)
 	state.LogBuildResult(tid, target.Label, core.TargetBuilding, "Collecting outputs...")
-	extraOuts, outputsChanged, err := moveOutputs(state, target)
+	outs, outputsChanged, err := moveOutputs(state, target)
 	if err != nil {
 		return fmt.Errorf("Error moving outputs for target %s: %s", target.Label, err)
 	}
@@ -338,7 +338,10 @@ func moveOutputs(state *core.BuildState, target *core.BuildTarget) ([]string, bo
 	changed := false
 	tmpDir := target.TmpDir()
 	outDir := target.OutDir()
-	for _, output := range target.Outputs() {
+	outs := target.Outputs()
+	allOuts := make([]string, len(outs))
+	for i, output := range outs {
+		allOuts[i] = output
 		tmpOutput := path.Join(tmpDir, target.GetTmpOutput(output))
 		realOutput := path.Join(outDir, output)
 		if !core.PathExists(tmpOutput) {
@@ -357,7 +360,6 @@ func moveOutputs(state *core.BuildState, target *core.BuildTarget) ([]string, bo
 	}
 	// Optional outputs get moved but don't contribute to the hash or for incrementality.
 	// Glob patterns are supported on these.
-	extraOuts := []string{}
 	for _, output := range fs.Glob(state.Config.Parse.BuildFileName, tmpDir, target.OptionalOutputs, nil, nil, true) {
 		log.Debug("Discovered optional output %s", output)
 		tmpOutput := path.Join(tmpDir, output)
@@ -365,9 +367,9 @@ func moveOutputs(state *core.BuildState, target *core.BuildTarget) ([]string, bo
 		if _, err := moveOutput(state, target, tmpOutput, realOutput); err != nil {
 			return nil, changed, err
 		}
-		extraOuts = append(extraOuts, output)
+		allOuts = append(allOuts, output)
 	}
-	return extraOuts, changed, nil
+	return allOuts, changed, nil
 }
 
 func moveOutput(state *core.BuildState, target *core.BuildTarget, tmpOutput, realOutput string) (bool, error) {

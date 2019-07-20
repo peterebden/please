@@ -169,7 +169,7 @@ type BuildMetadata struct {
 	// Time it ended
 	EndTime time.Time
 	// Standard output
-	Stdout string
+	Stdout []byte
 	// True if this represents a test run.
 	Test bool
 }
