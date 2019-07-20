@@ -77,6 +77,8 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		}
 	}()
 
+	metadata := core.BuildMetadata{StartTime: time.Now()}
+
 	if err := target.CheckDependencyVisibility(state); err != nil {
 		return err
 	}
@@ -166,7 +168,8 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 			return true
 		}
 		state.LogBuildResult(tid, target.Label, core.TargetBuilding, "Checking cache...")
-		if _, retrieved := retrieveFromCache(state, target); retrieved {
+
+		if state.Cache.Retrieve(target, mustShortTargetHash(state, target)) != nil {
 			log.Debug("Retrieved artifacts for %s from cache", target.Label)
 			checkLicences(state, target)
 			newOutputHash, err := calculateAndCheckRuleHash(state, target)
@@ -191,9 +194,9 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		// Note that ordering here is quite sensitive since the post-build function can modify
 		// what we would retrieve from the cache.
 		if target.PostBuildFunction != nil && !haveRunPostBuildFunction {
-			log.Debug("Checking for post-build output file for %s in cache...", target.Label)
-			if state.Cache.RetrieveExtra(target, cacheKey, target.PostBuildOutputFileName()) {
-				if postBuildOutput, err = runPostBuildFunctionIfNeeded(tid, state, target, postBuildOutput); err != nil {
+			log.Debug("Checking for post-build output for %s in cache...", target.Label)
+			if metadata := state.Cache.Retrieve(target, cacheKey); metadata != nil {
+				if postBuildOutput, err = runPostBuildFunctionIfNeeded(tid, state, target, metadata.Stdout); err != nil {
 					return err
 				} else if retrieveArtifacts() {
 					return writeRuleHash(state, target)
@@ -221,8 +224,10 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 		if err := runPostBuildFunction(tid, state, target, string(out), postBuildOutput); err != nil {
 			return err
 		}
+		metadata.Stdout = string(out)
 		storePostBuildOutput(target, out)
 	}
+	metadata.EndTime = time.Now()
 	checkLicences(state, target)
 	state.LogBuildResult(tid, target.Label, core.TargetBuilding, "Collecting outputs...")
 	extraOuts, outputsChanged, err := moveOutputs(state, target)
@@ -245,12 +250,10 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget) (err
 			if !bytes.Equal(newCacheKey, cacheKey) {
 				// NB. Important this is stored with the earlier hash - if we calculate the hash
 				//     now, it might be different, and we could of course never retrieve it again.
-				state.Cache.StoreExtra(target, cacheKey, target.PostBuildOutputFileName())
-			} else {
-				extraOuts = append(extraOuts, target.PostBuildOutputFileName())
+				state.Cache.Store(target, cacheKey, metadata, nil)
 			}
 		}
-		state.Cache.Store(target, newCacheKey, extraOuts...)
+		state.Cache.Store(target, newCacheKey, metadata, outs)
 	}
 	// Clean up the temporary directory once it's done.
 	if state.CleanWorkdirs {
@@ -553,11 +556,6 @@ func checkRuleHashesOfType(target *core.BuildTarget, outputs []string, hasher *f
 		}
 	}
 	return false
-}
-
-func retrieveFromCache(state *core.BuildState, target *core.BuildTarget) ([]byte, bool) {
-	hash := mustShortTargetHash(state, target)
-	return hash, state.Cache.Retrieve(target, hash)
 }
 
 // Runs the post-build function for a target if it's got one.

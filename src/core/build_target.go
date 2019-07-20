@@ -161,6 +161,19 @@ type BuildTarget struct {
 	TestOutputs []string `name:"test_outputs"`
 }
 
+// BuildMetadata is temporary metadata that's stored around a build target - we don't
+// generally persist it indefinitely.
+type BuildMetadata struct {
+	// Time the build began
+	StartTime time.Time
+	// Time it ended
+	EndTime time.Time
+	// Standard output
+	Stdout string
+	// True if this represents a test run.
+	Test bool
+}
+
 // A PreBuildFunction is a type that allows hooking a pre-build callback.
 type PreBuildFunction interface {
 	fmt.Stringer
