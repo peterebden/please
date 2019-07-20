@@ -20,6 +20,7 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	"github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	bs "google.golang.org/genproto/googleapis/bytestream"
+	"google.golang.org/genproto/googleapis/longrunning"
 	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/encoding/gzip" // Registers the gzip compressor at init
 	"gopkg.in/op/go-logging.v1"
@@ -48,6 +49,7 @@ var apiVersion = semver.SemVer{Major: 2}
 type Client struct {
 	actionCacheClient pb.ActionCacheClient
 	storageClient     pb.ContentAddressableStorageClient
+	executionClient   pb.ExecutionClient
 	bsClient          bs.ByteStreamClient
 	initOnce          sync.Once
 	state             *core.BuildState
@@ -131,6 +133,9 @@ func (c *Client) init() {
 		// Look this up just once now.
 		bash, err := core.LookBuildPath("bash", c.state.Config)
 		c.bashPath = bash
+		// Now see if it's an execution server too
+		if caps := resp.ExecutionCapabilities; caps != nil {
+		}
 		return err
 	}()
 	if c.err != nil {
@@ -343,4 +348,9 @@ func (c *Client) digestDir(dir string, children []*pb.Directory) (*pb.Directory,
 		return nil
 	})
 	return d, children, err
+}
+
+// Execute submits a target for remote execution.
+func (c *Client) Execute(target *core.BuildTarget) error {
+	//	stream, err := c.
 }
