@@ -62,7 +62,7 @@ func TestStoreAndRetrieve(t *testing.T) {
 		StartTime: time.Now().UTC(),
 		EndTime:   time.Now().UTC(),
 	}
-	err := c.Store(target, key, metadata, []string{"plz-out/gen/package/out1.txt"})
+	err := c.Store(target, key, metadata, []string{"out1.txt"})
 	assert.NoError(t, err)
 	// Remove the old file, but remember its contents so we can compare later.
 	contents, err := ioutil.ReadFile("plz-out/gen/package/out1.txt")

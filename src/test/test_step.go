@@ -46,9 +46,9 @@ func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.B
 	hash = core.CollapseHash(hash)
 	cachedOutputFile := target.TestResultsFile()
 	cachedCoverageFile := target.CoverageFile()
-	outputFile := path.Join(target.TestDir(), "test.results")
-	coverageFile := path.Join(target.TestDir(), "test.coverage")
-	needCoverage := state.NeedCoverage && !target.NoTestOutput && !target.HasAnyLabel(state.Config.Test.DisableCoverage)
+	outputFile := path.Join(target.TestDir(), core.TestResultsFile)
+	coverageFile := path.Join(target.TestDir(), core.CoverageFile)
+	needCoverage := target.NeedCoverage(state)
 	metadata := &core.BuildMetadata{Test: true, StartTime: time.Now()}
 
 	// If the user passed --shell then just prepare the directory.

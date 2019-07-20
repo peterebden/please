@@ -167,9 +167,11 @@ func (c *Client) Store(target *core.BuildTarget, key []byte, metadata *core.Buil
 			ExecutionCompletedTimestamp: toTimestamp(metadata.EndTime),
 		},
 	}
+	outDir := target.OutDir()
 	if err := c.uploadBlobs(func(ch chan<- *blob) error {
 		defer close(ch)
 		for _, file := range files {
+			file = path.Join(outDir, file)
 			info, err := os.Lstat(file)
 			if err != nil {
 				return err
@@ -238,7 +240,7 @@ func (c *Client) Store(target *core.BuildTarget, key []byte, metadata *core.Buil
 		return err
 	}
 	// OK, now the blobs are uploaded, we also need to upload the Action itself.
-	digest, err := c.uploadAction(target, key)
+	digest, err := c.uploadAction(target, key, metadata.Test)
 	if err != nil {
 		return err
 	}
@@ -256,12 +258,13 @@ func (c *Client) Store(target *core.BuildTarget, key []byte, metadata *core.Buil
 // Retrieve fetches back a set of artifacts for a single build target.
 // Its outputs are written out to their final locations.
 func (c *Client) Retrieve(target *core.BuildTarget, key []byte) (*core.BuildMetadata, error) {
-	inputRoot, err := c.buildInputRoot(target, false)
+	isTest := target.State() > core.Built
+	inputRoot, err := c.buildInputRoot(target, false, isTest)
 	if err != nil {
 		return nil, err
 	}
 	digest := digestMessage(&pb.Action{
-		CommandDigest:   digestMessage(c.buildCommand(target, key)),
+		CommandDigest:   digestMessage(c.buildCommand(target, key, isTest)),
 		InputRootDigest: digestMessage(inputRoot),
 		Timeout:         ptypes.DurationProto(target.BuildTimeout),
 	})
