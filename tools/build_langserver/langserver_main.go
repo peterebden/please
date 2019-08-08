@@ -9,7 +9,7 @@ import (
 	"gopkg.in/op/go-logging.v1"
 
 	"github.com/thought-machine/please/src/cli"
-	"github.com/thought-machine/please/tools/build_langserver/langserver"
+	"github.com/thought-machine/please/tools/build_langserver/lsp"
 )
 
 var log = logging.MustGetLogger("build_langserver")
@@ -37,10 +37,7 @@ func main() {
 	if opts.LogFile != "" {
 		cli.InitFileLogging(string(opts.LogFile), opts.Verbosity)
 	}
-
-	handler := langserver.NewHandler()
-
-	if err := serve(handler); err != nil {
+	if err := serve(jsonrpc2.AsyncHandler(langserver.NewHandler())); err != nil {
 		log.Fatalf("fail to start server: %s", err)
 	}
 }
