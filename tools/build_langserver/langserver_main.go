@@ -12,8 +12,6 @@ import (
 	"github.com/thought-machine/please/tools/build_langserver/langserver"
 )
 
-// TODO(bnmetrics): also think about how we can implement this with .build_defs as well
-// TODO(bnmetrics): Make the Usage part better
 var log = logging.MustGetLogger("build_langserver")
 
 var opts = struct {
