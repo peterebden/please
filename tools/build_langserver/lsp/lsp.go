@@ -116,7 +116,7 @@ func (h *Handler) initialize(params *lsp.InitializeParams) (*lsp.InitializeResul
 			TextDocumentSync: &lsp.TextDocumentSyncOptionsOrKind{
 				Options: &lsp.TextDocumentSyncOptions{
 					OpenClose: true,
-					Change:    lsp.TDSKIncremental,
+					Change:    lsp.TDSKFull, // TODO(peterebden): Support incremental updates
 				},
 			},
 			DocumentFormattingProvider: true,
