@@ -8,10 +8,14 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/sourcegraph/go-lsp"
 	"github.com/sourcegraph/jsonrpc2"
 	"gopkg.in/op/go-logging.v1"
+
+	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/src/parse/asp"
 )
 
 var log = logging.MustGetLogger("lsp")
@@ -19,6 +23,10 @@ var log = logging.MustGetLogger("lsp")
 // A Handler is a handler suitable for use with jsonrpc2.
 type Handler struct {
 	methods map[string]method
+	docs    map[string]*doc
+	mutex   sync.Mutex // guards docs
+	state   *core.BuildState
+	parser  *asp.Parser
 	root    string
 }
 
@@ -29,10 +37,13 @@ type method struct {
 
 // NewHandler returns a new Handler.
 func NewHandler() *Handler {
-	h := &Handler{}
+	h := &Handler{
+		docs: map[string]*doc{},
+	}
 	h.methods = map[string]method{
-		"initialize":  h.method(h.initialize),
-		"initialized": h.method(h.initialized),
+		"initialize":           h.method(h.initialize),
+		"initialized":          h.method(h.initialized),
+		"textDocument/didOpen": h.method(h.didOpen),
 	}
 	return h
 }
@@ -43,8 +54,10 @@ func (h *Handler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2
 		if err := conn.ReplyWithError(ctx, req.ID, err); err != nil {
 			log.Error("Failed to send error response: %s", err)
 		}
-	} else if err := conn.Reply(ctx, req.ID, resp); err != nil {
-		log.Error("Failed to send response: %s", err)
+	} else if resp != nil {
+		if err := conn.Reply(ctx, req.ID, resp); err != nil {
+			log.Error("Failed to send response: %s", err)
+		}
 	}
 }
 
@@ -70,6 +83,8 @@ func (h *Handler) handle(method string, params *json.RawMessage) (i interface{},
 	ret := m.Func.Call([]reflect.Value{p.Elem()})
 	if err, ok := ret[1].Interface().(error); ok && err != nil {
 		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInternalError, Message: err.Error()}
+	} else if ret[0].IsNil() {
+		return nil, nil
 	}
 	return ret[0].Interface(), nil
 }
@@ -87,6 +102,15 @@ func (h *Handler) initialize(params *lsp.InitializeParams) (*lsp.InitializeResul
 	if err := os.Chdir(fromURI(params.RootURI)); err != nil {
 		return nil, err
 	}
+	core.FindRepoRoot()
+	config, err := core.ReadDefaultConfigFiles(nil)
+	if err != nil {
+		log.Error("Error reading configuration: %s", err)
+		config = core.DefaultConfiguration()
+	}
+	h.state = core.NewBuildState(config)
+	// We need an unwrapped parser instance as well for raw access.
+	h.parser = asp.NewParser(h.state)
 	return &lsp.InitializeResult{
 		Capabilities: lsp.ServerCapabilities{
 			TextDocumentSync: &lsp.TextDocumentSyncOptionsOrKind{

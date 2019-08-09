@@ -5,6 +5,8 @@ go_library(
         exclude = ["*_test.go"],
     ),
     deps = [
+        "//src/parse/asp",
+        "//src/core",
         "//third_party/go:lsp",
         "//third_party/go:logging",
         "//third_party/go:jsonrpc2",
