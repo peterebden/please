@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 
@@ -48,60 +49,74 @@ func (h *Handler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2
 }
 
 // handle is the slightly higher-level handler that deals with individual methods.
-func (h *handler) handle(method string, params json.RawMessage) (i interface{}, err error) {
+func (h *Handler) handle(method string, params *json.RawMessage) (i interface{}, err *jsonrpc2.Error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("%s", r)
+			log.Error("Panic in handler for %s: %s", method, r)
+			err = &jsonrpc2.Error{
+				Code:    jsonrpc2.CodeInternalError,
+				Message: fmt.Sprintf("%s", r),
+			}
 		}
 	}()
-	method, present := h.methods[req.Method]
+	m, present := h.methods[method]
 	if !present {
 		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeMethodNotFound}
 	}
-	p := reflect.New(method.Params)
-	if err := json.Unmarshal(params, p.Interface()); err != nil {
+	p := reflect.New(m.Params)
+	if err := json.Unmarshal(*params, p.Interface()); err != nil {
 		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams}
 	}
-	ret := method.Func.Call([]Value{p})
-	return ret[0].Interface(), ret[1].Interface().(error)
+	ret := m.Func.Call([]reflect.Value{p.Elem()})
+	if err, ok := ret[1].Interface().(error); ok && err != nil {
+		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInternalError, Message: err.Error()}
+	}
+	return ret[0].Interface(), nil
 }
 
 // method converts a function to a method struct
-func (h *handler) method(f interface{}) method {
+func (h *Handler) method(f interface{}) method {
 	return method{
 		Func:   reflect.ValueOf(f),
 		Params: reflect.TypeOf(f).In(0),
 	}
 }
 
-func (h *handler) initialize(params *lsp.InitializeParams) (*lsp.InitializeResult, error) {
+func (h *Handler) initialize(params *lsp.InitializeParams) (*lsp.InitializeResult, error) {
 	// This is a bit yucky and stateful, but we only need to do it once.
 	if err := os.Chdir(fromURI(params.RootURI)); err != nil {
 		return nil, err
 	}
 	return &lsp.InitializeResult{
-		Capabilities: &lsp.ServerCapabilities{
-			TextDocumentSyne: &lsp.TextDocumentSyncOptionsOrKind{
+		Capabilities: lsp.ServerCapabilities{
+			TextDocumentSync: &lsp.TextDocumentSyncOptionsOrKind{
 				Options: &lsp.TextDocumentSyncOptions{
-					OpenClose:                  true,
-					Change:                     lsp.TDSKIncremental,
-					Save:                       true,
-					DocumentFormattingProvider: true,
+					OpenClose: true,
+					Change:    lsp.TDSKIncremental,
 				},
 			},
+			DocumentFormattingProvider: true,
 		},
 	}, nil
 }
 
-func (h *handler) initialized(params *struct{}) (*struct{}, error) {
-	// Not doing anything here. Unsure right now why this is really necessary.
-	return &struct{}{}
+func (h *Handler) initialized(params *struct{}) (*struct{}, error) {
+	// Not doing anything here. Unsure right now what this is really for.
+	return &struct{}{}, nil
 }
 
 // fromURI converts a DocumentURI to a path.
 func fromURI(uri lsp.DocumentURI) string {
-	if !strings.HasPrefix(uri, "file://") {
+	if !strings.HasPrefix(string(uri), "file://") {
 		panic("invalid uri: " + uri)
 	}
 	return string(uri[7:])
+}
+
+// A Logger provides an interface to our logger.
+type Logger struct{}
+
+// Printf implements the jsonrpc2.Logger interface.
+func (l Logger) Printf(tmpl string, args ...interface{}) {
+	log.Info(tmpl, args...)
 }
