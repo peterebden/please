@@ -99,6 +99,70 @@ func TestDidChange(t *testing.T) {
 	assert.Equal(t, testContent2, h.CurrentContent("test/BUILD"))
 }
 
+const testFormattingContent = `go_test(
+    name = "lsp_test",
+    srcs = ["lsp_test.go"],
+    deps = [":lsp","//third_party/go:testify"],
+)
+`
+const testFormattedContent = `go_test(
+    name = "lsp_test",
+    srcs = ["lsp_test.go"],
+    deps = [
+        ":lsp",
+        "//third_party/go:testify",
+    ],
+)
+`
+
+func TestFormatting(t *testing.T) {
+	h := initHandler()
+	err := h.Request("textDocument/didOpen", &lsp.DidOpenTextDocumentParams{
+		TextDocument: lsp.TextDocumentItem{
+			URI:  "file://test/BUILD",
+			Text: testFormattingContent,
+		},
+	}, nil)
+	assert.NoError(t, err)
+	edits := []lsp.TextEdit{}
+	err = h.Request("textDocument/formatting", &lsp.DocumentFormattingParams{
+		TextDocument: lsp.TextDocumentIdentifier{
+			URI: "file://test/BUILD",
+		},
+	}, &edits)
+	assert.NoError(t, err)
+	assert.Equal(t, []lsp.TextEdit{
+		{
+			Range: lsp.Range{
+				Start: lsp.Position{Line: 3, Character: 0},
+				End:   lsp.Position{Line: 3, Character: 47},
+			},
+			NewText: `    deps = [`,
+		},
+		{
+			Range: lsp.Range{
+				Start: lsp.Position{Line: 4, Character: 0},
+				End:   lsp.Position{Line: 4, Character: 1},
+			},
+			NewText: `        ":lsp",`,
+		},
+		{
+			Range: lsp.Range{
+				Start: lsp.Position{Line: 5, Character: 0},
+				End:   lsp.Position{Line: 5, Character: 0},
+			},
+			NewText: `        "//third_party/go:testify",`,
+		},
+		{
+			Range: lsp.Range{
+				Start: lsp.Position{Line: 6, Character: 0},
+				End:   lsp.Position{Line: 6, Character: 0},
+			},
+			NewText: "    ],\n)\n",
+		},
+	}, edits)
+}
+
 // initHandler is a wrapper around creating a new handler and initializing it, which is
 // more convenient for most tests.
 func initHandler() *Handler {

@@ -41,10 +41,11 @@ func NewHandler() *Handler {
 		docs: map[string]*doc{},
 	}
 	h.methods = map[string]method{
-		"initialize":             h.method(h.initialize),
-		"initialized":            h.method(h.initialized),
-		"textDocument/didOpen":   h.method(h.didOpen),
-		"textDocument/didChange": h.method(h.didChange),
+		"initialize":              h.method(h.initialize),
+		"initialized":             h.method(h.initialized),
+		"textDocument/didOpen":    h.method(h.didOpen),
+		"textDocument/didChange":  h.method(h.didChange),
+		"textDocument/formatting": h.method(h.formatting),
 	}
 	return h
 }
@@ -83,6 +84,7 @@ func (h *Handler) handle(method string, params *json.RawMessage) (i interface{},
 	}
 	ret := m.Func.Call([]reflect.Value{p.Elem()})
 	if err, ok := ret[1].Interface().(error); ok && err != nil {
+		log.Warning("Error from handler for %s: %s", method, err)
 		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInternalError, Message: err.Error()}
 	} else if ret[0].IsNil() {
 		return nil, nil

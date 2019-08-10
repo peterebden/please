@@ -2,9 +2,11 @@ package lsp
 
 import (
 	"fmt"
+	"path"
 	"strings"
 	"sync"
 
+	"github.com/bazelbuild/buildtools/build"
 	"github.com/sourcegraph/go-lsp"
 
 	"github.com/thought-machine/please/src/parse/asp"
@@ -12,6 +14,8 @@ import (
 
 // A doc is a representation of a document that's opened by the editor.
 type doc struct {
+	// The filename of the document.
+	Filename string
 	// The raw content of the document.
 	Content []string
 	// Parsed version of it
@@ -19,13 +23,32 @@ type doc struct {
 	Mutex      sync.Mutex
 }
 
+func (d *doc) Text() string {
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+	return strings.Join(d.Content, "\n")
+}
+
+func (d *doc) Lines() []string {
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+	return d.Content
+}
+
+func (d *doc) SetText(text string) {
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+	d.Content = strings.Split(text, "\n")
+}
+
 func (h *Handler) didOpen(params *lsp.DidOpenTextDocumentParams) (*struct{}, error) {
 	uri := fromURI(params.TextDocument.URI)
 	content := params.TextDocument.Text
 	d := &doc{
-		Content: strings.Split(content, "\n"),
+		Filename: uri,
 	}
-	go h.parse(d, uri, content)
+	d.SetText(content)
+	go h.parse(d, content)
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 	h.docs[uri] = d
@@ -33,11 +56,11 @@ func (h *Handler) didOpen(params *lsp.DidOpenTextDocumentParams) (*struct{}, err
 }
 
 // parse parses the given document and updates its statements.
-func (h *Handler) parse(d *doc, uri, content string) {
+func (h *Handler) parse(d *doc, content string) {
 	// The parser interface doesn't have ParseData which we want here.
 	// We don't really want to make that a global thing on the state.
-	if stmts, err := h.parser.ParseData([]byte(content), uri); err != nil {
-		log.Warning("Error parsing %s: %s", uri, err)
+	if stmts, err := h.parser.ParseData([]byte(content), d.Filename); err != nil {
+		log.Warning("Error parsing %s: %s", d.Filename, err)
 	} else {
 		d.Mutex.Lock()
 		defer d.Mutex.Unlock()
@@ -46,20 +69,73 @@ func (h *Handler) parse(d *doc, uri, content string) {
 	// TODO(peterebden): We might want to add diagnostics here post-load.
 }
 
-func (h *Handler) didChange(params *lsp.DidChangeTextDocumentParams) (*struct{}, error) {
-	uri := fromURI(params.TextDocument.URI)
+// doc returns a document of the given URI, or panics if one doesn't exist.
+func (h *Handler) doc(uri lsp.DocumentURI) *doc {
+	filename := fromURI(uri)
 	h.mutex.Lock()
-	d := h.docs[uri]
-	h.mutex.Unlock()
-	d.Mutex.Lock()
-	defer d.Mutex.Unlock()
+	defer h.mutex.Unlock()
+	if doc := h.docs[filename]; doc != nil {
+		return doc
+	}
+	// Theoretically at least this shouldn't happen - it indicates we are getting
+	// requests for a document without a didOpen first.
+	panic("Unknown document " + string(uri))
+}
+
+func (h *Handler) didChange(params *lsp.DidChangeTextDocumentParams) (*struct{}, error) {
+	doc := h.doc(params.TextDocument.URI)
 	// Synchronise changes into the doc's contents
 	for _, change := range params.ContentChanges {
 		if change.Range != nil {
 			return nil, fmt.Errorf("non-incremental change received")
 		}
-		d.Content = strings.Split(change.Text, "\n")
-		go h.parse(d, uri, change.Text)
+		doc.SetText(change.Text)
+		go h.parse(doc, change.Text)
 	}
 	return nil, nil
+}
+
+func (h *Handler) formatting(params *lsp.DocumentFormattingParams) ([]*lsp.TextEdit, error) {
+	doc := h.doc(params.TextDocument.URI)
+	// Ignore formatting options, BUILD files are always canonically formatted at 4-space tabs.
+	fn := build.ParseDefault
+	if h.state.Config.IsABuildFile(path.Base(doc.Filename)) {
+		fn = build.ParseBuild
+	}
+	f, err := fn(doc.Filename, []byte(doc.Text()))
+	if err != nil {
+		return nil, err
+	}
+	before := doc.Text()
+	after := string(build.Format(f))
+	if before == after {
+		return nil, nil // Already formatted - great!
+	}
+	linesBefore := doc.Lines()
+	doc.SetText(after)
+	linesAfter := doc.Lines()
+	// TODO(peterebden): Could do cleverer matching here...
+	edits := []*lsp.TextEdit{}
+	for i, line := range linesAfter {
+		if i >= len(linesBefore) {
+			// Gone off the end of the previous lines, insert all the rest in one go.
+			edits = append(edits, &lsp.TextEdit{
+				Range: lsp.Range{
+					Start: lsp.Position{Line: i, Character: 0},
+					End:   lsp.Position{Line: i, Character: 0},
+				},
+				NewText: strings.Join(linesAfter[i:], "\n"),
+			})
+			break
+		} else if line != linesBefore[i] {
+			edits = append(edits, &lsp.TextEdit{
+				Range: lsp.Range{
+					Start: lsp.Position{Line: i, Character: 0},
+					End:   lsp.Position{Line: i, Character: len(linesBefore[i])},
+				},
+				NewText: line,
+			})
+		}
+	}
+	return edits, nil
 }
