@@ -1,0 +1,39 @@
+go_library(
+    name = "core",
+    srcs = glob(
+        ["*.go"],
+        exclude = [
+            "*_test.go",
+            "version.go",
+        ],
+    ) + [
+        ":version",
+    ],
+    visibility = ["PUBLIC"],
+    deps = [
+        "//src/cli",
+        "//src/fs",
+        "//src/process",
+        "//src/scm",
+        "//third_party/go:gcfg",
+        "//third_party/go:go-flags",
+        "//third_party/go:godirwalk",
+        "//third_party/go:logging",
+        "//third_party/go:queue",
+        "//third_party/go:semver",
+        "//third_party/go:shlex",
+        "//third_party/go:xattr",
+    ],
+)
+
+go_test(
+    name = "config_test",
+    srcs = ["config_test.go"],
+    data = glob(["test_data/*.plzconfig*"]),
+    deps = [
+        ":core",
+        "//src/cli",
+        "//third_party/go:go-flags",
+        "//third_party/go:testify",
+    ],
+)

@@ -10,6 +10,8 @@ import (
 	"github.com/sourcegraph/go-lsp"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/thought-machine/please/src/core"
 )
 
 func TestInitialize(t *testing.T) {
@@ -21,6 +23,7 @@ func TestInitialize(t *testing.T) {
 	}, result)
 	assert.NoError(t, err)
 	assert.True(t, result.Capabilities.TextDocumentSync.Options.OpenClose)
+	assert.Equal(t, path.Join(os.Getenv("TEST_DIR"), "tools/build_langserver/lsp/test_data"), h.root)
 }
 
 func TestInitializeNoURI(t *testing.T) {
@@ -176,6 +179,49 @@ func (c *closer) Close() error {
 	return nil
 }
 
+const testCompletionContent = `
+go_library(
+    name = "test",
+    srcs = glob(["*.go"]),
+    deps = [
+        "//src/core:"
+    ],
+)
+`
+
+func TestCompletion(t *testing.T) {
+	h := initHandler()
+	err := h.Request("textDocument/didOpen", &lsp.DidOpenTextDocumentParams{
+		TextDocument: lsp.TextDocumentItem{
+			URI:  "file://test/BUILD",
+			Text: testCompletionContent,
+		},
+	}, nil)
+	assert.NoError(t, err)
+	h.WaitForPackage("src/core")
+	completions := &lsp.CompletionList{}
+	err = h.Request("textDocument/completion", &lsp.CompletionParams{
+		TextDocumentPositionParams: lsp.TextDocumentPositionParams{
+			TextDocument: lsp.TextDocumentIdentifier{
+				URI: "file://test/BUILD",
+			},
+			Position: lsp.Position{
+				Line:      5,
+				Character: 20,
+			},
+		},
+	}, completions)
+	assert.NoError(t, err)
+	assert.Equal(t, &lsp.CompletionList{
+		IsIncomplete: false,
+		Items: []lsp.CompletionItem{
+			{
+				Label: "//src/core",
+			},
+		},
+	}, completions)
+}
+
 // initHandler is a wrapper around creating a new handler and initializing it, which is
 // more convenient for most tests.
 func initHandler() *Handler {
@@ -221,4 +267,13 @@ func (h *Handler) CurrentContent(doc string) string {
 		return ""
 	}
 	return strings.Join(d.Content, "\n")
+}
+
+// WaitForPackage blocks until the given package has been parsed.
+func (h *Handler) WaitForPackage(pkg string) {
+	for result := range h.state.Results() {
+		if result.Status == core.PackageParsed && result.Label.PackageName == pkg {
+			return
+		}
+	}
 }

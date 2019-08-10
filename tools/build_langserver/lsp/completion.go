@@ -46,14 +46,16 @@ func (h *Handler) completeLabel(doc *doc, partial string) (*lsp.CompletionList, 
 		if pkg == nil {
 			return list, nil
 		}
+		m := map[string]bool{}
 		for _, t := range pkg.AllTargets() {
 			if label.Name == "all" || strings.HasPrefix(t.Label.Name, label.Name) {
-				s := t.Label.String()
+				s := t.Label.ShortString(core.BuildLabel{PackageName: pkgName})
 				list.Items = append(list.Items, lsp.CompletionItem{
 					Label:    s,
 					Kind:     lsp.CIKText,
 					TextEdit: &lsp.TextEdit{NewText: strings.TrimPrefix(s, partial)},
 				})
+				m[s] = true
 			}
 		}
 		if idx == 0 || pkgName == label.PackageName {
@@ -61,12 +63,13 @@ func (h *Handler) completeLabel(doc *doc, partial string) (*lsp.CompletionList, 
 			// This handles the case where a user added something locally but hasn't saved it yet.
 			for _, target := range h.allTargets(doc) {
 				if label.Name == "all" || strings.HasPrefix(target, label.Name) {
-					s := ":" + target
-					list.Items = append(list.Items, lsp.CompletionItem{
-						Label:    s,
-						Kind:     lsp.CIKText,
-						TextEdit: &lsp.TextEdit{NewText: strings.TrimPrefix(s, partial)},
-					})
+					if s := ":" + target; !m[s] {
+						list.Items = append(list.Items, lsp.CompletionItem{
+							Label:    s,
+							Kind:     lsp.CIKText,
+							TextEdit: &lsp.TextEdit{NewText: strings.TrimPrefix(s, partial)},
+						})
+					}
 				}
 			}
 		}

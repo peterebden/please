@@ -48,7 +48,7 @@ func (h *Handler) didOpen(params *lsp.DidOpenTextDocumentParams) (*struct{}, err
 	d := &doc{
 		Filename: uri,
 	}
-	if path, err := filepath.Rel(h.root, uri); err != nil {
+	if path, err := filepath.Rel(h.root, uri); err == nil {
 		d.Filename = path
 	}
 	d.SetText(content)
