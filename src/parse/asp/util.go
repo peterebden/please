@@ -59,99 +59,71 @@ func FindArgument(statement *Statement, args ...string) *CallArgument {
 	return nil
 }
 
-// StatementOrExpressionFromAst recursively finds asp.IdentStatement and asp.Expression in the ast
-// and returns a valid statement pointer if within range
-func StatementOrExpressionFromAst(stmts []*Statement, position Position) (statement *Statement, expression *Expression) {
-	callback := func(astStruct interface{}) interface{} {
-		if expr, ok := astStruct.(Expression); ok {
-			if withInRange(expr.Pos, expr.EndPos, position) {
-				return expr
-			}
-		} else if stmt, ok := astStruct.(Statement); ok {
-			if withInRange(stmt.Pos, stmt.EndPos, position) {
-				// get function call, assignment, and property access
-				if stmt.Ident != nil {
-					return stmt
-				}
-			}
+// StatementOrExpressionFromAST is a wrapper around WalkAST to find the relevant statement
+// and expression at a given position. Either may be null if they cannot be located.
+func StatementOrExpressionFromAST(ast []*Statement, pos Position) (statement *Statement, expression *Expression) {
+	WalkAST(ast, func(stmt *Statement) bool {
+		if withinRange(pos, stmt.Pos, stmt.EndPos) {
+			statement = stmt
+			return true
 		}
-
-		return nil
-	}
-
-	item := WalkAST(stmts, callback)
-	if item != nil {
-		if expr, ok := item.(Expression); ok {
-			return nil, &expr
-		} else if stmt, ok := item.(Statement); ok {
-			return &stmt, nil
+		return false
+	}, func(expr *Expression) bool {
+		if withinRange(pos, expr.Pos, expr.EndPos) {
+			expression = expr
+			return true
 		}
-	}
-
-	return nil, nil
+		return false
+	})
+	return
 }
 
 // WalkAST is a generic function that walks through the ast recursively,
-// astStruct can be anything inside of the AST, such as asp.Statement, asp.Expression
-// it accepts a callback for any operations
-func WalkAST(astStruct interface{}, callback func(astStruct interface{}) interface{}) interface{} {
-	if astStruct == nil {
-		return nil
+// It accepts two callback functions, one called on each statement encountered and
+// one on each expression. Either can be nil.
+// If the callback returns true, the node will be further visited; if false it (and
+// all children) will be skipped.
+func WalkAST(ast []*Statement, stmt func(*Statement) bool, expr func(*Expression) bool) {
+	for _, node := range ast {
+		walkAST(reflect.ValueOf(node), stmt, expr)
 	}
+}
 
-	item := callback(astStruct)
-	if item != nil {
-		return item
-	}
-
-	v, ok := astStruct.(reflect.Value)
-	if !ok {
-		v = reflect.ValueOf(astStruct)
+func walkAST(v reflect.Value, stmt func(*Statement) bool, expr func(*Expression) bool) {
+	callbacks := func(v reflect.Value) bool {
+		if s, ok := v.Interface().(*Statement); ok && stmt != nil && !stmt(s) {
+			return false
+		} else if e, ok := v.Interface().(*Expression); ok && expr != nil && !expr(e) {
+			return false
+		}
+		return true
 	}
 
 	if v.Kind() == reflect.Ptr && !v.IsNil() {
-		return WalkAST(v.Elem().Interface(), callback)
+		if callbacks(v) {
+			walkAST(v.Elem(), stmt, expr)
+		}
 	} else if v.Kind() == reflect.Slice {
 		for i := 0; i < v.Len(); i++ {
-			item = WalkAST(v.Index(i).Interface(), callback)
-			if item != nil {
-				return item
-			}
+			walkAST(v.Index(i), stmt, expr)
 		}
 	} else if v.Kind() == reflect.Struct {
-		for i := 0; i < v.NumField(); i++ {
-			item = WalkAST(v.Field(i).Interface(), callback)
-			if item != nil {
-				return item
+		if callbacks(v.Addr()) {
+			for i := 0; i < v.NumField(); i++ {
+				walkAST(v.Field(i), stmt, expr)
 			}
 		}
 	}
-	return nil
-
 }
 
-// withInRange checks if the input position is within the range of the Expression
-func withInRange(exprPos Position, exprEndPos Position, pos Position) bool {
-	withInLineRange := pos.Line >= exprPos.Line &&
-		pos.Line <= exprEndPos.Line
-
-	withInColRange := pos.Column >= exprPos.Column &&
-		pos.Column <= exprEndPos.Column
-
-	onTheSameLine := pos.Line == exprEndPos.Line &&
-		pos.Line == exprPos.Line
-
-	if !withInLineRange || (onTheSameLine && !withInColRange) {
+// withinRange checks if the input position is within the range of the Expression
+func withinRange(needle, start, end Position) bool {
+	if needle.Line < start.Line || needle.Line > end.Line {
+		return false
+	} else if needle.Line == start.Line && needle.Column < start.Column {
+		return false
+	} else if needle.Line == end.Line && needle.Column > end.Column {
 		return false
 	}
-
-	if pos.Line == exprPos.Line {
-		return pos.Column >= exprPos.Column
-	}
-
-	if pos.Line == exprEndPos.Line {
-		return pos.Column <= exprEndPos.Column
-	}
-
 	return true
 }

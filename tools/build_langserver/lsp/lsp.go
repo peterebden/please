@@ -50,6 +50,7 @@ func NewHandler() *Handler {
 		"textDocument/didOpen":    h.method(h.didOpen),
 		"textDocument/didChange":  h.method(h.didChange),
 		"textDocument/formatting": h.method(h.formatting),
+		"textDocument/completion": h.method(h.completion),
 	}
 	return h
 }
