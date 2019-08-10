@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"net"
 	"os"
 
@@ -37,43 +38,41 @@ func main() {
 	if opts.LogFile != "" {
 		cli.InitFileLogging(string(opts.LogFile), opts.Verbosity)
 	}
-	if err := serve(jsonrpc2.AsyncHandler(langserver.NewHandler())); err != nil {
+	if err := serve(lsp.NewHandler()); err != nil {
 		log.Fatalf("fail to start server: %s", err)
 	}
 }
 
-func serve(handler jsonrpc2.Handler) error {
+func serve(handler *lsp.Handler) error {
 	if opts.Mode == "tcp" {
 		lis, err := net.Listen("tcp", opts.Host+":"+opts.Port)
 		if err != nil {
 			return err
 		}
 		defer lis.Close()
-
-		log.Notice("build_langserver: listening on", opts.Host+":"+opts.Port)
-		for {
-			conn, err := lis.Accept()
-			if err != nil {
-				return err
-			}
-			<-jsonrpc2.NewConn(context.Background(),
-				jsonrpc2.NewBufferedStream(conn, jsonrpc2.VSCodeObjectCodec{}),
-				handler,
-				jsonrpc2.LogMessages(logger{}),
-			).DisconnectNotify()
+		log.Notice("build_langserver: listening on %s:%s", opts.Host, opts.Port)
+		conn, err := lis.Accept()
+		if err != nil {
+			return err
 		}
+		reallyServe(handler, conn)
 	} else {
 		log.Info("build_langserver: reading on stdin, writing on stdout")
-
-		<-jsonrpc2.NewConn(context.Background(),
-			jsonrpc2.NewBufferedStream(stdrwc{}, jsonrpc2.VSCodeObjectCodec{}),
-			handler,
-			jsonrpc2.LogMessages(logger{}),
-		).DisconnectNotify()
-
-		log.Info("connection closed")
+		reallyServe(handler, stdrwc{})
 	}
 	return nil
+}
+
+func reallyServe(handler *lsp.Handler, conn io.ReadWriteCloser) {
+	c := jsonrpc2.NewConn(
+		context.Background(),
+		jsonrpc2.NewBufferedStream(conn, jsonrpc2.VSCodeObjectCodec{}),
+		jsonrpc2.AsyncHandler(handler),
+		jsonrpc2.LogMessages(lsp.Logger{}),
+	)
+	handler.Conn = c
+	<-c.DisconnectNotify()
+	log.Info("connection closed")
 }
 
 type stdrwc struct{}
@@ -91,10 +90,4 @@ func (stdrwc) Close() error {
 		return err
 	}
 	return os.Stdout.Close()
-}
-
-type logger struct{}
-
-func (l logger) Printf(tmpl string, args ...interface{}) {
-	log.Debugf(tmpl, args...)
 }

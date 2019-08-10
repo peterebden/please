@@ -105,15 +105,6 @@ const testFormattingContent = `go_test(
     deps = [":lsp","//third_party/go:testify"],
 )
 `
-const testFormattedContent = `go_test(
-    name = "lsp_test",
-    srcs = ["lsp_test.go"],
-    deps = [
-        ":lsp",
-        "//third_party/go:testify",
-    ],
-)
-`
 
 func TestFormatting(t *testing.T) {
 	h := initHandler()
@@ -161,6 +152,28 @@ func TestFormatting(t *testing.T) {
 			NewText: "    ],\n)\n",
 		},
 	}, edits)
+}
+
+func TestShutdown(t *testing.T) {
+	h := initHandler()
+	c := &closer{}
+	h.Conn = c
+	err := h.Request("shutdown", &struct{}{}, nil)
+	assert.NoError(t, err)
+	// Shouldn't be closed yet
+	assert.False(t, c.Closed)
+	err = h.Request("exit", &struct{}{}, nil)
+	assert.NoError(t, err)
+	assert.True(t, c.Closed)
+}
+
+type closer struct {
+	Closed bool
+}
+
+func (c *closer) Close() error {
+	c.Closed = true
+	return nil
 }
 
 // initHandler is a wrapper around creating a new handler and initializing it, which is

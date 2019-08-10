@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"strings"
@@ -22,6 +23,7 @@ var log = logging.MustGetLogger("lsp")
 
 // A Handler is a handler suitable for use with jsonrpc2.
 type Handler struct {
+	Conn    io.Closer
 	methods map[string]method
 	docs    map[string]*doc
 	mutex   sync.Mutex // guards docs
@@ -43,6 +45,8 @@ func NewHandler() *Handler {
 	h.methods = map[string]method{
 		"initialize":              h.method(h.initialize),
 		"initialized":             h.method(h.initialized),
+		"shutdown":                h.method(h.shutdown),
+		"exit":                    h.method(h.exit),
 		"textDocument/didOpen":    h.method(h.didOpen),
 		"textDocument/didChange":  h.method(h.didChange),
 		"textDocument/formatting": h.method(h.formatting),
@@ -129,7 +133,24 @@ func (h *Handler) initialize(params *lsp.InitializeParams) (*lsp.InitializeResul
 
 func (h *Handler) initialized(params *struct{}) (*struct{}, error) {
 	// Not doing anything here. Unsure right now what this is really for.
-	return &struct{}{}, nil
+	return nil, nil
+}
+
+func (h *Handler) shutdown(params *struct{}) (*struct{}, error) {
+	return nil, nil
+}
+
+func (h *Handler) exit(params *struct{}) (*struct{}, error) {
+	// exit is a request to terminate the process. We do this preferably by shutting
+	// down the RPC connection but if we can't we just die.
+	if h.Conn != nil {
+		if err := h.Conn.Close(); err != nil {
+			log.Fatalf("Failed to close connection: %s", err)
+		}
+	} else {
+		log.Fatalf("No active connection to shut down")
+	}
+	return nil, nil
 }
 
 // fromURI converts a DocumentURI to a path.
