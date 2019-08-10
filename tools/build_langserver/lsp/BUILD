@@ -7,6 +7,7 @@ go_library(
     deps = [
         "//src/parse/asp",
         "//src/core",
+        "//src/plz",
         "//third_party/go:buildtools",
         "//third_party/go:lsp",
         "//third_party/go:logging",

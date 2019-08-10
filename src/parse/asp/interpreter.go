@@ -161,7 +161,7 @@ func (i *interpreter) pkgConfig(pkg *core.Package) *pyConfig {
 // optimiseExpressions implements a peephole optimiser for expressions by precalculating constants
 // and identifying simple local variable lookups.
 func (i *interpreter) optimiseExpressions(stmts []*Statement) {
-	WalkAST(stmts, nil, func(expr *Expression) bool {
+	WalkAST(stmts, func(expr *Expression) bool {
 		if constant := i.scope.Constant(expr); constant != nil {
 			expr.Optimised = &OptimisedExpression{Constant: constant} // Extract constant expression
 			expr.Val = nil

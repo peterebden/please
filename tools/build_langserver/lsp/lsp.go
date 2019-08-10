@@ -17,6 +17,7 @@ import (
 
 	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/parse/asp"
+	"github.com/thought-machine/please/src/plz"
 )
 
 var log = logging.MustGetLogger("lsp")
@@ -111,14 +112,20 @@ func (h *Handler) initialize(params *lsp.InitializeParams) (*lsp.InitializeResul
 		return nil, err
 	}
 	core.FindRepoRoot()
+	h.root = core.RepoRoot
 	config, err := core.ReadDefaultConfigFiles(nil)
 	if err != nil {
 		log.Error("Error reading configuration: %s", err)
 		config = core.DefaultConfiguration()
 	}
 	h.state = core.NewBuildState(config)
+	h.state.NeedBuild = false
 	// We need an unwrapped parser instance as well for raw access.
 	h.parser = asp.NewParser(h.state)
+	// Parse everything in the repo up front.
+	// This is a lot easier than trying to do clever partial parses later on, although
+	// eventually we may want that if we start dealing with truly large repos.
+	go plz.RunHost(core.WholeGraph, h.state)
 	return &lsp.InitializeResult{
 		Capabilities: lsp.ServerCapabilities{
 			TextDocumentSync: &lsp.TextDocumentSyncOptionsOrKind{

@@ -59,58 +59,53 @@ func FindArgument(statement *Statement, args ...string) *CallArgument {
 	return nil
 }
 
-// StatementOrExpressionFromAST is a wrapper around WalkAST to find the relevant statement
-// and expression at a given position. Either may be null if they cannot be located.
-func StatementOrExpressionFromAST(ast []*Statement, pos Position) (statement *Statement, expression *Expression) {
-	WalkAST(ast, func(stmt *Statement) bool {
-		if withinRange(pos, stmt.Pos, stmt.EndPos) {
-			statement = stmt
-			return true
-		}
-		return false
-	}, func(expr *Expression) bool {
+// ExpressionsAtPos is a wrapper around WalkAST to find all relevant expressions to
+// a given position.
+func ExpressionsAtPos(ast []*Statement, pos Position) []*Expression {
+	exprs := []*Expression{}
+	WalkAST(ast, func(expr *Expression) bool {
 		if withinRange(pos, expr.Pos, expr.EndPos) {
-			expression = expr
+			exprs = append(exprs, expr)
 			return true
 		}
 		return false
 	})
-	return
+	return exprs
 }
 
 // WalkAST is a generic function that walks through the ast recursively,
-// It accepts two callback functions, one called on each statement encountered and
-// one on each expression. Either can be nil.
+// It accepts a function to look for a particular grammar object; it will be called on
+// each instance of that type, and returns a bool - for example
+// WalkAST(ast, func(expr *Expression) bool { ... })
 // If the callback returns true, the node will be further visited; if false it (and
 // all children) will be skipped.
-func WalkAST(ast []*Statement, stmt func(*Statement) bool, expr func(*Expression) bool) {
+func WalkAST(ast []*Statement, callback interface{}) {
+	cb := reflect.ValueOf(callback)
+	typ := cb.Type().In(0)
 	for _, node := range ast {
-		walkAST(reflect.ValueOf(node), stmt, expr)
+		walkAST(reflect.ValueOf(node), typ, cb)
 	}
 }
 
-func walkAST(v reflect.Value, stmt func(*Statement) bool, expr func(*Expression) bool) {
-	callbacks := func(v reflect.Value) bool {
-		if s, ok := v.Interface().(*Statement); ok && stmt != nil && !stmt(s) {
-			return false
-		} else if e, ok := v.Interface().(*Expression); ok && expr != nil && !expr(e) {
-			return false
+func walkAST(v reflect.Value, nodeType reflect.Type, callback reflect.Value) {
+	call := func(v reflect.Value) bool {
+		if v.Type() == nodeType {
+			vs := callback.Call([]reflect.Value{v})
+			return vs[0].Bool()
 		}
 		return true
 	}
 
 	if v.Kind() == reflect.Ptr && !v.IsNil() {
-		if callbacks(v) {
-			walkAST(v.Elem(), stmt, expr)
-		}
+		walkAST(v.Elem(), nodeType, callback)
 	} else if v.Kind() == reflect.Slice {
 		for i := 0; i < v.Len(); i++ {
-			walkAST(v.Index(i), stmt, expr)
+			walkAST(v.Index(i), nodeType, callback)
 		}
 	} else if v.Kind() == reflect.Struct {
-		if callbacks(v.Addr()) {
+		if call(v.Addr()) {
 			for i := 0; i < v.NumField(); i++ {
-				walkAST(v.Field(i), stmt, expr)
+				walkAST(v.Field(i), nodeType, callback)
 			}
 		}
 	}

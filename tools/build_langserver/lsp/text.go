@@ -3,6 +3,7 @@ package lsp
 import (
 	"fmt"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -19,8 +20,8 @@ type doc struct {
 	// The raw content of the document.
 	Content []string
 	// Parsed version of it
-	Statements []*asp.Statement
-	Mutex      sync.Mutex
+	AST   []*asp.Statement
+	Mutex sync.Mutex
 }
 
 func (d *doc) Text() string {
@@ -47,6 +48,9 @@ func (h *Handler) didOpen(params *lsp.DidOpenTextDocumentParams) (*struct{}, err
 	d := &doc{
 		Filename: uri,
 	}
+	if path, err := filepath.Rel(h.root, uri); err != nil {
+		d.Filename = path
+	}
 	d.SetText(content)
 	go h.parse(d, content)
 	h.mutex.Lock()
@@ -64,7 +68,7 @@ func (h *Handler) parse(d *doc, content string) {
 	} else {
 		d.Mutex.Lock()
 		defer d.Mutex.Unlock()
-		d.Statements = stmts
+		d.AST = stmts
 	}
 	// TODO(peterebden): We might want to add diagnostics here post-load.
 }
