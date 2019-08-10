@@ -41,9 +41,10 @@ func NewHandler() *Handler {
 		docs: map[string]*doc{},
 	}
 	h.methods = map[string]method{
-		"initialize":           h.method(h.initialize),
-		"initialized":          h.method(h.initialized),
-		"textDocument/didOpen": h.method(h.didOpen),
+		"initialize":             h.method(h.initialize),
+		"initialized":            h.method(h.initialized),
+		"textDocument/didOpen":   h.method(h.didOpen),
+		"textDocument/didChange": h.method(h.didChange),
 	}
 	return h
 }

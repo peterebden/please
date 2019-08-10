@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 
@@ -38,14 +39,14 @@ func (h *Handler) parse(d *doc, uri, content string) {
 	if stmts, err := h.parser.ParseData([]byte(content), uri); err != nil {
 		log.Warning("Error parsing %s: %s", uri, err)
 	} else {
-		h.mutex.Lock()
-		defer h.mutex.Unlock()
+		d.Mutex.Lock()
+		defer d.Mutex.Unlock()
 		d.Statements = stmts
 	}
 	// TODO(peterebden): We might want to add diagnostics here post-load.
 }
 
-func (h *handler) didChange(params *lsp.DidChangeTextDocumentParams) (*struct{}, error) {
+func (h *Handler) didChange(params *lsp.DidChangeTextDocumentParams) (*struct{}, error) {
 	uri := fromURI(params.TextDocument.URI)
 	h.mutex.Lock()
 	d := h.docs[uri]
@@ -54,6 +55,11 @@ func (h *handler) didChange(params *lsp.DidChangeTextDocumentParams) (*struct{},
 	defer d.Mutex.Unlock()
 	// Synchronise changes into the doc's contents
 	for _, change := range params.ContentChanges {
-
+		if change.Range != nil {
+			return nil, fmt.Errorf("non-incremental change received")
+		}
+		d.Content = strings.Split(change.Text, "\n")
+		go h.parse(d, uri, change.Text)
 	}
+	return nil, nil
 }

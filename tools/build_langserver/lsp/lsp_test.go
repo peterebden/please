@@ -32,25 +32,71 @@ func TestInitializeNoURI(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestDidOpen(t *testing.T) {
-	h := initHandler()
-	const content = `
+const testContent = `
 go_library(
-    name = "test",
+    name = "lsp",
     srcs = ["lsp.go"],
     deps = [
         "//third_party/go:lsp",
     ],
 )
 `
+
+const testContent2 = `
+go_library(
+    name = "lsp",
+    srcs = ["lsp.go"],
+    deps = [
+        "//third_party/go:lsp",
+    ],
+)
+
+go_test(
+    name = "lsp_test",
+    srcs = ["lsp_test.go"],
+    deps = [
+        ":lsp",
+        "//third_party/go:testify",
+    ],
+)
+`
+
+func TestDidOpen(t *testing.T) {
+	h := initHandler()
 	err := h.Request("textDocument/didOpen", &lsp.DidOpenTextDocumentParams{
 		TextDocument: lsp.TextDocumentItem{
 			URI:  "file://test/BUILD",
-			Text: content,
+			Text: testContent,
 		},
 	}, nil)
 	assert.NoError(t, err)
-	assert.Equal(t, content, h.CurrentContent("test/BUILD"))
+	assert.Equal(t, testContent, h.CurrentContent("test/BUILD"))
+}
+
+func TestDidChange(t *testing.T) {
+	// TODO(peterebden): change this when we support incremental changes.
+	h := initHandler()
+	err := h.Request("textDocument/didOpen", &lsp.DidOpenTextDocumentParams{
+		TextDocument: lsp.TextDocumentItem{
+			URI:  "file://test/BUILD",
+			Text: testContent,
+		},
+	}, nil)
+	assert.NoError(t, err)
+	err = h.Request("textDocument/didChange", &lsp.DidChangeTextDocumentParams{
+		TextDocument: lsp.VersionedTextDocumentIdentifier{
+			TextDocumentIdentifier: lsp.TextDocumentIdentifier{
+				URI: "file://test/BUILD",
+			},
+		},
+		ContentChanges: []lsp.TextDocumentContentChangeEvent{
+			{
+				Text: testContent2,
+			},
+		},
+	}, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, testContent2, h.CurrentContent("test/BUILD"))
 }
 
 // initHandler is a wrapper around creating a new handler and initializing it, which is
