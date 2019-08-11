@@ -34,11 +34,13 @@ func (h *Handler) completeLabel(doc *doc, partial string) (*lsp.CompletionList, 
 	list := &lsp.CompletionList{}
 	if idx := strings.IndexByte(partial, ':'); idx != -1 {
 		// We know exactly which package it's in. "Just" look in there.
-		if idx == len(partial)-1 {
-			partial += "all" // Won't be a valid build label without this.
+		labelName := partial
+		if idx == len(labelName)-1 {
+			labelName += "all" // Won't be a valid build label without this.
 		}
 		pkgName := path.Base(doc.Filename)
-		label, err := core.TryParseBuildLabel(partial, pkgName)
+		pkgLabel := core.BuildLabel{PackageName: pkgName, Name: "all"}
+		label, err := core.TryParseBuildLabel(labelName, pkgName)
 		if err != nil {
 			return nil, err
 		}
@@ -48,8 +50,11 @@ func (h *Handler) completeLabel(doc *doc, partial string) (*lsp.CompletionList, 
 		}
 		m := map[string]bool{}
 		for _, t := range pkg.AllTargets() {
-			if label.Name == "all" || strings.HasPrefix(t.Label.Name, label.Name) {
+			if ((label.Name == "all" && !strings.HasPrefix(t.Label.Name, "_")) || strings.HasPrefix(t.Label.Name, label.Name)) && pkgLabel.CanSee(h.state, t) {
 				s := t.Label.ShortString(core.BuildLabel{PackageName: pkgName})
+				if !strings.HasPrefix(s, partial) {
+					s = t.Label.String() // Don't abbreviate it if we end up losing part of what's there
+				}
 				list.Items = append(list.Items, lsp.CompletionItem{
 					Label:    s,
 					Kind:     lsp.CIKText,
@@ -62,7 +67,7 @@ func (h *Handler) completeLabel(doc *doc, partial string) (*lsp.CompletionList, 
 			// We are in the current document, provide local completions from it.
 			// This handles the case where a user added something locally but hasn't saved it yet.
 			for _, target := range h.allTargets(doc) {
-				if label.Name == "all" || strings.HasPrefix(target, label.Name) {
+				if (label.Name == "all" && !strings.HasPrefix(label.Name, "_")) || strings.HasPrefix(target, label.Name) {
 					if s := ":" + target; !m[s] {
 						list.Items = append(list.Items, lsp.CompletionItem{
 							Label:    s,

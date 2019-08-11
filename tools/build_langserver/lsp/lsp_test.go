@@ -221,7 +221,9 @@ func TestCompletion(t *testing.T) {
 		IsIncomplete: false,
 		Items: []lsp.CompletionItem{
 			{
-				Label: "//src/core",
+				Label:    "//src/core:core",
+				Kind:     lsp.CIKText,
+				TextEdit: &lsp.TextEdit{NewText: "core"},
 			},
 		},
 	}, completions)
