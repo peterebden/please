@@ -107,6 +107,40 @@ func TestDidChange(t *testing.T) {
 	assert.Equal(t, testContent2, h.CurrentContent("test/test.build"))
 }
 
+func TestDidSave(t *testing.T) {
+	h := initHandler()
+	err := h.Request("textDocument/didOpen", &lsp.DidOpenTextDocumentParams{
+		TextDocument: lsp.TextDocumentItem{
+			URI:  "file://test/test.build",
+			Text: testContent,
+		},
+	}, nil)
+	assert.NoError(t, err)
+	err = h.Request("textDocument/didSave", &lsp.DidSaveTextDocumentParams{
+		TextDocument: lsp.TextDocumentIdentifier{
+			URI: "file://test/test.build",
+		},
+	}, nil)
+	assert.NoError(t, err)
+}
+
+func TestDidClose(t *testing.T) {
+	h := initHandler()
+	err := h.Request("textDocument/didOpen", &lsp.DidOpenTextDocumentParams{
+		TextDocument: lsp.TextDocumentItem{
+			URI:  "file://test/test.build",
+			Text: testContent,
+		},
+	}, nil)
+	assert.NoError(t, err)
+	err = h.Request("textDocument/didClose", &lsp.DidCloseTextDocumentParams{
+		TextDocument: lsp.TextDocumentIdentifier{
+			URI: "file://test/test.build",
+		},
+	}, nil)
+	assert.NoError(t, err)
+}
+
 const testFormattingContent = `go_test(
     name = "lsp_test",
     srcs = ["lsp_test.go"],

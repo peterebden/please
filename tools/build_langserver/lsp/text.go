@@ -96,6 +96,21 @@ func (h *Handler) didChange(params *lsp.DidChangeTextDocumentParams) (*struct{},
 	return nil, nil
 }
 
+func (h *Handler) didSave(params *lsp.DidSaveTextDocumentParams) (*struct{}, error) {
+	// TODO(peterebden): There should be a 'Text' property on the params that we can
+	//                   sync from. It's in the spec but doesn't seem to be in go-lsp.
+	return nil, nil
+}
+
+func (h *Handler) didClose(params *lsp.DidCloseTextDocumentParams) (*struct{}, error) {
+	filename := fromURI(params.TextDocument.URI)
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+	delete(h.docs, filename)
+	// TODO(peterebden): At this point we should re-parse this package into the graph.
+	return nil, nil
+}
+
 func (h *Handler) formatting(params *lsp.DocumentFormattingParams) ([]*lsp.TextEdit, error) {
 	doc := h.doc(params.TextDocument.URI)
 	// Ignore formatting options, BUILD files are always canonically formatted at 4-space tabs.

@@ -52,6 +52,8 @@ func NewHandler() *Handler {
 		"exit":                    h.method(h.exit),
 		"textDocument/didOpen":    h.method(h.didOpen),
 		"textDocument/didChange":  h.method(h.didChange),
+		"textDocument/didSave":    h.method(h.didSave),
+		"textDocument/didClose":   h.method(h.didClose),
 		"textDocument/formatting": h.method(h.formatting),
 		"textDocument/completion": h.method(h.completion),
 	}
