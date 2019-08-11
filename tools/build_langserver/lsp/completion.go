@@ -44,23 +44,21 @@ func (h *Handler) completeLabel(doc *doc, partial string) (*lsp.CompletionList, 
 		if err != nil {
 			return nil, err
 		}
-		pkg := h.state.Graph.PackageByLabel(label)
-		if pkg == nil {
-			return list, nil
-		}
 		m := map[string]bool{}
-		for _, t := range pkg.AllTargets() {
-			if ((label.Name == "all" && !strings.HasPrefix(t.Label.Name, "_")) || strings.HasPrefix(t.Label.Name, label.Name)) && pkgLabel.CanSee(h.state, t) {
-				s := t.Label.ShortString(core.BuildLabel{PackageName: pkgName})
-				if !strings.HasPrefix(s, partial) {
-					s = t.Label.String() // Don't abbreviate it if we end up losing part of what's there
+		if pkg := h.state.Graph.PackageByLabel(label); pkg != nil {
+			for _, t := range pkg.AllTargets() {
+				if ((label.Name == "all" && !strings.HasPrefix(t.Label.Name, "_")) || strings.HasPrefix(t.Label.Name, label.Name)) && pkgLabel.CanSee(h.state, t) {
+					s := t.Label.ShortString(core.BuildLabel{PackageName: pkgName})
+					if !strings.HasPrefix(s, partial) {
+						s = t.Label.String() // Don't abbreviate it if we end up losing part of what's there
+					}
+					list.Items = append(list.Items, lsp.CompletionItem{
+						Label:    s,
+						Kind:     lsp.CIKText,
+						TextEdit: &lsp.TextEdit{NewText: strings.TrimPrefix(s, partial)},
+					})
+					m[s] = true
 				}
-				list.Items = append(list.Items, lsp.CompletionItem{
-					Label:    s,
-					Kind:     lsp.CIKText,
-					TextEdit: &lsp.TextEdit{NewText: strings.TrimPrefix(s, partial)},
-				})
-				m[s] = true
 			}
 		}
 		if idx == 0 || pkgName == label.PackageName {

@@ -73,12 +73,12 @@ func TestDidOpen(t *testing.T) {
 	h := initHandler()
 	err := h.Request("textDocument/didOpen", &lsp.DidOpenTextDocumentParams{
 		TextDocument: lsp.TextDocumentItem{
-			URI:  "file://test/BUILD",
+			URI:  "file://test/test.build",
 			Text: testContent,
 		},
 	}, nil)
 	assert.NoError(t, err)
-	assert.Equal(t, testContent, h.CurrentContent("test/BUILD"))
+	assert.Equal(t, testContent, h.CurrentContent("test/test.build"))
 }
 
 func TestDidChange(t *testing.T) {
@@ -86,7 +86,7 @@ func TestDidChange(t *testing.T) {
 	h := initHandler()
 	err := h.Request("textDocument/didOpen", &lsp.DidOpenTextDocumentParams{
 		TextDocument: lsp.TextDocumentItem{
-			URI:  "file://test/BUILD",
+			URI:  "file://test/test.build",
 			Text: testContent,
 		},
 	}, nil)
@@ -94,7 +94,7 @@ func TestDidChange(t *testing.T) {
 	err = h.Request("textDocument/didChange", &lsp.DidChangeTextDocumentParams{
 		TextDocument: lsp.VersionedTextDocumentIdentifier{
 			TextDocumentIdentifier: lsp.TextDocumentIdentifier{
-				URI: "file://test/BUILD",
+				URI: "file://test/test.build",
 			},
 		},
 		ContentChanges: []lsp.TextDocumentContentChangeEvent{
@@ -104,7 +104,7 @@ func TestDidChange(t *testing.T) {
 		},
 	}, nil)
 	assert.NoError(t, err)
-	assert.Equal(t, testContent2, h.CurrentContent("test/BUILD"))
+	assert.Equal(t, testContent2, h.CurrentContent("test/test.build"))
 }
 
 const testFormattingContent = `go_test(
@@ -118,7 +118,7 @@ func TestFormatting(t *testing.T) {
 	h := initHandler()
 	err := h.Request("textDocument/didOpen", &lsp.DidOpenTextDocumentParams{
 		TextDocument: lsp.TextDocumentItem{
-			URI:  "file://test/BUILD",
+			URI:  "file://test/test.build",
 			Text: testFormattingContent,
 		},
 	}, nil)
@@ -126,7 +126,7 @@ func TestFormatting(t *testing.T) {
 	edits := []lsp.TextEdit{}
 	err = h.Request("textDocument/formatting", &lsp.DocumentFormattingParams{
 		TextDocument: lsp.TextDocumentIdentifier{
-			URI: "file://test/BUILD",
+			URI: "file://test/test.build",
 		},
 	}, &edits)
 	assert.NoError(t, err)
@@ -198,7 +198,7 @@ func TestCompletion(t *testing.T) {
 	h := initHandler()
 	err := h.Request("textDocument/didOpen", &lsp.DidOpenTextDocumentParams{
 		TextDocument: lsp.TextDocumentItem{
-			URI:  "file://test/BUILD",
+			URI:  "file://test/test.build",
 			Text: testCompletionContent,
 		},
 	}, nil)
@@ -208,7 +208,7 @@ func TestCompletion(t *testing.T) {
 	err = h.Request("textDocument/completion", &lsp.CompletionParams{
 		TextDocumentPositionParams: lsp.TextDocumentPositionParams{
 			TextDocument: lsp.TextDocumentIdentifier{
-				URI: "file://test/BUILD",
+				URI: "file://test/test.build",
 			},
 			Position: lsp.Position{
 				Line:      5,
@@ -224,6 +224,65 @@ func TestCompletion(t *testing.T) {
 				Label:    "//src/core:core",
 				Kind:     lsp.CIKText,
 				TextEdit: &lsp.TextEdit{NewText: "core"},
+			},
+		},
+	}, completions)
+}
+
+const testCompletionContentInMemory = `
+go_library(
+    name = "test",
+    srcs = glob(["*.go"], exclude=["*_test.go"]),
+    deps = [
+        "//src/core"
+    ],
+)
+
+go_test(
+    name = "test_test",
+    srcs = glob(["*_test.go"]),
+    deps = [
+        ":",
+    ],
+)
+`
+
+func TestCompletionInMemory(t *testing.T) {
+	h := initHandler()
+	err := h.Request("textDocument/didOpen", &lsp.DidOpenTextDocumentParams{
+		TextDocument: lsp.TextDocumentItem{
+			URI:  "file://test/test.build",
+			Text: testCompletionContentInMemory,
+		},
+	}, nil)
+	assert.NoError(t, err)
+	h.WaitForPackage("src/core")
+	completions := &lsp.CompletionList{}
+	err = h.Request("textDocument/completion", &lsp.CompletionParams{
+		TextDocumentPositionParams: lsp.TextDocumentPositionParams{
+			TextDocument: lsp.TextDocumentIdentifier{
+				URI: "file://test/test.build",
+			},
+			Position: lsp.Position{
+				Line:      13,
+				Character: 9,
+			},
+		},
+	}, completions)
+	assert.NoError(t, err)
+	assert.Equal(t, &lsp.CompletionList{
+		IsIncomplete: false,
+		Items: []lsp.CompletionItem{
+			{
+				Label:    ":test",
+				Kind:     lsp.CIKText,
+				TextEdit: &lsp.TextEdit{NewText: "test"},
+			},
+			// TODO(peterebden): We should filter this out really...
+			{
+				Label:    ":test_test",
+				Kind:     lsp.CIKText,
+				TextEdit: &lsp.TextEdit{NewText: "test_test"},
 			},
 		},
 	}, completions)
