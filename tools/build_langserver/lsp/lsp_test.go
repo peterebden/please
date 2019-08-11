@@ -288,6 +288,49 @@ func TestCompletionInMemory(t *testing.T) {
 	}, completions)
 }
 
+const testCompletionContentPartial = `
+go_library(
+    name = "test",
+    srcs = glob(["*.go"]),
+    deps = [
+        "//src/core:
+`
+
+func TestCompletionPartial(t *testing.T) {
+	h := initHandler()
+	err := h.Request("textDocument/didOpen", &lsp.DidOpenTextDocumentParams{
+		TextDocument: lsp.TextDocumentItem{
+			URI:  "file://test/test.build",
+			Text: testCompletionContentPartial,
+		},
+	}, nil)
+	assert.NoError(t, err)
+	h.WaitForPackage("src/core")
+	completions := &lsp.CompletionList{}
+	err = h.Request("textDocument/completion", &lsp.CompletionParams{
+		TextDocumentPositionParams: lsp.TextDocumentPositionParams{
+			TextDocument: lsp.TextDocumentIdentifier{
+				URI: "file://test/test.build",
+			},
+			Position: lsp.Position{
+				Line:      5,
+				Character: 20,
+			},
+		},
+	}, completions)
+	assert.NoError(t, err)
+	assert.Equal(t, &lsp.CompletionList{
+		IsIncomplete: false,
+		Items: []lsp.CompletionItem{
+			{
+				Label:    "//src/core:core",
+				Kind:     lsp.CIKText,
+				TextEdit: &lsp.TextEdit{NewText: "core"},
+			},
+		},
+	}, completions)
+}
+
 // initHandler is a wrapper around creating a new handler and initializing it, which is
 // more convenient for most tests.
 func initHandler() *Handler {

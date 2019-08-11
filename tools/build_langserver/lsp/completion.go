@@ -2,7 +2,9 @@ package lsp
 
 import (
 	"path"
+	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/sourcegraph/go-lsp"
 
@@ -16,16 +18,12 @@ func (h *Handler) completion(params *lsp.CompletionParams) (*lsp.CompletionList,
 	if doc.AST == nil {
 		h.parse(doc, doc.Text())
 	}
-	exprs := asp.ExpressionsAtPos(doc.AST, asp.Position{Line: pos.Line + 1, Column: pos.Character + 1})
-	if len(exprs) == 0 {
-		// For now there are no completion suggestions available on incomplete ASTs.
-		// TODO(peterebden): Do some kind of best-effort thing.
-		return &lsp.CompletionList{}, nil
+	if exprs := asp.ExpressionsAtPos(doc.AST, asp.Position{Line: pos.Line + 1, Column: pos.Character + 1}); len(exprs) == 0 {
+		return h.completeUnparsed(doc, pos.Line, pos.Character)
 	} else if expr := exprs[len(exprs)-1]; expr.Val != nil && expr.Val.String != "" {
-		if strings.HasPrefix(expr.Val.String, `"//`) || strings.HasPrefix(expr.Val.String, `":`) {
-			return h.completeLabel(doc, stringLiteral(expr.Val.String))
-		}
+		return h.completeString(doc, stringLiteral(expr.Val.String))
 	}
+	// TODO(peterebden): Completion of non-string names (functions etc)
 	return &lsp.CompletionList{}, nil
 }
 
@@ -92,6 +90,53 @@ func (h *Handler) completeLabel(doc *doc, partial string) (*lsp.CompletionList, 
 		}
 	}
 	return list, nil
+}
+
+// completeUnparsed does a best-effort completion when we don't have an AST to work from.
+func (h *Handler) completeUnparsed(doc *doc, line, col int) (*lsp.CompletionList, error) {
+	lines := doc.Lines()
+	l := lines[line][:col] // Don't care about anything after the column we're at
+	if strings.Count(l, `"`)%2 == 1 {
+		// Odd number of quotes in the line, so assume the last one is unclosed.
+		return h.completeString(doc, l[strings.LastIndexByte(l, '"')+1:])
+	} else if strings.Count(l, `'`)%2 == 1 {
+		// Same thing but with single quotes; they aren't canonical formatting but
+		// they are legal to use.
+		return h.completeString(doc, l[strings.LastIndexByte(l, '\'')+1:])
+	}
+	// Not (apparently) in a string, take the last lexical token
+	r := []rune(l) // unicode!
+	for i := len(r) - 1; i >= 0; i-- {
+		if !unicode.IsLetter(r[i]) && r[i] != '_' {
+			return h.completeIdent(doc, string(r[i+1:]))
+		}
+	}
+	return h.completeIdent(doc, l)
+}
+
+// completeString completes a string literal, either as a build label or as a file.
+func (h *Handler) completeString(doc *doc, s string) (*lsp.CompletionList, error) {
+	if core.LooksLikeABuildLabel(s) {
+		return h.completeLabel(doc, s)
+	}
+	// Not a label, assume file.
+	matches, _ := filepath.Glob(path.Join(h.root, path.Dir(doc.Filename), s+"*"))
+	list := &lsp.CompletionList{
+		Items: make([]lsp.CompletionItem, len(matches)),
+	}
+	for i, match := range matches {
+		list.Items[i] = lsp.CompletionItem{
+			Label:    match,
+			Kind:     lsp.CIKText,
+			TextEdit: &lsp.TextEdit{NewText: strings.TrimPrefix(match, s)},
+		}
+	}
+	return list, nil
+}
+
+// completeIdent completes an arbitrary identifier
+func (h *Handler) completeIdent(doc *doc, s string) (*lsp.CompletionList, error) {
+	return nil, nil
 }
 
 // allTargets provides a list of all target names for a document.

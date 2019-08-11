@@ -61,15 +61,12 @@ func (h *Handler) didOpen(params *lsp.DidOpenTextDocumentParams) (*struct{}, err
 
 // parse parses the given document and updates its statements.
 func (h *Handler) parse(d *doc, content string) {
-	// The parser interface doesn't have ParseData which we want here.
-	// We don't really want to make that a global thing on the state.
-	if stmts, err := h.parser.ParseData([]byte(content), d.Filename); err != nil {
-		log.Warning("Error parsing %s: %s", d.Filename, err)
-	} else {
-		d.Mutex.Lock()
-		defer d.Mutex.Unlock()
-		d.AST = stmts
-	}
+	// Ignore errors, it will often fail if the file is partially complete, so
+	// just take whatever we've got.
+	stmts, _ := h.parser.ParseData([]byte(content), d.Filename)
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+	d.AST = stmts
 	// TODO(peterebden): We might want to add diagnostics here post-load.
 }
 
