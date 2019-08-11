@@ -221,9 +221,10 @@ func TestCompletion(t *testing.T) {
 		IsIncomplete: false,
 		Items: []lsp.CompletionItem{
 			{
-				Label:    "//src/core:core",
-				Kind:     lsp.CIKText,
-				TextEdit: &lsp.TextEdit{NewText: "core"},
+				Label:            "//src/core:core",
+				Kind:             lsp.CIKText,
+				InsertTextFormat: lsp.ITFPlainText,
+				TextEdit:         &lsp.TextEdit{NewText: "core"},
 			},
 		},
 	}, completions)
@@ -274,15 +275,17 @@ func TestCompletionInMemory(t *testing.T) {
 		IsIncomplete: false,
 		Items: []lsp.CompletionItem{
 			{
-				Label:    ":test",
-				Kind:     lsp.CIKText,
-				TextEdit: &lsp.TextEdit{NewText: "test"},
+				Label:            ":test",
+				Kind:             lsp.CIKText,
+				InsertTextFormat: lsp.ITFPlainText,
+				TextEdit:         &lsp.TextEdit{NewText: "test"},
 			},
 			// TODO(peterebden): We should filter this out really...
 			{
-				Label:    ":test_test",
-				Kind:     lsp.CIKText,
-				TextEdit: &lsp.TextEdit{NewText: "test_test"},
+				Label:            ":test_test",
+				Kind:             lsp.CIKText,
+				InsertTextFormat: lsp.ITFPlainText,
+				TextEdit:         &lsp.TextEdit{NewText: "test_test"},
 			},
 		},
 	}, completions)
@@ -323,9 +326,98 @@ func TestCompletionPartial(t *testing.T) {
 		IsIncomplete: false,
 		Items: []lsp.CompletionItem{
 			{
-				Label:    "//src/core:core",
-				Kind:     lsp.CIKText,
-				TextEdit: &lsp.TextEdit{NewText: "core"},
+				Label:            "//src/core:core",
+				Kind:             lsp.CIKText,
+				InsertTextFormat: lsp.ITFPlainText,
+				TextEdit:         &lsp.TextEdit{NewText: "core"},
+			},
+		},
+	}, completions)
+}
+
+const testCompletionContentFunction = `
+go_library(
+    name = "test",
+    srcs = glob(["*.go"]),
+    deps = [
+        "//src/core:core",
+    ],
+)
+`
+
+func TestCompletionFunction(t *testing.T) {
+	h := initHandler()
+	err := h.Request("textDocument/didOpen", &lsp.DidOpenTextDocumentParams{
+		TextDocument: lsp.TextDocumentItem{
+			URI:  "file://test/test.build",
+			Text: testCompletionContentFunction,
+		},
+	}, nil)
+	assert.NoError(t, err)
+	h.WaitForPackage("src/core")
+	completions := &lsp.CompletionList{}
+	err = h.Request("textDocument/completion", &lsp.CompletionParams{
+		TextDocumentPositionParams: lsp.TextDocumentPositionParams{
+			TextDocument: lsp.TextDocumentIdentifier{
+				URI: "file://test/test.build",
+			},
+			Position: lsp.Position{
+				Line:      1,
+				Character: 6,
+			},
+		},
+	}, completions)
+	assert.NoError(t, err)
+	assert.Equal(t, &lsp.CompletionList{
+		IsIncomplete: false,
+		Items: []lsp.CompletionItem{
+			{
+				Label:            "go_library",
+				Kind:             lsp.CIKFunction,
+				InsertTextFormat: lsp.ITFPlainText,
+				TextEdit:         &lsp.TextEdit{NewText: "rary"},
+				Detail:           h.builtins["go_library"].Docstring,
+			},
+		},
+	}, completions)
+}
+
+const testCompletionContentPartialFunction = `
+go_libr
+`
+
+func TestCompletionPartialFunction(t *testing.T) {
+	h := initHandler()
+	err := h.Request("textDocument/didOpen", &lsp.DidOpenTextDocumentParams{
+		TextDocument: lsp.TextDocumentItem{
+			URI:  "file://test/test.build",
+			Text: testCompletionContentPartialFunction,
+		},
+	}, nil)
+	assert.NoError(t, err)
+	h.WaitForPackage("src/core")
+	completions := &lsp.CompletionList{}
+	err = h.Request("textDocument/completion", &lsp.CompletionParams{
+		TextDocumentPositionParams: lsp.TextDocumentPositionParams{
+			TextDocument: lsp.TextDocumentIdentifier{
+				URI: "file://test/test.build",
+			},
+			Position: lsp.Position{
+				Line:      1,
+				Character: 6,
+			},
+		},
+	}, completions)
+	assert.NoError(t, err)
+	assert.Equal(t, &lsp.CompletionList{
+		IsIncomplete: false,
+		Items: []lsp.CompletionItem{
+			{
+				Label:            "go_library",
+				Kind:             lsp.CIKFunction,
+				InsertTextFormat: lsp.ITFPlainText,
+				TextEdit:         &lsp.TextEdit{NewText: "rary"},
+				Detail:           h.builtins["go_library"].Docstring,
 			},
 		},
 	}, completions)

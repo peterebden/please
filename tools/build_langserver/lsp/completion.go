@@ -51,9 +51,10 @@ func (h *Handler) completeLabel(doc *doc, partial string) (*lsp.CompletionList, 
 						s = t.Label.String() // Don't abbreviate it if we end up losing part of what's there
 					}
 					list.Items = append(list.Items, lsp.CompletionItem{
-						Label:    s,
-						Kind:     lsp.CIKText,
-						TextEdit: &lsp.TextEdit{NewText: strings.TrimPrefix(s, partial)},
+						Label:            s,
+						Kind:             lsp.CIKText,
+						InsertTextFormat: lsp.ITFPlainText,
+						TextEdit:         &lsp.TextEdit{NewText: strings.TrimPrefix(s, partial)},
 					})
 					m[s] = true
 				}
@@ -66,9 +67,10 @@ func (h *Handler) completeLabel(doc *doc, partial string) (*lsp.CompletionList, 
 				if (label.Name == "all" && !strings.HasPrefix(label.Name, "_")) || strings.HasPrefix(target, label.Name) {
 					if s := ":" + target; !m[s] {
 						list.Items = append(list.Items, lsp.CompletionItem{
-							Label:    s,
-							Kind:     lsp.CIKText,
-							TextEdit: &lsp.TextEdit{NewText: strings.TrimPrefix(s, partial)},
+							Label:            s,
+							Kind:             lsp.CIKText,
+							InsertTextFormat: lsp.ITFPlainText,
+							TextEdit:         &lsp.TextEdit{NewText: strings.TrimPrefix(s, partial)},
 						})
 					}
 				}
@@ -83,9 +85,10 @@ func (h *Handler) completeLabel(doc *doc, partial string) (*lsp.CompletionList, 
 		if strings.HasPrefix(name, prefix) {
 			s := "//" + name + ":"
 			list.Items = append(list.Items, lsp.CompletionItem{
-				Label:    s,
-				Kind:     lsp.CIKText,
-				TextEdit: &lsp.TextEdit{NewText: strings.TrimPrefix(s, partial)},
+				Label:            s,
+				Kind:             lsp.CIKText,
+				InsertTextFormat: lsp.ITFPlainText,
+				TextEdit:         &lsp.TextEdit{NewText: strings.TrimPrefix(s, partial)},
 			})
 		}
 	}
@@ -126,9 +129,10 @@ func (h *Handler) completeString(doc *doc, s string) (*lsp.CompletionList, error
 	}
 	for i, match := range matches {
 		list.Items[i] = lsp.CompletionItem{
-			Label:    match,
-			Kind:     lsp.CIKText,
-			TextEdit: &lsp.TextEdit{NewText: strings.TrimPrefix(match, s)},
+			Label:            match,
+			Kind:             lsp.CIKText,
+			InsertTextFormat: lsp.ITFPlainText,
+			TextEdit:         &lsp.TextEdit{NewText: strings.TrimPrefix(match, s)},
 		}
 	}
 	return list, nil
@@ -136,7 +140,21 @@ func (h *Handler) completeString(doc *doc, s string) (*lsp.CompletionList, error
 
 // completeIdent completes an arbitrary identifier
 func (h *Handler) completeIdent(doc *doc, s string) (*lsp.CompletionList, error) {
-	return nil, nil
+	list := &lsp.CompletionList{}
+	for name, f := range h.builtins {
+		if strings.HasPrefix(name, s) {
+			list.Items = append(list.Items, lsp.CompletionItem{
+				Label:            name,
+				Kind:             lsp.CIKFunction,
+				InsertTextFormat: lsp.ITFPlainText,
+				Detail:           f.Docstring,
+				TextEdit:         &lsp.TextEdit{NewText: strings.TrimPrefix(name, s)},
+			})
+		}
+	}
+	// TODO(peterebden): Additional text edits for non-builtin functions
+	// TODO(peterebden): Completion of arguments
+	return list, nil
 }
 
 // allTargets provides a list of all target names for a document.

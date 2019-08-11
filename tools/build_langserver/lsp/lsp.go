@@ -16,6 +16,7 @@ import (
 	"gopkg.in/op/go-logging.v1"
 
 	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/src/help"
 	"github.com/thought-machine/please/src/parse/asp"
 	"github.com/thought-machine/please/src/plz"
 )
@@ -24,13 +25,14 @@ var log = logging.MustGetLogger("lsp")
 
 // A Handler is a handler suitable for use with jsonrpc2.
 type Handler struct {
-	Conn    io.Closer
-	methods map[string]method
-	docs    map[string]*doc
-	mutex   sync.Mutex // guards docs
-	state   *core.BuildState
-	parser  *asp.Parser
-	root    string
+	Conn     io.Closer
+	methods  map[string]method
+	docs     map[string]*doc
+	mutex    sync.Mutex // guards docs
+	state    *core.BuildState
+	parser   *asp.Parser
+	builtins map[string]*asp.FuncDef
+	root     string
 }
 
 type method struct {
@@ -126,6 +128,8 @@ func (h *Handler) initialize(params *lsp.InitializeParams) (*lsp.InitializeResul
 	// This is a lot easier than trying to do clever partial parses later on, although
 	// eventually we may want that if we start dealing with truly large repos.
 	go plz.RunHost(core.WholeGraph, h.state)
+	// Record all the builtin functions now
+	h.builtins = help.AllBuiltinFunctions(h.state)
 	return &lsp.InitializeResult{
 		Capabilities: lsp.ServerCapabilities{
 			TextDocumentSync: &lsp.TextDocumentSyncOptionsOrKind{
