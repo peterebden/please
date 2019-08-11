@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path"
@@ -198,24 +199,14 @@ func TestFormatting(t *testing.T) {
 
 func TestShutdown(t *testing.T) {
 	h := initHandler()
-	c := &closer{}
-	h.Conn = c
+	r := h.Conn.(*rpc)
 	err := h.Request("shutdown", &struct{}{}, nil)
 	assert.NoError(t, err)
 	// Shouldn't be closed yet
-	assert.False(t, c.Closed)
+	assert.False(t, r.Closed)
 	err = h.Request("exit", &struct{}{}, nil)
 	assert.NoError(t, err)
-	assert.True(t, c.Closed)
-}
-
-type closer struct {
-	Closed bool
-}
-
-func (c *closer) Close() error {
-	c.Closed = true
-	return nil
+	assert.True(t, r.Closed)
 }
 
 const testCompletionContent = `
@@ -471,6 +462,9 @@ func textEdit(text string, line, col int) *lsp.TextEdit {
 // more convenient for most tests.
 func initHandler() *Handler {
 	h := NewHandler()
+	h.Conn = &rpc{
+		Notifications: make(chan message, 100),
+	}
 	result := &lsp.InitializeResult{}
 	if err := h.Request("initialize", &lsp.InitializeParams{
 		Capabilities: lsp.ClientCapabilities{},
@@ -479,6 +473,26 @@ func initHandler() *Handler {
 		log.Fatalf("init failed: %s", err)
 	}
 	return h
+}
+
+type message struct {
+	Method  string
+	Payload interface{}
+}
+
+type rpc struct {
+	Closed        bool
+	Notifications chan message
+}
+
+func (r *rpc) Close() error {
+	r.Closed = true
+	return nil
+}
+
+func (r *rpc) Notify(ctx context.Context, method string, params interface{}, opts ...jsonrpc2.CallOption) error {
+	r.Notifications <- message{Method: method, Payload: params}
+	return nil
 }
 
 // Request is a slightly higher-level wrapper for testing that handles JSON serialisation.

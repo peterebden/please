@@ -26,7 +26,7 @@ var log = logging.MustGetLogger("lsp")
 
 // A Handler is a handler suitable for use with jsonrpc2.
 type Handler struct {
-	Conn     io.Closer
+	Conn     Conn
 	methods  map[string]method
 	docs     map[string]*doc
 	mutex    sync.Mutex // guards docs
@@ -34,6 +34,13 @@ type Handler struct {
 	parser   *asp.Parser
 	builtins map[string]*asp.FuncDef
 	root     string
+}
+
+// A Conn is a minimal set of the jsonrpc2.Conn that we need.
+type Conn interface {
+	io.Closer
+	// Notify sends an asynchronous notification.
+	Notify(ctx context.Context, method string, params interface{}, opts ...jsonrpc2.CallOption) error
 }
 
 type method struct {
