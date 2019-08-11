@@ -22,6 +22,8 @@ type doc struct {
 	// Parsed version of it
 	AST   []*asp.Statement
 	Mutex sync.Mutex
+	// Channel for diagnostic requests.
+	Diagnostics chan []*asp.Statement
 }
 
 func (d *doc) Text() string {
@@ -43,33 +45,36 @@ func (d *doc) SetText(text string) {
 }
 
 func (h *Handler) didOpen(params *lsp.DidOpenTextDocumentParams) (*struct{}, error) {
-	uri := fromURI(params.TextDocument.URI)
+	filename := fromURI(params.TextDocument.URI)
 	content := params.TextDocument.Text
 	d := &doc{
-		Filename: uri,
+		Filename:    filename,
+		Diagnostics: make(chan []*asp.Statement, 100),
 	}
-	if path, err := filepath.Rel(h.root, uri); err == nil {
+	if path, err := filepath.Rel(h.root, filename); err == nil {
 		d.Filename = path
 	}
 	d.SetText(content)
 	go h.parse(d, content)
+	go h.diagnose(d)
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
-	h.docs[uri] = d
+	h.docs[filename] = d
 	return nil, nil
 }
 
 // parse parses the given document and updates its statements.
 func (h *Handler) parse(d *doc, content string) {
+	defer func() {
+		recover()
+	}()
 	// Ignore errors, it will often fail if the file is partially complete, so
 	// just take whatever we've got.
 	stmts, _ := h.parser.ParseData([]byte(content), d.Filename)
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
 	d.AST = stmts
-	// TODO(peterebden): it's possible we issue these out of order. We could add a channel
-	//                   and dedicated goroutine for each document to enforce order.
-	go h.diagnose(d, stmts)
+	d.Diagnostics <- stmts
 }
 
 // doc returns a document of the given URI, or panics if one doesn't exist.
@@ -105,10 +110,11 @@ func (h *Handler) didSave(params *lsp.DidSaveTextDocumentParams) (*struct{}, err
 }
 
 func (h *Handler) didClose(params *lsp.DidCloseTextDocumentParams) (*struct{}, error) {
-	filename := fromURI(params.TextDocument.URI)
+	d := h.doc(params.TextDocument.URI)
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
-	delete(h.docs, filename)
+	delete(h.docs, d.Filename)
+	close(d.Diagnostics)
 	// TODO(peterebden): At this point we should re-parse this package into the graph.
 	return nil, nil
 }

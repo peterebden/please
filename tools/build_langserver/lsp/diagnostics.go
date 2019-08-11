@@ -3,7 +3,6 @@ package lsp
 import (
 	"context"
 	"path"
-	"time"
 
 	"github.com/sourcegraph/go-lsp"
 
@@ -14,7 +13,20 @@ import (
 // diagSource
 const diagSource = "plz tool langserver"
 
-func (h *Handler) diagnose(d *doc, ast []*asp.Statement) {
+func (h *Handler) diagnose(d *doc) {
+	last := []lsp.Diagnostic{}
+	for ast := range d.Diagnostics {
+		if diags := h.diagnostics(d, ast); !diagnosticsEqual(diags, last) {
+			h.Conn.Notify(context.Background(), "textDocument/publishDiagnostics", &lsp.PublishDiagnosticsParams{
+				URI:         lsp.DocumentURI("file://" + path.Join(h.root, d.Filename)),
+				Diagnostics: diags,
+			})
+			last = diags
+		}
+	}
+}
+
+func (h *Handler) diagnostics(d *doc, ast []*asp.Statement) []lsp.Diagnostic {
 	diags := []lsp.Diagnostic{}
 	pkgLabel := core.BuildLabel{
 		PackageName: path.Dir(d.Filename),
@@ -56,12 +68,17 @@ func (h *Handler) diagnose(d *doc, ast []*asp.Statement) {
 		}
 		return true
 	})
-	// Always publish here; if we have none we might have published before, and we would
-	// then need to clear them.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	h.Conn.Notify(ctx, "textDocument/publishDiagnostics", &lsp.PublishDiagnosticsParams{
-		URI:         lsp.DocumentURI("file://" + path.Join(h.root, d.Filename)),
-		Diagnostics: diags,
-	})
+	return diags
+}
+
+func diagnosticsEqual(a, b []lsp.Diagnostic) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i, d := range a {
+		if d != b[i] {
+			return false
+		}
+	}
+	return true
 }
