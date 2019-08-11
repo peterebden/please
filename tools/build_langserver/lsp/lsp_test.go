@@ -458,6 +458,56 @@ func textEdit(text string, line, col int) *lsp.TextEdit {
 	}
 }
 
+const testDiagnosticsContent = `
+go_library(
+    name = "test",
+    srcs = glob(["*.go"]),
+    deps = [
+        "//src/core:core",
+        "//src/core:config_test",
+        "//src/core:nope",
+    ],
+)
+`
+
+func TestDiagnostics(t *testing.T) {
+	h := initHandler()
+	h.WaitForPackage("src/core")
+	err := h.Request("textDocument/didOpen", &lsp.DidOpenTextDocumentParams{
+		TextDocument: lsp.TextDocumentItem{
+			URI:  "file://test/test.build",
+			Text: testDiagnosticsContent,
+		},
+	}, nil)
+	assert.NoError(t, err)
+	r := h.Conn.(*rpc)
+	msg := <-r.Notifications
+	assert.Equal(t, "textDocument/publishDiagnostics", msg.Method)
+	assert.Equal(t, &lsp.PublishDiagnosticsParams{
+		URI: lsp.DocumentURI("file://" + path.Join(os.Getenv("TEST_DIR"), "tools/build_langserver/lsp/test_data/test/test.build")),
+		Diagnostics: []lsp.Diagnostic{
+			{
+				Range: lsp.Range{
+					Start: lsp.Position{Line: 6, Character: 9},
+					End:   lsp.Position{Line: 6, Character: 32},
+				},
+				Severity: lsp.Error,
+				Source:   "plz tool langserver",
+				Message:  "Target //src/core:config_test is not visible to this package",
+			},
+			{
+				Range: lsp.Range{
+					Start: lsp.Position{Line: 7, Character: 9},
+					End:   lsp.Position{Line: 7, Character: 25},
+				},
+				Severity: lsp.Error,
+				Source:   "plz tool langserver",
+				Message:  "Target //src/core:nope does not exist",
+			},
+		},
+	}, msg.Payload)
+}
+
 // initHandler is a wrapper around creating a new handler and initializing it, which is
 // more convenient for most tests.
 func initHandler() *Handler {

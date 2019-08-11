@@ -67,7 +67,9 @@ func (h *Handler) parse(d *doc, content string) {
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
 	d.AST = stmts
-	// TODO(peterebden): We might want to add diagnostics here post-load.
+	// TODO(peterebden): it's possible we issue these out of order. We could add a channel
+	//                   and dedicated goroutine for each document to enforce order.
+	go h.diagnose(d, stmts)
 }
 
 // doc returns a document of the given URI, or panics if one doesn't exist.
