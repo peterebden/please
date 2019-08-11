@@ -125,7 +125,7 @@ func (h *Handler) formatting(params *lsp.DocumentFormattingParams) ([]*lsp.TextE
 	before := doc.Text()
 	after := string(build.Format(f))
 	if before == after {
-		return nil, nil // Already formatted - great!
+		return []*lsp.TextEdit{}, nil // Already formatted - great!
 	}
 	linesBefore := doc.Lines()
 	doc.SetText(after)

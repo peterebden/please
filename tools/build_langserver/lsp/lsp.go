@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/sourcegraph/go-lsp"
 	"github.com/sourcegraph/jsonrpc2"
@@ -75,6 +76,8 @@ func (h *Handler) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2
 
 // handle is the slightly higher-level handler that deals with individual methods.
 func (h *Handler) handle(method string, params *json.RawMessage) (i interface{}, err *jsonrpc2.Error) {
+	start := time.Now()
+	log.Debug("Received %s message", method)
 	defer func() {
 		if r := recover(); r != nil {
 			log.Error("Panic in handler for %s: %s", method, r)
@@ -82,6 +85,8 @@ func (h *Handler) handle(method string, params *json.RawMessage) (i interface{},
 				Code:    jsonrpc2.CodeInternalError,
 				Message: fmt.Sprintf("%s", r),
 			}
+		} else {
+			log.Debug("Handled %s message in %s", method, time.Since(start))
 		}
 	}()
 	m, present := h.methods[method]
