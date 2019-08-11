@@ -1,7 +1,8 @@
-package parse
+package help
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"os"
 	"path"
 	"regexp"
@@ -13,9 +14,9 @@ import (
 	"github.com/thought-machine/please/src/parse/asp"
 )
 
-// PrintRuleArgs prints the arguments of all builtin rules (plus any associated ones from the given targets)
-func PrintRuleArgs(state *core.BuildState, labels []core.BuildLabel) {
-	env := getRuleArgs(state, labels)
+// PrintRuleArgs prints the arguments of all builtin rules
+func PrintRuleArgs() {
+	env := getRuleArgs(newState())
 	b, err := json.MarshalIndent(env, "", "  ")
 	if err != nil {
 		log.Fatalf("Failed JSON encoding: %s", err)
@@ -23,49 +24,67 @@ func PrintRuleArgs(state *core.BuildState, labels []core.BuildLabel) {
 	os.Stdout.Write(b)
 }
 
-// AllBuiltinFunctions returns all the builtin functions, including those in a given set of labels.
-func AllBuiltinFunctions(state *core.BuildState, labels []core.BuildLabel) map[string]*asp.FuncDef {
-	p := newAspParser(state)
+func newState() *core.BuildState {
+	// If we're in a repo, we might be able to read some stuff from there.
+	if core.FindRepoRoot() {
+		if config, err := core.ReadDefaultConfigFiles(nil); err == nil {
+			return core.NewBuildState(config)
+		}
+	}
+	return core.NewDefaultBuildState()
+}
+
+// AllBuiltinFunctions returns all the builtin functions, including any defined
+// by the config (e.g. PreloadBuildDefs or BuildDefsDir)
+func AllBuiltinFunctions(state *core.BuildState) map[string]*asp.FuncDef {
+	p := asp.NewParser(state)
 	m := map[string]*asp.FuncDef{}
 	dir, _ := rules.AssetDir("")
 	sort.Strings(dir)
 	for _, filename := range dir {
 		if !strings.HasSuffix(filename, ".gob") && filename != "builtins.build_defs" {
-			stmts, err := p.ParseData(rules.MustAsset(filename), filename)
-			if err != nil {
-				log.Fatalf("%s", err)
+			if stmts, err := p.ParseData(rules.MustAsset(filename), filename); err == nil {
+				addAllFunctions(m, stmts, true)
 			}
-			addAllFunctions(m, stmts)
 		}
 	}
-	for _, l := range labels {
-		t := state.Graph.TargetOrDie(l)
-		for _, out := range t.Outputs() {
-			stmts, err := p.ParseFileOnly(path.Join(t.OutDir(), out))
-			if err != nil {
-				log.Fatalf("%s", err)
+	for _, preload := range state.Config.Parse.PreloadBuildDefs {
+		if stmts, err := p.ParseFileOnly(preload); err != nil {
+			addAllFunctions(m, stmts, false)
+		}
+	}
+	for _, dir := range state.Config.Parse.BuildDefsDir {
+		if files, err := ioutil.ReadDir(dir); err == nil {
+			for _, file := range files {
+				if !file.IsDir() {
+					if stmts, err := p.ParseFileOnly(path.Join(dir, file.Name())); err == nil {
+						addAllFunctions(m, stmts, false)
+					}
+				}
 			}
-			addAllFunctions(m, stmts)
 		}
 	}
 	return m
 }
 
 // addAllFunctions adds all the functions from a set of statements to the given map.
-func addAllFunctions(m map[string]*asp.FuncDef, stmts []*asp.Statement) {
+func addAllFunctions(m map[string]*asp.FuncDef, stmts []*asp.Statement, builtin bool) {
 	for _, stmt := range stmts {
 		if f := stmt.FuncDef; f != nil && !f.IsPrivate && f.Docstring != "" {
 			f.Docstring = strings.TrimSpace(strings.Trim(f.Docstring, `"`))
 			m[f.Name] = f
+			if !builtin {
+				stmt.FuncDef.EoDef.Offset = 0 // We use this to identify it later.
+			}
 		}
 	}
 }
 
 // getRuleArgs retrieves the arguments of builtin rules. It's split from PrintRuleArgs for testing.
-func getRuleArgs(state *core.BuildState, labels []core.BuildLabel) environment {
+func getRuleArgs(state *core.BuildState) environment {
 	argsRegex := regexp.MustCompile("\n +Args: *\n")
 	env := environment{Functions: map[string]function{}}
-	for name, f := range AllBuiltinFunctions(state, labels) {
+	for name, f := range AllBuiltinFunctions(state) {
 		r := function{Docstring: f.Docstring}
 		if strings.HasSuffix(f.EoDef.Filename, "_rules.build_defs") {
 			r.Language = strings.TrimSuffix(f.EoDef.Filename, "_rules.build_defs")
