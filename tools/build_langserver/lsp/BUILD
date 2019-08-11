@@ -20,6 +20,7 @@ go_test(
     srcs = ["lsp_test.go"],
     deps = [
         ":lsp",
+        "//src/cli",
         "//third_party/go:lsp",
         "//third_party/go:jsonrpc2",
         "//third_party/go:testify",

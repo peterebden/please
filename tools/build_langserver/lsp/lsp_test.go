@@ -11,8 +11,13 @@ import (
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/thought-machine/please/src/cli"
 	"github.com/thought-machine/please/src/core"
 )
+
+func init() {
+	cli.InitLogging(6)
+}
 
 func TestInitialize(t *testing.T) {
 	h := NewHandler()
