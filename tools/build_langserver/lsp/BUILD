@@ -14,6 +14,7 @@ go_library(
         "//third_party/go:logging",
         "//third_party/go:jsonrpc2",
     ],
+    visibility = ["//tools/build_langserver/..."],
 )
 
 go_test(
