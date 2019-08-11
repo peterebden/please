@@ -146,6 +146,7 @@ func (h *Handler) initialize(params *lsp.InitializeParams) (*lsp.InitializeResul
 				},
 			},
 			DocumentFormattingProvider: true,
+			CompletionProvider:         &lsp.CompletionOptions{},
 		},
 	}, nil
 }

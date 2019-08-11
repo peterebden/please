@@ -21,14 +21,17 @@ func (h *Handler) completion(params *lsp.CompletionParams) (*lsp.CompletionList,
 	if exprs := asp.ExpressionsAtPos(doc.AST, asp.Position{Line: pos.Line + 1, Column: pos.Character + 1}); len(exprs) == 0 {
 		return h.completeUnparsed(doc, pos.Line, pos.Character)
 	} else if expr := exprs[len(exprs)-1]; expr.Val != nil && expr.Val.String != "" {
-		return h.completeString(doc, stringLiteral(expr.Val.String))
+		return h.completeString(doc, stringLiteral(expr.Val.String), pos.Line, pos.Character)
 	}
 	// TODO(peterebden): Completion of non-string names (functions etc)
 	return &lsp.CompletionList{}, nil
 }
 
 // completeLabel provides completions for a thing that looks like a build label.
-func (h *Handler) completeLabel(doc *doc, partial string) (*lsp.CompletionList, error) {
+func (h *Handler) completeLabel(doc *doc, partial string, line, col int) (*lsp.CompletionList, error) {
+	if partial == "//" {
+		return &lsp.CompletionList{}, nil // Don't complete the whole repo...
+	}
 	list := &lsp.CompletionList{}
 	if idx := strings.IndexByte(partial, ':'); idx != -1 {
 		// We know exactly which package it's in. "Just" look in there.
@@ -50,12 +53,7 @@ func (h *Handler) completeLabel(doc *doc, partial string) (*lsp.CompletionList, 
 					if !strings.HasPrefix(s, partial) {
 						s = t.Label.String() // Don't abbreviate it if we end up losing part of what's there
 					}
-					list.Items = append(list.Items, lsp.CompletionItem{
-						Label:            s,
-						Kind:             lsp.CIKText,
-						InsertTextFormat: lsp.ITFPlainText,
-						TextEdit:         &lsp.TextEdit{NewText: strings.TrimPrefix(s, partial)},
-					})
+					list.Items = append(list.Items, completionItem(s, partial, line, col))
 					m[s] = true
 				}
 			}
@@ -66,12 +64,7 @@ func (h *Handler) completeLabel(doc *doc, partial string) (*lsp.CompletionList, 
 			for _, target := range h.allTargets(doc) {
 				if (label.Name == "all" && !strings.HasPrefix(label.Name, "_")) || strings.HasPrefix(target, label.Name) {
 					if s := ":" + target; !m[s] {
-						list.Items = append(list.Items, lsp.CompletionItem{
-							Label:            s,
-							Kind:             lsp.CIKText,
-							InsertTextFormat: lsp.ITFPlainText,
-							TextEdit:         &lsp.TextEdit{NewText: strings.TrimPrefix(s, partial)},
-						})
+						list.Items = append(list.Items, completionItem(s, partial, line, col))
 					}
 				}
 			}
@@ -84,12 +77,7 @@ func (h *Handler) completeLabel(doc *doc, partial string) (*lsp.CompletionList, 
 	for name := range h.state.Graph.PackageMap() {
 		if strings.HasPrefix(name, prefix) {
 			s := "//" + name + ":"
-			list.Items = append(list.Items, lsp.CompletionItem{
-				Label:            s,
-				Kind:             lsp.CIKText,
-				InsertTextFormat: lsp.ITFPlainText,
-				TextEdit:         &lsp.TextEdit{NewText: strings.TrimPrefix(s, partial)},
-			})
+			list.Items = append(list.Items, completionItem(s, partial, line, col))
 		}
 	}
 	return list, nil
@@ -101,26 +89,28 @@ func (h *Handler) completeUnparsed(doc *doc, line, col int) (*lsp.CompletionList
 	l := lines[line][:col] // Don't care about anything after the column we're at
 	if strings.Count(l, `"`)%2 == 1 {
 		// Odd number of quotes in the line, so assume the last one is unclosed.
-		return h.completeString(doc, l[strings.LastIndexByte(l, '"')+1:])
+		return h.completeString(doc, l[strings.LastIndexByte(l, '"')+1:], line, col)
 	} else if strings.Count(l, `'`)%2 == 1 {
 		// Same thing but with single quotes; they aren't canonical formatting but
 		// they are legal to use.
-		return h.completeString(doc, l[strings.LastIndexByte(l, '\'')+1:])
+		return h.completeString(doc, l[strings.LastIndexByte(l, '\'')+1:], line, col)
 	}
 	// Not (apparently) in a string, take the last lexical token
 	r := []rune(l) // unicode!
 	for i := len(r) - 1; i >= 0; i-- {
 		if !unicode.IsLetter(r[i]) && r[i] != '_' {
-			return h.completeIdent(doc, string(r[i+1:]))
+			return h.completeIdent(doc, string(r[i+1:]), line, col)
 		}
 	}
-	return h.completeIdent(doc, l)
+	return h.completeIdent(doc, l, line, col)
 }
 
 // completeString completes a string literal, either as a build label or as a file.
-func (h *Handler) completeString(doc *doc, s string) (*lsp.CompletionList, error) {
-	if core.LooksLikeABuildLabel(s) {
-		return h.completeLabel(doc, s)
+func (h *Handler) completeString(doc *doc, s string, line, col int) (*lsp.CompletionList, error) {
+	if s == "" {
+		return &lsp.CompletionList{}, nil
+	} else if core.LooksLikeABuildLabel(s) {
+		return h.completeLabel(doc, s, line, col)
 	}
 	// Not a label, assume file.
 	matches, _ := filepath.Glob(path.Join(h.root, path.Dir(doc.Filename), s+"*"))
@@ -128,28 +118,19 @@ func (h *Handler) completeString(doc *doc, s string) (*lsp.CompletionList, error
 		Items: make([]lsp.CompletionItem, len(matches)),
 	}
 	for i, match := range matches {
-		list.Items[i] = lsp.CompletionItem{
-			Label:            match,
-			Kind:             lsp.CIKText,
-			InsertTextFormat: lsp.ITFPlainText,
-			TextEdit:         &lsp.TextEdit{NewText: strings.TrimPrefix(match, s)},
-		}
+		list.Items[i] = completionItem(match, s, line, col)
 	}
 	return list, nil
 }
 
 // completeIdent completes an arbitrary identifier
-func (h *Handler) completeIdent(doc *doc, s string) (*lsp.CompletionList, error) {
+func (h *Handler) completeIdent(doc *doc, s string, line, col int) (*lsp.CompletionList, error) {
 	list := &lsp.CompletionList{}
 	for name, f := range h.builtins {
 		if strings.HasPrefix(name, s) {
-			list.Items = append(list.Items, lsp.CompletionItem{
-				Label:            name,
-				Kind:             lsp.CIKFunction,
-				InsertTextFormat: lsp.ITFPlainText,
-				Detail:           f.Docstring,
-				TextEdit:         &lsp.TextEdit{NewText: strings.TrimPrefix(name, s)},
-			})
+			item := completionItem(name, s, line, col)
+			item.Documentation = f.Docstring
+			list.Items = append(list.Items, item)
 		}
 	}
 	// TODO(peterebden): Additional text edits for non-builtin functions
@@ -174,4 +155,19 @@ func (h *Handler) allTargets(doc *doc) []string {
 // stringLiteral converts a parsed string literal (which is still surrounded by quotes) to an unquoted version.
 func stringLiteral(s string) string {
 	return s[1 : len(s)-1]
+}
+
+func completionItem(label, prefix string, line, col int) lsp.CompletionItem {
+	return lsp.CompletionItem{
+		Label:            label,
+		Kind:             lsp.CIKValue,
+		InsertTextFormat: lsp.ITFPlainText,
+		TextEdit: &lsp.TextEdit{
+			NewText: strings.TrimPrefix(label, prefix),
+			Range: lsp.Range{
+				Start: lsp.Position{Line: line, Character: col},
+				End:   lsp.Position{Line: line, Character: col},
+			},
+		},
+	}
 }
