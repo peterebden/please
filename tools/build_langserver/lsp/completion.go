@@ -130,6 +130,7 @@ func (h *Handler) completeIdent(doc *doc, s string, line, col int) (*lsp.Complet
 		if strings.HasPrefix(name, s) {
 			item := completionItem(name, s, line, col)
 			item.Documentation = f.Docstring
+			item.Kind = lsp.CIKFunction
 			list.Items = append(list.Items, item)
 		}
 	}

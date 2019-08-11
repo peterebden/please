@@ -256,9 +256,9 @@ func TestCompletion(t *testing.T) {
 		Items: []lsp.CompletionItem{
 			{
 				Label:            "//src/core:core",
-				Kind:             lsp.CIKText,
+				Kind:             lsp.CIKValue,
 				InsertTextFormat: lsp.ITFPlainText,
-				TextEdit:         &lsp.TextEdit{NewText: "core"},
+				TextEdit:         textEdit("core", 5, 20),
 			},
 		},
 	}, completions)
@@ -310,16 +310,16 @@ func TestCompletionInMemory(t *testing.T) {
 		Items: []lsp.CompletionItem{
 			{
 				Label:            ":test",
-				Kind:             lsp.CIKText,
+				Kind:             lsp.CIKValue,
 				InsertTextFormat: lsp.ITFPlainText,
-				TextEdit:         &lsp.TextEdit{NewText: "test"},
+				TextEdit:         textEdit("test", 13, 9),
 			},
 			// TODO(peterebden): We should filter this out really...
 			{
 				Label:            ":test_test",
-				Kind:             lsp.CIKText,
+				Kind:             lsp.CIKValue,
 				InsertTextFormat: lsp.ITFPlainText,
-				TextEdit:         &lsp.TextEdit{NewText: "test_test"},
+				TextEdit:         textEdit("test_test", 13, 9),
 			},
 		},
 	}, completions)
@@ -361,9 +361,9 @@ func TestCompletionPartial(t *testing.T) {
 		Items: []lsp.CompletionItem{
 			{
 				Label:            "//src/core:core",
-				Kind:             lsp.CIKText,
+				Kind:             lsp.CIKValue,
 				InsertTextFormat: lsp.ITFPlainText,
-				TextEdit:         &lsp.TextEdit{NewText: "core"},
+				TextEdit:         textEdit("core", 5, 20),
 			},
 		},
 	}, completions)
@@ -409,8 +409,8 @@ func TestCompletionFunction(t *testing.T) {
 				Label:            "go_library",
 				Kind:             lsp.CIKFunction,
 				InsertTextFormat: lsp.ITFPlainText,
-				TextEdit:         &lsp.TextEdit{NewText: "rary"},
-				Detail:           h.builtins["go_library"].Docstring,
+				TextEdit:         textEdit("rary", 1, 6),
+				Documentation:    h.builtins["go_library"].Docstring,
 			},
 		},
 	}, completions)
@@ -450,11 +450,21 @@ func TestCompletionPartialFunction(t *testing.T) {
 				Label:            "go_library",
 				Kind:             lsp.CIKFunction,
 				InsertTextFormat: lsp.ITFPlainText,
-				TextEdit:         &lsp.TextEdit{NewText: "rary"},
-				Detail:           h.builtins["go_library"].Docstring,
+				TextEdit:         textEdit("rary", 1, 6),
+				Documentation:    h.builtins["go_library"].Docstring,
 			},
 		},
 	}, completions)
+}
+
+func textEdit(text string, line, col int) *lsp.TextEdit {
+	return &lsp.TextEdit{
+		NewText: text,
+		Range: lsp.Range{
+			Start: lsp.Position{Line: line, Character: col},
+			End:   lsp.Position{Line: line, Character: col},
+		},
+	}
 }
 
 // initHandler is a wrapper around creating a new handler and initializing it, which is
