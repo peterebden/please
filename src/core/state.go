@@ -62,9 +62,9 @@ type Parser interface {
 	// ParseReader parses a single BUILD file into the given package.
 	ParseReader(state *BuildState, pkg *Package, reader io.ReadSeeker) error
 	// RunPreBuildFunction runs a pre-build function for a target.
-	RunPreBuildFunction(threadID int, state *BuildState, target *BuildTarget) error
+	RunPreBuildFunction(state *BuildState, target *BuildTarget) error
 	// RunPostBuildFunction runs a post-build function for a target.
-	RunPostBuildFunction(threadID int, state *BuildState, target *BuildTarget, output string) error
+	RunPostBuildFunction(state *BuildState, target *BuildTarget, output string) error
 }
 
 // A RemoteClient is the interface to a remote execution service.
@@ -94,8 +94,6 @@ type BuildState struct {
 	results chan *BuildResult
 	// Stream of results pushed to remote clients.
 	remoteResults chan *BuildResult
-	// Last results for each thread. These are used to catch up remote clients quickly.
-	lastResults []*BuildResult
 	// Timestamp that the build is considered to start at.
 	StartTime time.Time
 	// Various system statistics. Mostly used during remote communication.
@@ -194,10 +192,9 @@ type stateProgress struct {
 	pendingPackageMutex sync.Mutex
 	// The set of known states
 	allStates []*BuildState
-	// "thread ids" for each build label
-	threadIDs    map[BuildLabel]int
-	threadLabels []BuildLabel
-	threadMutex  sync.Mutex
+	// Last results for each currently executing target. These are used to catch remote clients up quickly.
+	lastResults     map[BuildLabel]*BuildResult
+	lastResultMutex sync.Mutex
 }
 
 // SystemStats stores information about the system.
@@ -406,21 +403,6 @@ func (state *BuildState) Hasher(name string) *fs.PathHasher {
 	return hasher
 }
 
-// SetThreadID associates this build label with a given thread id.
-func (state *BuildState) SetThreadID(label BuildLabel, threadID int) {
-	state.progress.threadMutex.Lock()
-	defer state.progress.threadMutex.Unlock()
-	delete(state.progress.threadIDs, state.progress.threadLabels[threadID])
-	state.progress.threadIDs[label] = threadID
-	state.progress.threadLabels[threadID] = label
-}
-
-func (state *BuildState) getThreadID(label BuildLabel) int {
-	state.progress.threadMutex.Lock()
-	defer state.progress.threadMutex.Unlock()
-	return state.progress.threadIDs[label]
-}
-
 // LogBuildResult logs the result of a target either building or parsing.
 func (state *BuildState) LogBuildResult(label BuildLabel, status BuildResultStatus, description string) {
 	if status == PackageParsed {
@@ -433,7 +415,6 @@ func (state *BuildState) LogBuildResult(label BuildLabel, status BuildResultStat
 		return // We don't notify anything else on these.
 	}
 	state.LogResult(&BuildResult{
-		ThreadID:    state.getThreadID(label),
 		Time:        time.Now(),
 		Label:       label,
 		Status:      status,
@@ -453,7 +434,6 @@ func (state *BuildState) LogBuildResult(label BuildLabel, status BuildResultStat
 // LogTestResult logs the result of a target once its tests have completed.
 func (state *BuildState) LogTestResult(label BuildLabel, status BuildResultStatus, results *TestSuite, coverage *TestCoverage, err error, format string, args ...interface{}) {
 	state.LogResult(&BuildResult{
-		ThreadID:    state.getThreadID(label),
 		Time:        time.Now(),
 		Label:       label,
 		Status:      status,
@@ -467,9 +447,8 @@ func (state *BuildState) LogTestResult(label BuildLabel, status BuildResultStatu
 }
 
 // LogBuildError logs a failure for a target to parse, build or test.
-func (state *BuildState) LogBuildError(tid int, label BuildLabel, status BuildResultStatus, err error, format string, args ...interface{}) {
+func (state *BuildState) LogBuildError(label BuildLabel, status BuildResultStatus, err error, format string, args ...interface{}) {
 	state.LogResult(&BuildResult{
-		ThreadID:    tid,
 		Time:        time.Now(),
 		Label:       label,
 		Status:      status,
@@ -493,7 +472,13 @@ func (state *BuildState) LogResult(result *BuildResult) {
 	}
 	if state.remoteResults != nil {
 		state.remoteResults <- result
-		state.lastResults[result.ThreadID] = result
+		state.progress.lastResultMutex.Lock()
+		defer state.progress.lastResultMutex.Unlock()
+		if result.Status.IsActive() {
+			state.progress.lastResults[result.Label] = result
+		} else {
+			delete(state.progress.lastResults, result.Label)
+		}
 	}
 	if result.Status.IsFailure() {
 		state.Success = false
@@ -514,7 +499,13 @@ func (state *BuildState) RemoteResults() (<-chan *BuildResult, []*BuildResult) {
 	if state.remoteResults == nil {
 		state.remoteResults = make(chan *BuildResult, 1000)
 	}
-	return state.remoteResults, state.lastResults
+	state.progress.lastResultMutex.Lock()
+	defer state.progress.lastResultMutex.Unlock()
+	ret := make([]*BuildResult, 0, len(state.progress.lastResults))
+	for _, r := range state.progress.lastResults {
+		ret = append(ret, r)
+	}
+	return state.remoteResults, ret
 }
 
 // NumActive returns the number of currently active tasks (i.e. those that are
@@ -805,7 +796,6 @@ func NewBuildState(config *Configuration) *BuildState {
 	state := &BuildState{
 		Graph:        NewGraph(),
 		pendingTasks: queue.NewPriorityQueue(10000, true), // big hint, why not
-		lastResults:  make([]*BuildResult, config.Please.NumThreads),
 		hashers: map[string]*fs.PathHasher{
 			// For compatibility reasons the sha1 hasher has no suffix.
 			"sha1":   fs.NewPathHasher(RepoRoot, config.Build.Xattrs, sha1.New, ""),
@@ -828,8 +818,7 @@ func NewBuildState(config *Configuration) *BuildState {
 			numPending:      1,
 			pendingTargets:  map[BuildLabel]chan struct{}{},
 			pendingPackages: map[packageKey]chan struct{}{},
-			threadIDs:       map[BuildLabel]int{},
-			threadLabels:    make([]BuildLabel, config.Please.NumThreads+config.Remote.NumExecutors),
+			lastResults:     map[BuildLabel]*BuildResult{},
 		},
 	}
 	state.PathHasher = state.Hasher(config.Build.HashFunction)
@@ -850,8 +839,6 @@ func NewDefaultBuildState() *BuildState {
 // A BuildResult represents a single event in the build process, i.e. a target starting or finishing
 // building, or reaching some milestone within those steps.
 type BuildResult struct {
-	// Thread id (or goroutine id, really) that generated this result.
-	ThreadID int
 	// Timestamp of this event
 	Time time.Time
 	// Target which has just changed

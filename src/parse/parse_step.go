@@ -31,23 +31,23 @@ var log = logging.MustGetLogger("parse")
 // targets with at least one matching label are added. Any targets with a label in 'exclude' are not added.
 // 'forSubinclude' is set when the parse is required for a subinclude target so should proceed
 // even when we're not otherwise building targets.
-func Parse(tid int, state *core.BuildState, label, dependent core.BuildLabel, forSubinclude bool) {
-	if err := parse(tid, state, label, dependent, forSubinclude); err != nil {
-		state.LogBuildError(tid, label, core.ParseFailed, err, "Failed to parse package")
+func Parse(state *core.BuildState, label, dependent core.BuildLabel, forSubinclude bool) {
+	if err := parse(state, label, dependent, forSubinclude); err != nil {
+		state.LogBuildError(label, core.ParseFailed, err, "Failed to parse package")
 	}
 }
 
-func parse(tid int, state *core.BuildState, label, dependent core.BuildLabel, forSubinclude bool) error {
+func parse(state *core.BuildState, label, dependent core.BuildLabel, forSubinclude bool) error {
 	// See if something else has parsed this package first.
 	pkg := state.WaitForPackage(label)
 	if pkg != nil {
 		// Does exist, all we need to do is toggle on this target
-		return activateTarget(tid, state, pkg, label, dependent, forSubinclude)
+		return activateTarget(state, pkg, label, dependent, forSubinclude)
 	}
 	// If we get here then it falls to us to parse this package.
-	state.LogBuildResult(tid, label, core.PackageParsing, "Parsing...")
+	state.LogBuildResult(label, core.PackageParsing, "Parsing...")
 
-	subrepo, err := checkSubrepo(tid, state, label, dependent)
+	subrepo, err := checkSubrepo(state, label, dependent)
 	if err != nil {
 		return err
 	} else if subrepo != nil && subrepo.Target != nil {
@@ -62,12 +62,12 @@ func parse(tid int, state *core.BuildState, label, dependent core.BuildLabel, fo
 	if err != nil {
 		return err
 	}
-	state.LogBuildResult(tid, label, core.PackageParsed, "Parsed package")
-	return activateTarget(tid, state, pkg, label, dependent, forSubinclude)
+	state.LogBuildResult(label, core.PackageParsed, "Parsed package")
+	return activateTarget(state, pkg, label, dependent, forSubinclude)
 }
 
 // checkSubrepo checks whether this guy exists within a subrepo. If so we will need to make sure that's available first.
-func checkSubrepo(tid int, state *core.BuildState, label, dependent core.BuildLabel) (*core.Subrepo, error) {
+func checkSubrepo(state *core.BuildState, label, dependent core.BuildLabel) (*core.Subrepo, error) {
 	if label.Subrepo == "" {
 		return nil, nil
 	} else if subrepo := state.Graph.Subrepo(label.Subrepo); subrepo != nil {
@@ -75,10 +75,10 @@ func checkSubrepo(tid int, state *core.BuildState, label, dependent core.BuildLa
 	}
 	// We don't have the definition of it at all. Need to parse that first.
 	sl := label.SubrepoLabel()
-	if handled, err := parseSubrepoPackage(tid, state, sl.PackageName, "", label); err != nil {
+	if handled, err := parseSubrepoPackage(state, sl.PackageName, "", label); err != nil {
 		return nil, err
 	} else if !handled {
-		if _, err := parseSubrepoPackage(tid, state, sl.PackageName, dependent.Subrepo, label); err != nil {
+		if _, err := parseSubrepoPackage(state, sl.PackageName, dependent.Subrepo, label); err != nil {
 			return nil, err
 		}
 	}
@@ -88,18 +88,18 @@ func checkSubrepo(tid int, state *core.BuildState, label, dependent core.BuildLa
 		return subrepo, nil
 	}
 	// Fix for #577; fallback like above, it might be defined within the subrepo.
-	if handled, err := parseSubrepoPackage(tid, state, sl.PackageName, dependent.Subrepo, label); handled && err == nil {
+	if handled, err := parseSubrepoPackage(state, sl.PackageName, dependent.Subrepo, label); handled && err == nil {
 		return state.Graph.Subrepo(label.Subrepo), nil
 	}
 	return nil, fmt.Errorf("Subrepo %s is not defined", label.Subrepo)
 }
 
 // parseSubrepoPackage parses a package to make sure subrepos are available.
-func parseSubrepoPackage(tid int, state *core.BuildState, pkg, subrepo string, dependent core.BuildLabel) (bool, error) {
+func parseSubrepoPackage(state *core.BuildState, pkg, subrepo string, dependent core.BuildLabel) (bool, error) {
 	if state.Graph.Package(pkg, subrepo) == nil {
 		// Don't have it already, must parse.
 		label := core.BuildLabel{Subrepo: subrepo, PackageName: pkg, Name: "all"}
-		return true, parse(tid, state, label, dependent, true)
+		return true, parse(state, label, dependent, true)
 	}
 	return false, nil
 }
@@ -115,11 +115,11 @@ func checkArchSubrepo(state *core.BuildState, name string) *core.Subrepo {
 }
 
 // activateTarget marks a target as active (ie. to be built) and adds its dependencies as pending parses.
-func activateTarget(tid int, state *core.BuildState, pkg *core.Package, label, dependent core.BuildLabel, forSubinclude bool) error {
+func activateTarget(state *core.BuildState, pkg *core.Package, label, dependent core.BuildLabel, forSubinclude bool) error {
 	if !label.IsAllTargets() && state.Graph.Target(label) == nil {
 		if label.Subrepo == "" && label.PackageName == "" && label.Name == dependent.Subrepo {
 			if subrepo := checkArchSubrepo(state, label.Name); subrepo != nil {
-				state.LogBuildResult(tid, label, core.TargetBuilt, "Instantiated subrepo")
+				state.LogBuildResult(label, core.TargetBuilt, "Instantiated subrepo")
 				return nil
 			}
 		}

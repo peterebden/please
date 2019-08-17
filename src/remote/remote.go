@@ -320,7 +320,7 @@ func (c *Client) Retrieve(target *core.BuildTarget, key []byte) (*core.BuildMeta
 }
 
 // Build executes a remote build of the given target.
-func (c *Client) Build(tid int, target *core.BuildTarget, stamp []byte) (*core.BuildMetadata, error) {
+func (c *Client) Build(target *core.BuildTarget, stamp []byte) (*core.BuildMetadata, error) {
 	if err := c.CheckInitialised(); err != nil {
 		return nil, err
 	}
@@ -328,13 +328,13 @@ func (c *Client) Build(tid int, target *core.BuildTarget, stamp []byte) (*core.B
 	if err != nil {
 		return nil, err
 	}
-	metadata, _, err := c.execute(tid, target, digest, target.BuildTimeout, target.PostBuildFunction != nil)
+	metadata, _, err := c.execute(target, digest, target.BuildTimeout, target.PostBuildFunction != nil)
 	return metadata, err
 }
 
 // Test executes a remote test of the given target.
 // It returns the results (and coverage if appropriate) as bytes to be parsed elsewhere.
-func (c *Client) Test(tid int, target *core.BuildTarget) (metadata *core.BuildMetadata, results, coverage []byte, err error) {
+func (c *Client) Test(target *core.BuildTarget) (metadata *core.BuildMetadata, results, coverage []byte, err error) {
 	if err := c.CheckInitialised(); err != nil {
 		return nil, nil, nil, err
 	}
@@ -342,7 +342,7 @@ func (c *Client) Test(tid int, target *core.BuildTarget) (metadata *core.BuildMe
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	metadata, ar, execErr := c.execute(tid, target, digest, target.TestTimeout, false)
+	metadata, ar, execErr := c.execute(target, digest, target.TestTimeout, false)
 	// Error handling here is a bit fiddly due to prioritisation; the execution error
 	// is more relevant, but we want to still try to get results if we can, and it's an
 	// error if we can't get those results on success.
@@ -363,7 +363,7 @@ func (c *Client) Test(tid int, target *core.BuildTarget) (metadata *core.BuildMe
 
 // execute submits an action to the remote executor and monitors its progress.
 // The returned ActionResult may be nil on failure.
-func (c *Client) execute(tid int, target *core.BuildTarget, digest *pb.Digest, timeout time.Duration, needStdout bool) (*core.BuildMetadata, *pb.ActionResult, error) {
+func (c *Client) execute(target *core.BuildTarget, digest *pb.Digest, timeout time.Duration, needStdout bool) (*core.BuildMetadata, *pb.ActionResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	stream, err := c.execClient.Execute(ctx, &pb.ExecuteRequest{
@@ -385,7 +385,7 @@ func (c *Client) execute(tid int, target *core.BuildTarget, digest *pb.Digest, t
 		if err := ptypes.UnmarshalAny(resp.Metadata, metadata); err != nil {
 			log.Warning("Failed to deserialise execution metadata: %s", err)
 		} else {
-			c.updateProgress(tid, target, metadata)
+			c.updateProgress(target, metadata)
 			// TODO(peterebden): At this point we could stream stdout / stderr if the
 			//                   user has set --show_all_output.
 		}
@@ -402,7 +402,7 @@ func (c *Client) execute(tid int, target *core.BuildTarget, digest *pb.Digest, t
 					return nil, nil, err
 				}
 				if response.CachedResult {
-					c.state.LogBuildResult(tid, target.Label, core.TargetCached, "Cached")
+					c.state.LogBuildResult(target.Label, core.TargetCached, "Cached")
 				}
 				for k, v := range response.ServerLogs {
 					log.Debug("Server log available: %s: hash key %s", k, v.Digest.Hash)
@@ -424,28 +424,28 @@ func (c *Client) execute(tid int, target *core.BuildTarget, digest *pb.Digest, t
 }
 
 // updateProgress updates the progress of a target based on its metadata.
-func (c *Client) updateProgress(tid int, target *core.BuildTarget, metadata *pb.ExecuteOperationMetadata) {
+func (c *Client) updateProgress(target *core.BuildTarget, metadata *pb.ExecuteOperationMetadata) {
 	if target.State() >= core.Built {
 		switch metadata.Stage {
 		case pb.ExecutionStage_CACHE_CHECK:
-			c.state.LogBuildResult(tid, target.Label, core.TargetBuilding, "Checking cache")
+			c.state.LogBuildResult(target.Label, core.TargetBuilding, "Checking cache")
 		case pb.ExecutionStage_QUEUED:
-			c.state.LogBuildResult(tid, target.Label, core.TargetBuilding, "Queued")
+			c.state.LogBuildResult(target.Label, core.TargetBuilding, "Queued")
 		case pb.ExecutionStage_EXECUTING:
-			c.state.LogBuildResult(tid, target.Label, core.TargetBuilding, "Building")
+			c.state.LogBuildResult(target.Label, core.TargetBuilding, "Building")
 		case pb.ExecutionStage_COMPLETED:
-			c.state.LogBuildResult(tid, target.Label, core.TargetBuilt, "Built")
+			c.state.LogBuildResult(target.Label, core.TargetBuilt, "Built")
 		}
 	} else {
 		switch metadata.Stage {
 		case pb.ExecutionStage_CACHE_CHECK:
-			c.state.LogBuildResult(tid, target.Label, core.TargetTesting, "Checking cache")
+			c.state.LogBuildResult(target.Label, core.TargetTesting, "Checking cache")
 		case pb.ExecutionStage_QUEUED:
-			c.state.LogBuildResult(tid, target.Label, core.TargetTesting, "Queued")
+			c.state.LogBuildResult(target.Label, core.TargetTesting, "Queued")
 		case pb.ExecutionStage_EXECUTING:
-			c.state.LogBuildResult(tid, target.Label, core.TargetTesting, "Testing")
+			c.state.LogBuildResult(target.Label, core.TargetTesting, "Testing")
 		case pb.ExecutionStage_COMPLETED:
-			c.state.LogBuildResult(tid, target.Label, core.TargetTested, "Tested")
+			c.state.LogBuildResult(target.Label, core.TargetTested, "Tested")
 		}
 	}
 }

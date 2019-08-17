@@ -78,7 +78,7 @@ func doTasks(tid int, state *core.BuildState, parses <-chan core.LabelPair, buil
 				break
 			}
 			state.ParsePool <- func() {
-				parse.Parse(tid, state, p.Label, p.Dependent, p.ForSubinclude)
+				parse.Parse(state, p.Label, p.Dependent, p.ForSubinclude)
 				state.TaskDone(false)
 			}
 		case l, ok := <-builds:
@@ -86,14 +86,14 @@ func doTasks(tid int, state *core.BuildState, parses <-chan core.LabelPair, buil
 				builds = nil
 				break
 			}
-			build.Build(tid, state, l, remote)
+			build.Build(state, l, remote)
 			state.TaskDone(true)
 		case l, ok := <-tests:
 			if !ok {
 				tests = nil
 				break
 			}
-			test.Test(tid, state, l, remote)
+			test.Test(state, l, remote)
 			state.TaskDone(true)
 		}
 	}
@@ -104,7 +104,7 @@ func findOriginalTasks(state *core.BuildState, preTargets, targets []core.BuildL
 	if state.Config.Bazel.Compatibility && fs.FileExists("WORKSPACE") {
 		// We have to parse the WORKSPACE file before anything else to understand subrepos.
 		// This is a bit crap really since it inhibits parallelism for the first step.
-		parse.Parse(0, state, core.NewBuildLabel("workspace", "all"), core.OriginalTarget, false)
+		parse.Parse(state, core.NewBuildLabel("workspace", "all"), core.OriginalTarget, false)
 	}
 	if arch.Arch != "" {
 		// Set up a new subrepo for this architecture.

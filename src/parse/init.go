@@ -66,31 +66,31 @@ func (p *aspParser) ParseReader(state *core.BuildState, pkg *core.Package, reade
 	return err
 }
 
-func (p *aspParser) RunPreBuildFunction(threadID int, state *core.BuildState, target *core.BuildTarget) error {
-	return p.runBuildFunction(threadID, state, target, "pre", func() error {
+func (p *aspParser) RunPreBuildFunction(state *core.BuildState, target *core.BuildTarget) error {
+	return p.runBuildFunction(state, target, "pre", func() error {
 		return target.PreBuildFunction.Call(target)
 	})
 }
 
-func (p *aspParser) RunPostBuildFunction(threadID int, state *core.BuildState, target *core.BuildTarget, output string) error {
-	return p.runBuildFunction(threadID, state, target, "post", func() error {
+func (p *aspParser) RunPostBuildFunction(state *core.BuildState, target *core.BuildTarget, output string) error {
+	return p.runBuildFunction(state, target, "post", func() error {
 		log.Debug("Running post-build function for %s. Build output:\n%s", target.Label, output)
 		return target.PostBuildFunction.Call(target, output)
 	})
 }
 
 // runBuildFunction runs either the pre- or post-build function.
-func (p *aspParser) runBuildFunction(tid int, state *core.BuildState, target *core.BuildTarget, callbackType string, f func() error) error {
-	state.LogBuildResult(tid, target.Label, core.PackageParsing, fmt.Sprintf("Running %s-build function for %s", callbackType, target.Label))
+func (p *aspParser) runBuildFunction(state *core.BuildState, target *core.BuildTarget, callbackType string, f func() error) error {
+	state.LogBuildResult(target.Label, core.PackageParsing, fmt.Sprintf("Running %s-build function for %s", callbackType, target.Label))
 	pkg := state.WaitForPackage(target.Label)
 	changed, err := pkg.EnterBuildCallback(f)
 	if err != nil {
-		state.LogBuildError(tid, target.Label, core.ParseFailed, err, "Failed %s-build function for %s", callbackType, target.Label)
+		state.LogBuildError(target.Label, core.ParseFailed, err, "Failed %s-build function for %s", callbackType, target.Label)
 	} else {
 		if err := rescanDeps(state, changed); err != nil {
 			return err
 		}
-		state.LogBuildResult(tid, target.Label, core.TargetBuilding, fmt.Sprintf("Finished %s-build function for %s", callbackType, target.Label))
+		state.LogBuildResult(target.Label, core.TargetBuilding, fmt.Sprintf("Finished %s-build function for %s", callbackType, target.Label))
 	}
 	return err
 }
