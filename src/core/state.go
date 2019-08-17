@@ -74,9 +74,9 @@ type RemoteClient interface {
 	// Store stores outputs of a target with the service.
 	Store(target *BuildTarget, key []byte, metadata *BuildMetadata, files []string) error
 	// Build invokes a build of the target remotely
-	Build(tid int, target *BuildTarget, stamp []byte) (*BuildMetadata, error)
+	Build(target *BuildTarget, stamp []byte) (*BuildMetadata, error)
 	// Test invokes a test run of the target remotely.
-	Test(tid int, target *BuildTarget) (metadata *BuildMetadata, results, coverage []byte, err error)
+	Test(target *BuildTarget) (metadata *BuildMetadata, results, coverage []byte, err error)
 	// PrintHashes shows the hashes of a target.
 	PrintHashes(target *BuildTarget, stamp []byte, isTest bool)
 }
@@ -194,6 +194,10 @@ type stateProgress struct {
 	pendingPackageMutex sync.Mutex
 	// The set of known states
 	allStates []*BuildState
+	// "thread ids" for each build label
+	threadIDs    map[BuildLabel]int
+	threadLabels []BuildLabel
+	threadMutex  sync.Mutex
 }
 
 // SystemStats stores information about the system.
@@ -402,8 +406,23 @@ func (state *BuildState) Hasher(name string) *fs.PathHasher {
 	return hasher
 }
 
+// SetThreadID associates this build label with a given thread id.
+func (state *BuildState) SetThreadID(label BuildLabel, threadID int) {
+	state.progress.threadMutex.Lock()
+	defer state.progress.threadMutex.Unlock()
+	delete(state.progress.threadIDs, state.progress.threadLabels[threadID])
+	state.progress.threadIDs[label] = threadID
+	state.progress.threadLabels[threadID] = label
+}
+
+func (state *BuildState) getThreadID(label BuildLabel) int {
+	state.progress.threadMutex.Lock()
+	defer state.progress.threadMutex.Unlock()
+	return state.progress.threadIDs[label]
+}
+
 // LogBuildResult logs the result of a target either building or parsing.
-func (state *BuildState) LogBuildResult(tid int, label BuildLabel, status BuildResultStatus, description string) {
+func (state *BuildState) LogBuildResult(label BuildLabel, status BuildResultStatus, description string) {
 	if status == PackageParsed {
 		// We may have parse tasks waiting for this package to exist, check for them.
 		state.progress.pendingPackageMutex.Lock()
@@ -414,7 +433,7 @@ func (state *BuildState) LogBuildResult(tid int, label BuildLabel, status BuildR
 		return // We don't notify anything else on these.
 	}
 	state.LogResult(&BuildResult{
-		ThreadID:    tid,
+		ThreadID:    state.getThreadID(label),
 		Time:        time.Now(),
 		Label:       label,
 		Status:      status,
@@ -432,9 +451,9 @@ func (state *BuildState) LogBuildResult(tid int, label BuildLabel, status BuildR
 }
 
 // LogTestResult logs the result of a target once its tests have completed.
-func (state *BuildState) LogTestResult(tid int, label BuildLabel, status BuildResultStatus, results *TestSuite, coverage *TestCoverage, err error, format string, args ...interface{}) {
+func (state *BuildState) LogTestResult(label BuildLabel, status BuildResultStatus, results *TestSuite, coverage *TestCoverage, err error, format string, args ...interface{}) {
 	state.LogResult(&BuildResult{
-		ThreadID:    tid,
+		ThreadID:    state.getThreadID(label),
 		Time:        time.Now(),
 		Label:       label,
 		Status:      status,
@@ -809,6 +828,8 @@ func NewBuildState(config *Configuration) *BuildState {
 			numPending:      1,
 			pendingTargets:  map[BuildLabel]chan struct{}{},
 			pendingPackages: map[packageKey]chan struct{}{},
+			threadIDs:       map[BuildLabel]int{},
+			threadLabels:    make([]BuildLabel, config.Please.NumThreads+config.Remote.NumExecutors),
 		},
 	}
 	state.PathHasher = state.Hasher(config.Build.HashFunction)
