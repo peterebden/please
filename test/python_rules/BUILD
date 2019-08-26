@@ -143,7 +143,9 @@ python_test(
         "py3",
         "pip",
     ],
-    deps = ["//third_party/python:tensorflow"],
+    deps = [
+        "//third_party/python:tensorflow",
+    ],
 )
 
 python_test(

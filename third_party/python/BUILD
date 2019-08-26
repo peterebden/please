@@ -176,14 +176,6 @@ python_wheel(
     version = "0.3.9",
 )
 
-python_wheel(
-    name = "absl",
-    package_name = "absl_py",
-    hashes = ["sha1: eb015a38bdc765b54626ca47af80bab9e3099ac2"],
-    version = "0.5.0",
-    deps = [":six"],
-)
-
 pip_library(
     name = "numpy",
     test_only = True,
@@ -194,11 +186,64 @@ pip_library(
 pip_library(
     name = "tensorflow",
     test_only = True,
-    version = "1.4.0",
+    version = "1.13.1",
+    licences = ["Apache 2.0"],
     deps = [
+        ":absl",
+        ":astor",
+        ":gast",
+        ":keras_applications",
+        ":keras_preprocessing",
         ":numpy",
         ":protobuf",
+        ":termcolor",
+        ":wrapt",
     ],
+)
+
+pip_library(
+    name = "absl",
+    package_name = "absl-py",
+    version = "0.7.1",
+)
+
+pip_library(
+    name = "astor",
+    version = "0.8.0",
+    test_only = True,
+)
+
+pip_library(
+    name = "gast",
+    version = "0.2.2",
+    test_only = True,
+)
+
+pip_library(
+    name = "keras_applications",
+    package_name = "Keras-Applications",
+    version = "1.0.8",
+    test_only = True,
+)
+
+pip_library(
+    name = "keras_preprocessing",
+    package_name = "Keras-Preprocessing",
+    version = "1.1.0",
+    test_only = True,
+)
+
+pip_library(
+    name = "termcolor",
+    outs = ["termcolor.py"],
+    version = "1.1.0",
+    test_only = True,
+)
+
+pip_library(
+    name = "wrapt",
+    version = "1.11.2",
+    test_only = True,
 )
 
 pip_library(
