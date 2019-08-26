@@ -176,6 +176,13 @@ python_wheel(
     version = "0.3.9",
 )
 
+# TODO(peterebden): Move this to be a python_wheel
+pip_library(
+    name = "fusepy",
+    outs = ["fuse.py"],
+    version = "3.0.1",
+)
+
 pip_library(
     name = "numpy",
     test_only = True,

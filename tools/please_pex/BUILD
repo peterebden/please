@@ -33,6 +33,7 @@ genrule(
         "//third_party/python:pytest",
         "//third_party/python:py",
         "//third_party/python:pluggy",
+        "//third_party/python:fusepy",
         "//third_party/python:attrs",
         "//third_party/python:funcsigs",
         "//third_party/python:pkg_resources",
