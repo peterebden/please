@@ -118,15 +118,11 @@ func (pw *Writer) Write(out, moduleDir string) error {
 		return err
 	}
 
-	// Write required pex stuff for tests. Note that this executable is also a zipfile and we can
+	// Write required pex stuff. Note that this executable is also a zipfile and we can
 	// jarcat it directly in (nifty, huh?).
-	//
-	// Note that if the target contains its own test-runner, then we don't need to add anything.
-	if len(pw.testIncludes) > 0 {
-		f.Include = pw.testIncludes
-		if err := f.AddZipFile(os.Args[0]); err != nil {
-			return err
-		}
+	f.Include = append(pw.testIncludes, ".bootstrap/fuse.py")
+	if err := f.AddZipFile(os.Args[0]); err != nil {
+		return err
 	}
 
 	// Always write pex_main.py, with some templating.

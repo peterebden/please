@@ -6,7 +6,15 @@ def add_module_dir_to_sys_path(dirname):
 
 
 def run():
+    # Add .bootstrap dir to path, after the initial pex entry
+    sys.path = sys.path[:1] + [os.path.join(sys.path[0], '.bootstrap')] + sys.path[1:]
     if not ZIP_SAFE:
+        try:
+            fuse = setup_fuse()
+            return interact(main)
+        except OSError as err:
+            import logging
+            logging.warning('Unable to set up FUSE filesystem: %s', err)
         with explode_zip()():
             add_module_dir_to_sys_path(MODULE_DIR)
             return interact(main)

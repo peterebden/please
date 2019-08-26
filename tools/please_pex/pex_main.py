@@ -157,6 +157,85 @@ class ModuleDirImport(object):
         return module.__loader__.get_code(fullname)
 
 
+def setup_fuse():
+    """Uses fusepy to set up a virtual filesystem on the pex."""
+    from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
+    from errno import EROFS, ENOENT, ENOSYS, ENOTTY
+    from datetime import datetime
+    import threading
+
+    class ZipFuse(Operations, LoggingMixIn):
+
+        def __init__(self):
+            self._zf = ZipFile(os.argv[0])
+            self._fd = 0
+            self._fds = {}
+            self._lock = threading.Lock()
+
+        def chmod(self, path, mode):
+            raise FuseOSError(EROFS)
+
+        def chown(self, path, uid, gid):
+            raise FuseOSError(EROFS)
+
+        def create(self, path, mode):
+            raise FuseOSError(EROFS)
+
+        def flush(self, path, fh):
+            raise FuseOSError(EROFS)
+
+        def fsync(self, path, datasync, fh):
+            raise FuseOSError(EROFS)
+
+        def fsyncdir(self, path, datasync, fh):
+            raise FuseOSError(EROFS)
+
+        def getattr(self, path, fh=None):
+            try:
+                info = self._zf.getinfo(path)
+                y, m, d, h, m, s = info.date_time
+                dt = datetime(year=y, month=m, day=d, hour=h, minute=m, second=s)
+                return {
+                    'st_mode': zf.external_attr,  # TODO(peterebden): is this right?
+                    'st_ctime': dt,
+                    'st_mtime': dt,
+                    'st_atime': dt,
+                    'st_nlink': 2,  # wevs
+                }
+            except KeyError:
+                raise FuseOSError(ENOENT)
+
+        def getxattr(self, path, name, position=0):
+            raise FuseOSError(ENOSYS)
+
+        def open(self, path, flags):
+            try:
+                f = self._zf.open(path)
+                with self._lock:
+                    self._fd += 1
+                    fd = self._fd
+                self._fds[fd] = (f, 0)
+                return fd
+            except KeyError:
+                raise FuseOSError(ENOENT)
+
+        def read(self, path, size, offset, fh):
+            try:
+                f, o = self._fds[fh]
+                if o != offset:
+                    f.seek(offset)
+                ret = f.read(size)
+                self._fds[fh] = (f, offset + size)
+                return ret
+            except KeyError:
+                raise FuseOSError(ENOENT)
+
+        def readdir(self, path, fh):
+            return [x for x in self._zf.namelist() if x.startswith(path)]
+
+    return FUSE(ZipFuse(), sys.argv[0], foreground=False, allow_other=True)
+
+
 def pex_basepath(temp=False):
     if temp:
         import tempfile
