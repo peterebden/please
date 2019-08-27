@@ -159,9 +159,10 @@ class ModuleDirImport(object):
 
 def setup_fuse():
     """Uses fusepy to set up a virtual filesystem on the pex."""
-    from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
+    from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_exit
     from errno import EROFS, ENOENT, ENOSYS, ENOTTY
     from datetime import datetime
+    import atexit
     import threading
 
     class ZipFuse(Operations, LoggingMixIn):
@@ -234,7 +235,8 @@ def setup_fuse():
             return [x for x in self._zf.namelist() if x.startswith(path)]
 
     os.chmod(sys.argv[0], 0o755)
-    return FUSE(ZipFuse(), sys.argv[0], foreground=False, nonempty=True)
+    atexit.register(fuse_exit)
+    return FUSE(ZipFuse(), sys.argv[0], foreground=True, nonempty=True)
 
 
 def pex_basepath(temp=False):
