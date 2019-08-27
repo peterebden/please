@@ -167,7 +167,7 @@ def setup_fuse():
     class ZipFuse(Operations, LoggingMixIn):
 
         def __init__(self):
-            self._zf = ZipFile(os.argv[0])
+            self._zf = ZipFile(sys.argv[0])
             self._fd = 0
             self._fds = {}
             self._lock = threading.Lock()
@@ -233,7 +233,8 @@ def setup_fuse():
         def readdir(self, path, fh):
             return [x for x in self._zf.namelist() if x.startswith(path)]
 
-    return FUSE(ZipFuse(), sys.argv[0], foreground=False, allow_other=True)
+    os.chmod(sys.argv[0], 0o755)
+    return FUSE(ZipFuse(), sys.argv[0], foreground=False, nonempty=True)
 
 
 def pex_basepath(temp=False):
