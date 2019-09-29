@@ -32,6 +32,7 @@ var opts = struct {
 	ParseOnly    bool          `short:"p" long:"parse_only" description:"Only parse input files, do not interpret them."`
 	DumpAst      bool          `short:"d" long:"dump_ast" description:"Prints AST to stdout. Implies --parse_only."`
 	NoConfig     bool          `long:"no_config" description:"Don't look for or load a .plzconfig file"`
+	NoCleanup    bool          `long:"no_cleanup" description:"Don't clean up the resulting AST before printing"`
 	BuildDefsDir string        `short:"b" long:"build_defs_dir" description:"Load build_defs files from this directory. This assumes that they are all produced by trivial build rules with obvious names. They will need to be built first."`
 	Args         struct {
 		BuildFiles []string `positional-arg-name:"files" required:"true" description:"BUILD files to parse"`
@@ -60,7 +61,12 @@ func parseFile(pkg *core.Package, p *asp.Parser, filename string) error {
 // cleanup runs a few arbitrary cleanup steps on the given AST dump.
 // We do our best to do it analytically but one or two parts are a bit hard to alter.
 func cleanup(ast string) string {
+	if opts.NoCleanup {
+		return ast
+	}
 	r := regexp.MustCompile(`\n *Pos: .*\n`)
+	ast = r.ReplaceAllString(ast, "\n")
+	r = regexp.MustCompile(`\n *EndPos: .*\n`)
 	ast = r.ReplaceAllString(ast, "\n")
 	r = regexp.MustCompile(`String: "\\"(.*)\\"",`)
 	return r.ReplaceAllString(ast, `String: "$1",`)
