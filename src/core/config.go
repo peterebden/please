@@ -329,7 +329,7 @@ type Configuration struct {
 		DefaultRepo      string      `help:"Location of the default repository; this is used if plz is invoked when not inside a repo, it changes to that directory then does its thing."`
 	} `help:"The [please] section in the config contains non-language-specific settings defining how Please should operate."`
 	Parse struct {
-		ExperimentalDir  []string `help:"Directory containing experimental code. This is subject to some extra restrictions:\n - Code in the experimental dir can override normal visibility constraints\n - Code outside the experimental dir can never depend on code inside it\n - Tests are excluded from general detection." example:"experimental"`
+		ExperimentalDir  []string `help:"Directory containging experimental code. This is subject to some extra restrictions:\n - Code in the experimental dir can override normal visibility constraints\n - Code outside the experimental dir can never depend on code inside it\n - Tests are excluded from general detection." example:"experimental"`
 		BuildFileName    []string `help:"Sets the names that Please uses instead of BUILD for its build files.\nFor clarity the documentation refers to them simply as BUILD files but you could reconfigure them here to be something else.\nOne case this can be particularly useful is in cases where you have a subdirectory named build on a case-insensitive file system like HFS+." var:"BUILD_FILE_NAMES"`
 		BlacklistDirs    []string `help:"Directories to blacklist when recursively searching for BUILD files (e.g. when using plz build ... or similar).\nThis is generally useful when you have large directories within your repo that don't need to be searched, especially things like node_modules that have come from external package managers."`
 		PreloadBuildDefs []string `help:"Files to preload by the parser before loading any BUILD files.\nSince this is done before the first package is parsed they must be files in the repository, they cannot be subinclude() paths." example:"build_defs/go_bindata.build_defs"`
@@ -396,7 +396,12 @@ type Configuration struct {
 		ReadOnly     bool   `help:"If true, prevents this client from writing to the remote storage. Is overridden if being used for execution."`
 		HomeDir      string `help:"The home directory on the build machine."`
 	} `help:"Settings related to remote execution & caching using the Google remote execution APIs. This section is still experimental and subject to change."`
-	Size  map[string]*Size `help:"Named sizes of targets; these are the definitions of what can be passed to the 'size' argument."`
+	Size   map[string]*Size `help:"Named sizes of targets; these are the definitions of what can be passed to the 'size' argument."`
+	Format map[string]*struct {
+		Pattern []string `help:"Glob patterns to match filenames against"`
+		Command string   `help:"The command to run for this formatter"`
+		InPlace bool     `help:"True if the command will reformat the file in-place; by default we will read it from stdout and write to the file."`
+	} `help:"Configuration for how to reformat files; each filename maps to the command to execute to format it in-place."`
 	Cover struct {
 		FileExtension    []string `help:"Extensions of files to consider for coverage.\nDefaults to a reasonably obvious set for the builtin rules including .go, .py, .java, etc."`
 		ExcludeExtension []string `help:"Extensions of files to exclude from coverage.\nTypically this is for generated code; the default is to exclude protobuf extensions like .pb.go, _pb2.py, etc."`
