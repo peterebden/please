@@ -5,5 +5,6 @@ go_binary(
     visibility = ["//src/format:all"],
     deps = [
         "//src/cli",
+        "//src/fs",
     ],
 )

@@ -1,3 +1,4 @@
 [format "test"]
 pattern = *.txt
 command = src/format/test_bin/test_bin -w
+inplace = true

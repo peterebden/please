@@ -46,10 +46,10 @@ func reformat(filename, command string, inPlace bool) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(tokens[0], tokens[1:]...)
+	cmd := exec.Command(tokens[0], append(tokens[1:], filename)...)
 	out, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("Failed to reformat %s: %s", filename, cmd.Run())
+		return fmt.Errorf("Failed to run %s %s: %s", cmd.Path, strings.Join(cmd.Args, " "), err)
 	} else if inPlace {
 		return nil
 	} else if err := fs.WriteFile(bytes.NewReader(out), filename, 0644); err != nil {

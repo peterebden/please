@@ -3,9 +3,10 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"strings"
 
 	"github.com/thought-machine/please/src/cli"
+	"github.com/thought-machine/please/src/fs"
 )
 
 var opts struct {
@@ -15,15 +16,17 @@ var opts struct {
 	} `positional-args:"true"`
 }
 
-const content = "correctly formatted"
+const content = "correctly formatted\n"
 
 func main() {
 	cli.ParseFlagsOrDie("test", &opts)
 	for _, filename := range opts.Args.Filenames {
 		if opts.InPlace {
-			ioutil.WriteFile(filename, []byte(content), 0644)
+			if err := fs.WriteFile(strings.NewReader(content), filename, 0644); err != nil {
+				panic(err)
+			}
 		} else {
-			fmt.Println(content)
+			fmt.Print(content)
 		}
 	}
 }
