@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bazelbuild/buildtools/build"
 	"github.com/google/shlex"
 	"gopkg.in/op/go-logging.v1"
 
@@ -78,7 +79,11 @@ func ReformatBuild(filename string) error {
 		}
 		return true
 	})
-	return nil
+	f, err := build.ParseBuild(filename, data)
+	if err != nil {
+		return err
+	}
+	return fs.WriteFile(bytes.NewReader(build.Format(f)), filename, 0644)
 }
 
 type formatted struct {

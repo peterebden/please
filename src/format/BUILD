@@ -6,6 +6,7 @@ go_library(
         "//src/core",
         "//src/cli",
         "//src/fs",
+        "//third_party/go:buildtools",
         "//third_party/go:logging",
         "//third_party/go:shlex",
     ],

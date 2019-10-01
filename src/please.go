@@ -23,6 +23,7 @@ import (
 	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/export"
 	"github.com/thought-machine/please/src/follow"
+	"github.com/thought-machine/please/src/format"
 	"github.com/thought-machine/please/src/gc"
 	"github.com/thought-machine/please/src/hashes"
 	"github.com/thought-machine/please/src/help"
@@ -244,6 +245,12 @@ var opts struct {
 			URL cli.URL `positional-arg-name:"URL" required:"yes" description:"URL of remote server to connect to, e.g. 10.23.0.5:7777"`
 		} `positional-args:"true" required:"yes"`
 	} `command:"follow" description:"Connects to a remote Please instance to stream build events from."`
+
+	Format struct {
+		Args struct {
+			Files []string `positional-arg-name:"files" required:"yes" description:"Filenames to format"`
+		} `positional-args:"true" required:"yes"`
+	} `command:"follow" description:"Reformats files (BUILD files, or others as well if configured)."`
 
 	Help struct {
 		Args struct {
@@ -468,6 +475,14 @@ var buildFunctions = map[string]func() int{
 			return 0
 		}
 		return 1
+	},
+	"format": func() int {
+		for _, filename := range opts.Format.Args.Files {
+			if err := format.Reformat(core.NewBuildState(config), filename); err != nil {
+				log.Fatalf("Failed to reformat %s: %s", filename, err)
+			}
+		}
+		return 0
 	},
 	"update": func() int {
 		fmt.Printf("Up to date (version %s).\n", core.PleaseVersion)
