@@ -1,10 +1,12 @@
 package format
 
 import (
+	"fmt"
 	"io/ioutil"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/thought-machine/please/src/core"
 )
@@ -27,4 +29,19 @@ func TestFormatNotInPlace(t *testing.T) {
 	b, err := ioutil.ReadFile(filename)
 	assert.NoError(t, err)
 	assert.Equal(t, "correctly formatted\n", string(b))
+}
+
+func TestFormatBuildFiles(t *testing.T) {
+	const num_tests = 1
+	for i := 1; i <= num_tests; i++ {
+		t.Run(fmt.Sprintf("test%d", i), func(t *testing.T) {
+			expected, err := ioutil.ReadFile(fmt.Sprintf("src/format/test_data/out%d.build", i))
+			require.NoError(t, err)
+			err = ReformatBuild(fmt.Sprintf("src/format/test_data/in%d.build", i))
+			assert.NoError(t, err)
+			actual, err := ioutil.ReadFile(fmt.Sprintf("src/format/test_data/in%d.build", i))
+			require.NoError(t, err)
+			assert.Equal(t, expected, actual)
+		})
+	}
 }

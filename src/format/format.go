@@ -5,6 +5,7 @@ package format
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"os/exec"
 	"path"
 	"path/filepath"
@@ -60,9 +61,27 @@ func reformat(filename, command string, inPlace bool) error {
 
 // ReformatBuild reformats a build file in-place.
 func ReformatBuild(filename string) error {
-	ast, err := asp.NewParser(nil).ParseFileOnly(filename)
+	data, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
 	}
-	return fmt.Errorf("not implemented %s", ast)
+	ast, err := asp.NewParser(nil).ParseData(data, filename)
+	if err != nil {
+		return err
+	}
+	//lines := strings.Split(string(data), "\n")
+	// We only really care about function calls here; right now we don't
+	// reformat much else. In time we might also try to pretty-print function definitions.
+	asp.WalkAST(ast, func(stmt *asp.IdentStatement) bool {
+		if stmt.Action != nil && stmt.Action.Call != nil {
+			log.Debug("Here")
+		}
+		return true
+	})
+	return nil
+}
+
+type formatted struct {
+	Start, End  int // original line numbers
+	Replacement []byte
 }
