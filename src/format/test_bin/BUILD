@@ -3,4 +3,7 @@ go_binary(
     srcs = ["main.go"],
     test_only = True,
     visibility = ["//src/format:all"],
+    deps = [
+        "//src/cli",
+    ],
 )

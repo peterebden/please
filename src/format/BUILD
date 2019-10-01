@@ -16,6 +16,7 @@ go_test(
     name = "format_test",
     srcs = ["format_test.go"],
     deps = [
+        ":format",
         "//src/core",
         "//third_party/go:testify",
     ],

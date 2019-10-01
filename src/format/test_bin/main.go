@@ -2,7 +2,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io/ioutil"
 
@@ -22,7 +21,7 @@ func main() {
 	cli.ParseFlagsOrDie("test", &opts)
 	for _, filename := range opts.Args.Filenames {
 		if opts.InPlace {
-			ioutil.WriteFile(filename, content, 0644)
+			ioutil.WriteFile(filename, []byte(content), 0644)
 		} else {
 			fmt.Println(content)
 		}

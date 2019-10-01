@@ -5,7 +5,6 @@ package format
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"os/exec"
 	"path"
 	"path/filepath"
@@ -25,14 +24,14 @@ var log = logging.MustGetLogger("format")
 // Reformat reformats the given file in-place using configured rules.
 func Reformat(state *core.BuildState, filename string) error {
 	basename := path.Base(filename)
-	if cli.Contains(basename, state.Config.Parse.BuildFileName) || strings.HasSuffix(basename, ".build_defs") {
+	if cli.ContainsString(basename, state.Config.Parse.BuildFileName) || strings.HasSuffix(basename, ".build_defs") {
 		return ReformatBuild(filename)
 	}
 	for name, format := range state.Config.Format {
 		for _, pattern := range format.Pattern {
-			if matches, err := filepath.Glob(pattern, basename); err != nil {
+			if matched, err := filepath.Match(pattern, basename); err != nil {
 				log.Warning("Bad glob pattern for %s: %s", name, err)
-			} else if len(matches) > 0 {
+			} else if matched {
 				log.Notice("Reformatting %s as %s...", filename, name)
 				return reformat(filename, format.Command, format.InPlace)
 			}
@@ -42,7 +41,7 @@ func Reformat(state *core.BuildState, filename string) error {
 }
 
 // reformat reformats a single file given a command.
-func format(filename, command string, inPlace bool) error {
+func reformat(filename, command string, inPlace bool) error {
 	tokens, err := shlex.Split(command)
 	if err != nil {
 		return err
