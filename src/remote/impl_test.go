@@ -38,7 +38,7 @@ func newClientInstance(name string) *Client {
 	config.Remote.Instance = name
 	config.Remote.HomeDir = "~/.please"
 	state := core.NewBuildState(config)
-	state.Config.Remote.URL = "127.0.0.1:9987"
+	state.Config.Remote.URL = []string{"127.0.0.1:9987"}
 	return New(state)
 }
 

@@ -93,57 +93,53 @@ func (c *Client) init() {
 		// Create a copy of the state where we can modify the config
 		c.state = c.state.ForConfig()
 		c.state.Config.HomeDir = c.state.Config.Remote.HomeDir
-		// TODO(peterebden): We may need to add the ability to have multiple URLs which we
-		//                   would then query for capabilities to discover which is which.
-		// TODO(peterebden): Add support for TLS.
-		conn, err := grpc.Dial(c.state.Config.Remote.URL,
-			grpc.WithTimeout(dialTimeout),
-			grpc.WithInsecure(),
-			grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(grpc_retry.WithMax(maxRetries))))
-		if err != nil {
-			return err
-		}
-		// Query the server for its capabilities. This tells us whether it is capable of
-		// execution, caching or both.
-		ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
-		defer cancel()
-		resp, err := pb.NewCapabilitiesClient(conn).GetCapabilities(ctx, &pb.GetCapabilitiesRequest{
-			InstanceName: c.instance,
-		})
-		if err != nil {
-			return err
-		}
-		if lessThan(&apiVersion, resp.LowApiVersion) || lessThan(resp.HighApiVersion, &apiVersion) {
-			return fmt.Errorf("Unsupported API version; we require %s but server only supports %s - %s", printVer(&apiVersion), printVer(resp.LowApiVersion), printVer(resp.HighApiVersion))
-		}
-		caps := resp.CacheCapabilities
-		if caps == nil {
-			return fmt.Errorf("Cache capabilities not supported by server (we do not support execution-only servers)")
-		}
-		if err := c.chooseDigest(caps.DigestFunction); err != nil {
-			return err
-		}
-		if caps.ActionCacheUpdateCapabilities != nil {
-			c.cacheWritable = caps.ActionCacheUpdateCapabilities.UpdateEnabled
-		}
-		c.maxBlobBatchSize = caps.MaxBatchTotalSizeBytes
-		if c.maxBlobBatchSize == 0 {
-			// No limit was set by the server, assume we are implicitly limited to 4MB (that's
-			// gRPC's limit which most implementations do not seem to override). Round it down a
-			// bit to allow a bit of serialisation overhead etc.
-			c.maxBlobBatchSize = 4000000
-		}
-		c.actionCacheClient = pb.NewActionCacheClient(conn)
-		c.storageClient = pb.NewContentAddressableStorageClient(conn)
-		c.bsClient = bs.NewByteStreamClient(conn)
 		// Look this up just once now.
 		bash, err := core.LookBuildPath("bash", c.state.Config)
 		c.bashPath = bash
-		c.canBatchBlobReads = c.checkBatchReadBlobs()
-		log.Debug("Remote execution client initialised for storage")
-		// Now check if it can do remote execution
-		if c.state.Config.Remote.NumExecutors > 0 {
-			if caps := resp.ExecutionCapabilities; caps != nil {
+		for _, url := range c.state.Config.Remote.URL {
+			// TODO(peterebden): Add support for TLS.
+			conn, err := grpc.Dial(url,
+				grpc.WithTimeout(dialTimeout),
+				grpc.WithInsecure(),
+				grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(grpc_retry.WithMax(maxRetries))))
+			if err != nil {
+				return err
+			}
+			// Query the server for its capabilities. This tells us whether it is capable of
+			// execution, caching or both.
+			ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+			defer cancel()
+			resp, err := pb.NewCapabilitiesClient(conn).GetCapabilities(ctx, &pb.GetCapabilitiesRequest{
+				InstanceName: c.instance,
+			})
+			if err != nil {
+				return err
+			}
+			if lessThan(&apiVersion, resp.LowApiVersion) || lessThan(resp.HighApiVersion, &apiVersion) {
+				return fmt.Errorf("Unsupported API version; we require %s but server only supports %s - %s", printVer(&apiVersion), printVer(resp.LowApiVersion), printVer(resp.HighApiVersion))
+			}
+			if caps := resp.CacheCapabilities; caps != nil {
+				if err := c.chooseDigest(caps.DigestFunction); err != nil {
+					return err
+				}
+				if caps.ActionCacheUpdateCapabilities != nil {
+					c.cacheWritable = caps.ActionCacheUpdateCapabilities.UpdateEnabled
+				}
+				c.maxBlobBatchSize = caps.MaxBatchTotalSizeBytes
+				if c.maxBlobBatchSize == 0 {
+					// No limit was set by the server, assume we are implicitly limited to 4MB (that's
+					// gRPC's limit which most implementations do not seem to override). Round it down a
+					// bit to allow a bit of serialisation overhead etc.
+					c.maxBlobBatchSize = 4000000
+				}
+				c.actionCacheClient = pb.NewActionCacheClient(conn)
+				c.storageClient = pb.NewContentAddressableStorageClient(conn)
+				c.bsClient = bs.NewByteStreamClient(conn)
+				c.canBatchBlobReads = c.checkBatchReadBlobs()
+				log.Debug("Remote execution client initialised for storage")
+			}
+			// Now check if it can do remote execution
+			if caps := resp.ExecutionCapabilities; caps != nil && c.state.Config.Remote.NumExecutors > 0 {
 				if err := c.chooseDigest([]pb.DigestFunction_Value{caps.DigestFunction}); err != nil {
 					return err
 				} else if !caps.ExecEnabled {
@@ -151,9 +147,10 @@ func (c *Client) init() {
 				}
 				c.execClient = pb.NewExecutionClient(conn)
 				log.Debug("Remote execution client initialised for execution")
-			} else {
-				log.Fatalf("Remote execution is configured but the build server doesn't support it")
 			}
+		}
+		if c.state.Config.Remote.NumExecutors > 0 && c.execClient == nil {
+			log.Fatalf("Remote execution is configured but the build server doesn't support it")
 		}
 		return err
 	}()
