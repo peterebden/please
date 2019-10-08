@@ -32,6 +32,8 @@ import (
 	"gopkg.in/op/go-logging.v1"
 )
 
+var log = logging.MustGetLogger("rpc")
+
 // ServeForever serves on the given port until terminated.
 func ServeForever(port int, storage string) {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
@@ -41,11 +43,14 @@ func ServeForever(port int, storage string) {
 	srv := &server{
 		bytestreamRe: regexp.MustCompile("(?:uploads/[0-9a-f-]+/)?blobs/([0-9a-f]+)/([0-9]+)"),
 	}
-	s := grpc.NewServer(grpc_recovery.UnaryServerInterceptor(), grpc_recovery.StreamServerInterceptor())
-	pb.RegisterCapabilitiesServer(s, server)
-	pb.RegisterActionCacheServer(s, server)
-	pb.RegisterContentAddressableStorageServer(s, server)
-	bs.RegisterByteStreamServer(s, server)
+	s := grpc.NewServer(
+		grpc.UnaryInterceptor(grpc_recovery.UnaryServerInterceptor()),
+		grpc.StreamInterceptor(grpc_recovery.StreamServerInterceptor()),
+	)
+	pb.RegisterCapabilitiesServer(s, srv)
+	pb.RegisterActionCacheServer(s, srv)
+	pb.RegisterContentAddressableStorageServer(s, srv)
+	bs.RegisterByteStreamServer(s, srv)
 	err = s.Serve(lis)
 	log.Fatalf("%s", err)
 }

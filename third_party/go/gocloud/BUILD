@@ -31,6 +31,7 @@ go_get(
         ":wire",
         ":x_errors",
     ],
+    visibility = ["PUBLIC"],
 )
 
 go_get(
