@@ -38,9 +38,9 @@ import (
 
 var log = logging.MustGetLogger("rpc")
 
-var bytesWritten = prometheus.NewCounter(prometheus.CounterOpts{
+var bytesReceived = prometheus.NewCounter(prometheus.CounterOpts{
 	Namespace: "elan",
-	Name:      "_bytes_received_total",
+	Name:      "bytes_received_total",
 })
 var bytesServed = prometheus.NewCounter(prometheus.CounterOpts{
 	Namespace: "elan",
@@ -48,7 +48,8 @@ var bytesServed = prometheus.NewCounter(prometheus.CounterOpts{
 })
 
 func init() {
-
+	prometheus.MustRegister(bytesReceived)
+	prometheus.MustRegister(bytesServed)
 }
 
 // ServeForever serves on the given port until terminated.
@@ -258,7 +259,7 @@ func (s *server) readBlob(ctx context.Context, digest *pb.Digest, offset, length
 		}
 		return nil, err
 	}
-	return r, err
+	return &countingReader{r: r}, err
 }
 
 func (s *server) readAllBlob(ctx context.Context, digest *pb.Digest) ([]byte, error) {
@@ -284,7 +285,10 @@ func (s *server) writeBlob(ctx context.Context, digest *pb.Digest, r io.Reader) 
 	w, err := s.bucket.NewWriter(ctx, s.key(digest), nil)
 	if err != nil {
 		return err
-	} else if _, err := io.Copy(w, r); err != nil {
+	}
+	n, err := io.Copy(w, r)
+	bytesReceived.Add(float64(n))
+	if err != nil {
 		cancel()
 		return err
 	}
@@ -347,4 +351,19 @@ func (r *bytestreamReader) Read(buf []byte) (int, error) {
 		r.buf = append(r.buf, req.Data...)
 		r.TotalSize += int64(len(req.Data))
 	}
+}
+
+// A countingReader wraps a ReadCloser and counts bytes read from it.
+type countingReader struct {
+	r io.ReadCloser
+}
+
+func (r *countingReader) Read(buf []byte) (int, error) {
+	n, err := r.r.Read(buf)
+	bytesServed.Add(float64(n))
+	return n, err
+}
+
+func (r *countingReader) Close() error {
+	return r.r.Close()
 }

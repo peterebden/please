@@ -2,6 +2,10 @@ go_get(
     name = "prometheus",
     get = "github.com/prometheus/client_golang/prometheus",
     revision = "v1.1.0",
+    install = [
+        "",
+        "internal",
+    ],
     deps = [
         ":client_model",
         ":procfs",
@@ -72,26 +76,4 @@ go_get(
     deps = [
         "//third_party/go:protobuf",
     ],
-)
-
-go_get(
-    name = "kingpin",
-    get = "gopkg.in/alecthomas/kingpin.v2",
-    revision = "v2.2.6",
-    deps = [
-        ":template",
-        ":units",
-    ],
-)
-
-go_get(
-    name = "units",
-    get = "github.com/alecthomas/units",
-    revision = "2efee857e7cfd4f3d0138cc3cbb1b4966962b93a",
-)
-
-go_get(
-    name = "template",
-    get = "github.com/alecthomas/template",
-    revision = "a0175ee3bccc567396460bf5acd36800cb10c49c",
 )
