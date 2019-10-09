@@ -26,6 +26,7 @@ import (
 	"gocloud.dev/blob"
 	"gocloud.dev/gcerrors"
 	bs "google.golang.org/genproto/googleapis/bytestream"
+	rpcstatus "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -128,7 +129,7 @@ func (s *server) BatchUpdateBlobs(ctx context.Context, req *pb.BatchUpdateBlobsR
 				rr.Status.Code = int32(codes.InvalidArgument)
 				rr.Status.Message = fmt.Sprintf("Blob sizes do not match (%d / %d)", len(r.Data), r.Digest.SizeBytes)
 			} else if err := s.writeBlob(ctx, r.Digest, bytes.NewReader(r.Data)); err != nil {
-				rr.Status.Code = status.FromError(err)
+				rr.Status.Code = int32(status.Code(err))
 				rr.Status.Message = err.Error()
 			}
 			wg.Done()
@@ -138,7 +139,7 @@ func (s *server) BatchUpdateBlobs(ctx context.Context, req *pb.BatchUpdateBlobsR
 	return resp, nil
 }
 
-func (s *testServer) BatchReadBlobs(ctx context.Context, req *pb.BatchReadBlobsRequest) (*pb.BatchReadBlobsResponse, error) {
+func (s *server) BatchReadBlobs(ctx context.Context, req *pb.BatchReadBlobsRequest) (*pb.BatchReadBlobsResponse, error) {
 	resp := &pb.BatchReadBlobsResponse{
 		Responses: make([]*pb.BatchReadBlobsResponse_Response, len(req.Digests)),
 	}
@@ -152,7 +153,7 @@ func (s *testServer) BatchReadBlobs(ctx context.Context, req *pb.BatchReadBlobsR
 			}
 			resp.Responses[i] = rr
 			if data, err := s.readAllBlob(ctx, d); err != nil {
-				rr.Status.Code = status.FromError(err)
+				rr.Status.Code = int32(status.Code(err))
 				rr.Status.Message = err.Error()
 			} else {
 				rr.Data = data
@@ -164,11 +165,11 @@ func (s *testServer) BatchReadBlobs(ctx context.Context, req *pb.BatchReadBlobsR
 	return resp, nil
 }
 
-func (s *testServer) GetTree(*pb.GetTreeRequest, pb.ContentAddressableStorage_GetTreeServer) error {
+func (s *server) GetTree(*pb.GetTreeRequest, pb.ContentAddressableStorage_GetTreeServer) error {
 	return status.Errorf(codes.Unimplemented, "GetTree not implemented")
 }
 
-func (s *testServer) Read(req *bs.ReadRequest, srv bs.ByteStream_ReadServer) error {
+func (s *server) Read(req *bs.ReadRequest, srv bs.ByteStream_ReadServer) error {
 	digest, err := s.bytestreamBlobName(req.ResourceName)
 	if err != nil {
 		return err
@@ -209,7 +210,7 @@ func (s *server) Write(srv bs.ByteStream_WriteServer) error {
 	if err != nil {
 		return err
 	}
-	r := &bytestreamReader{server: srv, buf: req.Data}
+	r := &bytestreamReader{stream: srv, buf: req.Data}
 	if err := s.writeBlob(srv.Context(), digest, r); err != nil {
 		return err
 	} else if r.TotalSize != digest.SizeBytes {
@@ -220,7 +221,7 @@ func (s *server) Write(srv bs.ByteStream_WriteServer) error {
 	})
 }
 
-func (s *testServer) QueryWriteStatus(ctx context.Context, req *bs.QueryWriteStatusRequest) (*bs.QueryWriteStatusResponse, error) {
+func (s *server) QueryWriteStatus(ctx context.Context, req *bs.QueryWriteStatusRequest) (*bs.QueryWriteStatusResponse, error) {
 	// We don't track partial writes or allow resuming them. Might add later if plz gains
 	// the ability to do this as a client.
 	return nil, status.Errorf(codes.NotFound, "write %s not found", req.ResourceName)
@@ -230,17 +231,17 @@ func (s *server) readBlob(ctx context.Context, digest *pb.Digest, offset, length
 	r, err := s.bucket.NewRangeReader(ctx, s.key(digest), offset, length, nil)
 	if err != nil {
 		if gcerrors.Code(err) == gcerrors.NotFound {
-			return status.Errorf(codes.NotFound, "Blob %s not found", digest.Hash)
+			return nil, status.Errorf(codes.NotFound, "Blob %s not found", digest.Hash)
 		}
-		return err
+		return nil, err
 	}
-	return r
+	return r, err
 }
 
 func (s *server) readAllBlob(ctx context.Context, digest *pb.Digest) ([]byte, error) {
 	r, err := s.readBlob(ctx, digest, 0, 0)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer r.Close()
 	return ioutil.ReadAll(r)
@@ -280,7 +281,7 @@ func (s *server) key(digest *pb.Digest) string {
 }
 
 // bytestreamDigest returns the digest corresponding to a bytestream resource name.
-func (s *testServer) bytestreamBlobName(bytestream string) (*pb.Digest, error) {
+func (s *server) bytestreamBlobName(bytestream string) (*pb.Digest, error) {
 	matches := s.bytestreamRe.FindStringSubmatch(bytestream)
 	if matches == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid ResourceName: %s", bytestream)
@@ -288,19 +289,19 @@ func (s *testServer) bytestreamBlobName(bytestream string) (*pb.Digest, error) {
 	size, _ := strconv.Atoi(matches[2])
 	return &pb.Digest{
 		Hash:      matches[1],
-		SizeBytes: size,
+		SizeBytes: int64(size),
 	}, nil
 }
 
 // A bytestreamReader wraps the incoming byte stream into an io.Reader
 type bytestreamReader struct {
-	server    bs.ByteStream_WriteServer
+	stream    bs.ByteStream_WriteServer
 	buf       []byte
 	TotalSize int64
 }
 
 func (r *bytestreamReader) Read(buf []byte) (int, error) {
-	r.TotalSize = len(r.buf)
+	r.TotalSize = int64(len(r.buf))
 	for {
 		if n := len(buf); len(r.buf) <= n {
 			// can fulfil entire read out of existing buffer
@@ -309,7 +310,7 @@ func (r *bytestreamReader) Read(buf []byte) (int, error) {
 			return n, nil
 		}
 		// need to read more to fulfil request
-		req, err = srv.Recv()
+		req, err := r.stream.Recv()
 		if err != nil {
 			if err == io.EOF {
 				// at the end, so copy whatever we have left.
@@ -318,9 +319,9 @@ func (r *bytestreamReader) Read(buf []byte) (int, error) {
 			}
 			return 0, err
 		} else if req.WriteOffset != r.TotalSize {
-			return status.Errorf(codes.InvalidArgument, "incorrect WriteOffset (was %d, should be %d)", req.WriteOffset, r.TotalSize)
+			return 0, status.Errorf(codes.InvalidArgument, "incorrect WriteOffset (was %d, should be %d)", req.WriteOffset, r.TotalSize)
 		}
 		r.buf = append(r.buf, req.Data...)
-		r.TotalSize += len(req.Data)
+		r.TotalSize += int64(len(req.Data))
 	}
 }
