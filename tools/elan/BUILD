@@ -5,5 +5,6 @@ go_binary(
         "//src/cli",
         "//tools/elan/rpc",
         "//third_party/go:logging",
+        "//third_party/go/prometheus",
     ],
 )

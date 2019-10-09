@@ -5,6 +5,7 @@ go_get(
     install = [
         "",
         "internal",
+        "promhttp",
     ],
     deps = [
         ":client_model",
