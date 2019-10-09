@@ -22,7 +22,10 @@ import (
 	pb "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/bazelbuild/remote-apis/build/bazel/semver"
 	"github.com/golang/protobuf/proto"
+	"github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/go-grpc-middleware/recovery"
+	"github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/prometheus/client_golang/prometheus"
 	"gocloud.dev/blob"
 	"gocloud.dev/gcerrors"
 	bs "google.golang.org/genproto/googleapis/bytestream"
@@ -35,6 +38,19 @@ import (
 
 var log = logging.MustGetLogger("rpc")
 
+var bytesWritten = prometheus.NewCounter(prometheus.CounterOpts{
+	Namespace: "elan",
+	Name:      "_bytes_received_total",
+})
+var bytesServed = prometheus.NewCounter(prometheus.CounterOpts{
+	Namespace: "elan",
+	Name:      "elan_bytes_served_total",
+})
+
+func init() {
+
+}
+
 // ServeForever serves on the given port until terminated.
 func ServeForever(port int, storage string) {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
@@ -45,13 +61,20 @@ func ServeForever(port int, storage string) {
 		bytestreamRe: regexp.MustCompile("(?:uploads/[0-9a-f-]+/)?blobs/([0-9a-f]+)/([0-9]+)"),
 	}
 	s := grpc.NewServer(
-		grpc.UnaryInterceptor(grpc_recovery.UnaryServerInterceptor()),
-		grpc.StreamInterceptor(grpc_recovery.StreamServerInterceptor()),
+		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
+			grpc_recovery.UnaryServerInterceptor(),
+			grpc_prometheus.UnaryServerInterceptor,
+		)),
+		grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
+			grpc_recovery.StreamServerInterceptor(),
+			grpc_prometheus.StreamServerInterceptor,
+		)),
 	)
 	pb.RegisterCapabilitiesServer(s, srv)
 	pb.RegisterActionCacheServer(s, srv)
 	pb.RegisterContentAddressableStorageServer(s, srv)
 	bs.RegisterByteStreamServer(s, srv)
+	grpc_prometheus.Register(s)
 	err = s.Serve(lis)
 	log.Fatalf("%s", err)
 }

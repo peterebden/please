@@ -217,6 +217,7 @@ go_get(
     name = "grpc-middleware",
     get = "github.com/grpc-ecosystem/go-grpc-middleware",
     install = [
+        "",
         "recovery",
         "retry",
         "util/metautils",

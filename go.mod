@@ -10,7 +10,7 @@ require (
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/gogo/protobuf v1.2.0 // indirect
-	github.com/golang/protobuf v1.3.1
+	github.com/golang/protobuf v1.3.2
 	github.com/google/shlex v0.0.0-20181106134648-c34317bd91bf
 	github.com/google/uuid v1.1.1
 	github.com/gorilla/websocket v1.4.0 // indirect
@@ -26,12 +26,13 @@ require (
 	github.com/peterebden/go-cli-init v1.0.0
 	github.com/peterebden/tools v0.0.0-20190805132753-b2a0db951d2a
 	github.com/pkg/xattr v0.4.0
+	github.com/prometheus/client_golang v1.1.0 // indirect
 	github.com/shirou/gopsutil v2.18.12+incompatible
 	github.com/sourcegraph/go-diff v0.5.1
 	github.com/sourcegraph/go-lsp v0.0.0-20181119182933-0c7d621186c1
 	github.com/sourcegraph/jsonrpc2 v0.0.0-20190106185902-35a74f039c6a
 	github.com/streamrail/concurrent-map v0.0.0-20160823150647-8bf1e9bacbf6
-	github.com/stretchr/testify v1.2.2
+	github.com/stretchr/testify v1.3.0
 	github.com/texttheater/golang-levenshtein v0.0.0-20180516184445-d188e65d659e
 	github.com/ulikunitz/xz v0.5.6
 	golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2

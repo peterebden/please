@@ -1,17 +1,43 @@
 go_get(
     name = "prometheus",
-    get = "github.com/prometheus/client_golang/...",
+    get = "github.com/prometheus/client_golang/prometheus",
     revision = "v1.1.0",
     deps = [
         ":client_model",
-        ":json-iterator",
-        ":perks",
         ":procfs",
         ":prometheus_common",
+        ":perks",
         "//third_party/go:protobuf",
         "//third_party/go:net",
     ],
     visibility = ["//tools/..."],
+)
+
+go_get(
+    name = "grpc-prometheus",
+    get = "github.com/grpc-ecosystem/go-grpc-prometheus",
+    revision = "v1.2.0",
+    deps = [
+        ":prometheus",
+        "//third_party/go:grpc",
+        "//third_party/go:net",
+    ],
+    visibility = ["//tools/..."],
+)
+
+go_get(
+    name = "procfs",
+    get = "github.com/prometheus/procfs/...",
+    revision = "v0.0.5",
+    deps = [
+        "//third_party/go:errgroup",
+    ],
+)
+
+go_get(
+    name = "perks",
+    get = "github.com/beorn7/perks/...",
+    revision = "v1.0.1",
 )
 
 go_get(
@@ -30,14 +56,20 @@ go_get(
         "expfmt",
         "model",
         "internal/...",
-        "log",
     ],
     revision = "v0.7.0",
     deps = [
         ":client_model",
         ":golang_protobuf_extensions",
-        ":kingpin",
-        ":logrus",
+        "//third_party/go:protobuf",
+    ],
+)
+
+go_get(
+    name = "golang_protobuf_extensions",
+    get = "github.com/matttproud/golang_protobuf_extensions/...",
+    revision = "v1.0.1",
+    deps = [
         "//third_party/go:protobuf",
     ],
 )
