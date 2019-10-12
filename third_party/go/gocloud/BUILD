@@ -19,10 +19,14 @@ go_get(
         "internal/openurl",
         "internal/retry",
         "internal/useragent",
+        "pubsub",
+        "pubsub/gcppubsub",
+        "pubsub/mempubsub",
     ],
     repo = "github.com/google/go-cloud",
     revision = "v0.17.0",
     deps = [
+        ":cloud-pubsub",
         ":cloud-storage",
         ":gax-go",
         ":go.opencensus.io",
@@ -79,6 +83,28 @@ go_get(
     name = "cloud-metadata",
     get = "cloud.google.com/go/compute/metadata",
     revision = "v0.40.0",
+)
+
+go_get(
+    name = "cloud-pubsub",
+    get = "cloud.google.com/go/pubsub",
+    install = [
+        "",
+        "apiv1",
+    ],
+    revision = "v0.40.0",
+    deps = [
+        ":cloud-iam",
+        ":cloud-internal",
+        ":semaphore",
+        "//third_party/go:errgroup",
+    ],
+)
+
+go_get(
+    name = "semaphore",
+    get = "golang.org/x/sync/semaphore",
+    revision = "112230192c580c3556b8cee6403af37a4fc5f28c",
 )
 
 go_get(
