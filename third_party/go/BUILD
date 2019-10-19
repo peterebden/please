@@ -439,6 +439,39 @@ go_get(
     ],
 )
 
+go_get(
+    name = "remote-apis-sdks",
+    get = "github.com/bazelbuild/remote-apis-sdks/go/...",
+    revision = "42f9c104b8ec722238597266bc4c73da43fe331f",
+    deps = [
+        ":annotations",
+        ":bytestream",
+        ":cmp",
+        ":errgroup",
+        ":errors",
+        ":glog",
+        ":grpc",
+        ":longrunning",
+        ":protobuf",
+        ":remote-apis",
+        ":rpcstatus",
+        ":pborman_uuid",
+        "//third_party/go/gocloud:oauth2",
+    ],
+)
+
+go_get(
+    name = "cmp",
+    get = "github.com/google/go-cmp/cmp",
+    revision = "b1c9c4891a6525d98001fea424c8926c6d77bb56",
+)
+
+go_get(
+    name = "glog",
+    get = "github.com/golang/glog",
+    revision = "23def4e6c14b4da8ac2ed8007337bc5eb5007998",
+)
+
 # TODO(peterebden): Splitting up this & the other bits of genproto is a bit of
 #                   a hack. Replace once we have a better way of describing Go modules.
 go_get(
@@ -477,6 +510,13 @@ go_get(
     name = "uuid",
     get = "github.com/google/uuid",
     revision = "v1.1.1",
+)
+
+go_get(
+    name = "pborman_uuid",
+    get = "github.com/pborman/uuid",
+    revision = "v1.2.0",
+    deps = [":uuid"],
 )
 
 go_get(

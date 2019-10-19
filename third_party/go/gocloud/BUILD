@@ -189,6 +189,7 @@ go_get(
         ":cloud-metadata",
         "//third_party/go:net",
     ],
+    visibility = ["//third_party/go/..."],
 )
 
 go_get(
