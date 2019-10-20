@@ -28,7 +28,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"gocloud.dev/blob"
 	"gocloud.dev/gcerrors"
-	bs "google.golang.org/genproto/googleapis/bytestream"
 	rpcstatus "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -44,7 +43,7 @@ var bytesReceived = prometheus.NewCounter(prometheus.CounterOpts{
 })
 var bytesServed = prometheus.NewCounter(prometheus.CounterOpts{
 	Namespace: "elan",
-	Name:      "elan_bytes_served_total",
+	Name:      "bytes_served_total",
 })
 
 func init() {

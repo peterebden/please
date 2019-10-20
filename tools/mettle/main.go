@@ -16,12 +16,13 @@ import (
 var log = logging.MustGetLogger("mettle")
 
 var opts = struct {
-	Usage       string
-	Verbosity   cli.Verbosity `short:"v" long:"verbosity" default:"notice" description:"Verbosity of output (higher number = more output)"`
-	Queue       string        `short:"q" long:"queue" required:"true" description:"URL defining the pub/sub queue to connect to, e.g. gcppubsub://my-queue"`
-	Storage     string        `short:"s" long:"storage" required:"true" description:"URL to connect to the CAS server on, e.g. localhost:7878"`
-	MetricsPort int           `short:"m" long:"metrics_port" description:"Port to serve Prometheus metrics on"`
-	API         struct {
+	Usage         string
+	Verbosity     cli.Verbosity `short:"v" long:"verbosity" default:"notice" description:"Verbosity of output (higher number = more output)"`
+	RequestQueue  string        `short:"q" long:"request_queue" required:"true" description:"URL defining the pub/sub queue to connect to for sending requests, e.g. gcppubsub://my-request-queue"`
+	ResponseQueue string        `short:"r" long:"response_queue" required:"true" description:"URL defining the pub/sub queue to connect to for sending responses, e.g. gcppubsub://my-response-queue"`
+	Storage       string        `short:"s" long:"storage" required:"true" description:"URL to connect to the CAS server on, e.g. localhost:7878"`
+	MetricsPort   int           `short:"m" long:"metrics_port" description:"Port to serve Prometheus metrics on"`
+	API           struct {
 		Port int `short:"p" long:"port" default:"7777" description:"Port to serve on"`
 	} `command:"api" description:"Start as an API server"`
 	Worker struct {
@@ -59,11 +60,11 @@ func main() {
 		}()
 	}
 	if cmd == "dual" {
-		go worker.RunForever(opts.Queue, opts.Storage)
-		api.ServeForever(opts.Dual.Port, opts.Queue, opts.Storage)
+		go worker.RunForever(opts.RequestQueue, opts.ResponseQueue, opts.Storage)
+		api.ServeForever(opts.Dual.Port, opts.RequestQueue, opts.ResponseQueue, opts.Storage)
 	} else if cmd == "worker" {
-		worker.RunForever(opts.Queue, opts.Storage)
+		worker.RunForever(opts.RequestQueue, opts.ResponseQueue, opts.Storage)
 	} else {
-		api.ServeForever(opts.API.Port, opts.Queue, opts.Storage)
+		api.ServeForever(opts.API.Port, opts.RequestQueue, opts.ResponseQueue, opts.Storage)
 	}
 }

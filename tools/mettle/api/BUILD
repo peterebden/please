@@ -11,6 +11,9 @@ go_library(
         "//third_party/go:protobuf",
         "//third_party/go:remote-apis",
         "//third_party/go:rpcstatus",
+        "//third_party/go/prometheus",
+        "//third_party/go/prometheus:grpc-prometheus",
+        "//tools/mettle/common",
     ],
     visibility = ["//tools/mettle/..."],
 )
