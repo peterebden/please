@@ -58,21 +58,30 @@ func ServeForever(port int, requestQueue, responseQueue, storage string) {
 }
 
 func serveForever(port int, requestQueue, responseQueue, storage string) error {
+	s, lis, err := serve(port, requestQueue, responseQueue, storage)
+	if err != nil {
+		return err
+	}
+	return s.Serve(lis)
+}
+
+func serve(port int, requestQueue, responseQueue, storage string) (*grpc.Server, net.Listener, error) {
 	conn, err := grpc.Dial(storage,
 		grpc.WithTimeout(timeout),
 		grpc.WithInsecure(),
 		grpc.WithUnaryInterceptor(grpc_retry.UnaryClientInterceptor(grpc_retry.WithMax(3))))
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		return fmt.Errorf("Failed to listen on %s: %v", lis.Addr(), err)
+		return nil, nil, fmt.Errorf("Failed to listen on %s: %v", lis.Addr(), err)
 	}
 	srv := &server{
 		requests:  common.MustOpenTopic(requestQueue),
 		responses: common.MustOpenSubscription(responseQueue),
 		storage:   pb.NewActionCacheClient(conn),
+		jobs:      map[string]*job{},
 	}
 	go srv.Receive()
 	s := grpc.NewServer(
@@ -87,7 +96,7 @@ func serveForever(port int, requestQueue, responseQueue, storage string) error {
 	)
 	pb.RegisterExecutionServer(s, srv)
 	grpc_prometheus.Register(s)
-	return s.Serve(lis)
+	return s, lis, nil
 }
 
 type server struct {
@@ -141,6 +150,15 @@ func (s *server) Execute(req *pb.ExecuteRequest, stream pb.Execution_ExecuteServ
 		log.Error("Failed to submit work to stream: %s", err)
 		return err
 	}
+	// Send the first message to the client saying that the request is queued
+	metadata, _ := ptypes.MarshalAny(&pb.ExecuteOperationMetadata{
+		Stage:        pb.ExecutionStage_QUEUED,
+		ActionDigest: req.ActionDigest,
+	})
+	stream.Send(&longrunning.Operation{
+		Name:     req.ActionDigest.Hash,
+		Metadata: metadata,
+	})
 	return s.streamEvents(req.ActionDigest, ch, stream)
 }
 

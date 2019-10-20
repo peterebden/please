@@ -17,3 +17,17 @@ go_library(
     ],
     visibility = ["//tools/mettle/..."],
 )
+
+go_test(
+    name = "api_test",
+    srcs = ["api_test.go"],
+    deps = [
+        ":api",
+        "//third_party/go:grpc",
+        "//third_party/go/gocloud",
+        "//third_party/go:testify",
+        "//third_party/go:longrunning",
+        "//third_party/go:remote-apis",
+        "//third_party/go:protobuf",
+    ],
+)

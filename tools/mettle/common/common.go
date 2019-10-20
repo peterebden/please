@@ -10,6 +10,10 @@ import (
 
 	"gocloud.dev/pubsub"
 	"gopkg.in/op/go-logging.v1"
+
+	// Must import the schemes we want to use.
+	_ "gocloud.dev/pubsub/gcppubsub"
+	_ "gocloud.dev/pubsub/mempubsub"
 )
 
 var log = logging.MustGetLogger("common")
