@@ -26,6 +26,7 @@ var opts = struct {
 		Port int `short:"p" long:"port" default:"7777" description:"Port to serve on"`
 	} `command:"api" description:"Start as an API server"`
 	Worker struct {
+		Dir string `short:"d" long:"dir" default:"." description:"Directory to run actions in"`
 	} `command:"worker" description:"Start as a worker"`
 	Dual struct {
 		Port int `short:"p" long:"port" default:"7777" description:"Port to serve on"`
@@ -41,9 +42,23 @@ API server provides the gRPC API that others contact to request execution of tas
 Meanwhile the workers perform the actual execution of tasks.
 
 The two server types communicate via a pub/sub queue. The only configuration usefully
-supported for this is using GCP Cloud Pub/Sub via a gcppubsub:// URL. For testing
-purposes it can be configured in a dual setup where it performs both roles and in this
-setup it can be set up with an in-memory queue using a mem:// URL.
+supported for this is using GCP Cloud Pub/Sub via a gcppubsub:// URL. The queues and
+subscriptions must currently be set up manually.
+For testing purposes it can be configured in a dual setup where it performs both
+roles and in this setup it can be set up with an in-memory queue using a mem:// URL.
+Needless to say, this mode does not synchronise with any other servers.
+
+The specific usage of pubsub bears some note; both worker and api servers have long-running
+stateful operations and hence should not be casually restarted. In the case of the worker
+it will stop receiving new requests when sent a signal, but should be waited for its
+current operation to complete before being terminated. Unfortunately the length of time
+required is outside of our control (since timeouts on actions are set by clients) so we
+cannot give a hard limit of time required.
+For the master, it has no persistent storage, but all servers register to receive all
+events. Hence when a server restarts it will not have knowledge of all currently running
+jobs until an update is sent for each; the suggestion here is to wait for > 1 minute
+(after which each live job should have sent an update, and the new server will know about
+it). This is easy to arrange in a managed environment like Kubernetes.
 `,
 }
 
@@ -60,10 +75,10 @@ func main() {
 		}()
 	}
 	if cmd == "dual" {
-		go worker.RunForever(opts.RequestQueue, opts.ResponseQueue, opts.Storage)
+		go worker.RunForever(opts.RequestQueue, opts.ResponseQueue, opts.Storage, ".")
 		api.ServeForever(opts.Dual.Port, opts.RequestQueue, opts.ResponseQueue, opts.Storage)
 	} else if cmd == "worker" {
-		worker.RunForever(opts.RequestQueue, opts.ResponseQueue, opts.Storage)
+		worker.RunForever(opts.RequestQueue, opts.ResponseQueue, opts.Storage, opts.Worker.Dir)
 	} else {
 		api.ServeForever(opts.API.Port, opts.RequestQueue, opts.ResponseQueue, opts.Storage)
 	}
