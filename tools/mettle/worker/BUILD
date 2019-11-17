@@ -10,6 +10,7 @@ go_library(
         "//third_party/go:logging",
         "//third_party/go:protobuf",
         "//third_party/go:remote-apis",
+        "//third_party/go:remote-apis-sdks",
         "//third_party/go:rpcstatus",
         "//tools/mettle/common",
     ],
