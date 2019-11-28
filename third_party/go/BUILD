@@ -129,7 +129,7 @@ go_get(
     repo = "github.com/grpc/grpc-go",
     revision = "v1.22.0",
     deps = [
-        "//third_party/go/gocloud:oauth2",
+        ":oauth2",
         ":protobuf",
         ":rpcstatus",
         ":unix",
@@ -444,7 +444,7 @@ go_get(
 go_get(
     name = "remote-apis-sdks",
     get = "github.com/bazelbuild/remote-apis-sdks/go/...",
-    revision = "9b2724940cb38a135949367ce0de84ddc2aa53b6",
+    revision = "9f0428c343a9ade6557e40e5d805239e7cd35cf7",
     deps = [
         ":annotations",
         ":bytestream",
@@ -454,11 +454,11 @@ go_get(
         ":glog",
         ":grpc",
         ":longrunning",
+        ":oauth2",
+        ":pborman_uuid",
         ":protobuf",
         ":remote-apis",
         ":rpcstatus",
-        ":pborman_uuid",
-        "//third_party/go/gocloud:oauth2",
     ],
 )
 
@@ -471,7 +471,32 @@ go_get(
 go_get(
     name = "glog",
     get = "github.com/golang/glog",
+    patch = "glog_disable.patch",
     revision = "23def4e6c14b4da8ac2ed8007337bc5eb5007998",
+)
+
+go_get(
+    name = "cloud-metadata",
+    get = "cloud.google.com/go/compute/metadata",
+    revision = "v0.40.0",
+)
+
+go_get(
+    name = "oauth2",
+    get = "golang.org/x/oauth2",
+    install = [
+        "",
+        "google",
+        "internal",
+        "jws",
+        "jwt",
+    ],
+    revision = "d668ce993890a79bda886613ee587a69dd5da7a6",
+    visibility = ["//third_party/go/..."],
+    deps = [
+        ":cloud-metadata",
+        "//third_party/go:net",
+    ],
 )
 
 # TODO(peterebden): Splitting up this & the other bits of genproto is a bit of
