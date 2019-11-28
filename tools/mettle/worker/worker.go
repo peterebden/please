@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path"
 	"syscall"
 	"time"
 
@@ -43,7 +44,6 @@ func runForever(requestQueue, responseQueue, storage, dir string) error {
 	w := &worker{
 		requests:  common.MustOpenSubscription(requestQueue),
 		responses: common.MustOpenTopic(responseQueue),
-		storage:   pb.NewContentAddressableStorageClient(client.CASConnection),
 		client:    client,
 		dir:       dir,
 	}
@@ -67,7 +67,6 @@ func runForever(requestQueue, responseQueue, storage, dir string) error {
 type worker struct {
 	requests     *pubsub.Subscription
 	responses    *pubsub.Topic
-	storage      pb.ContentAddressableStorageClient
 	client       *client.Client
 	dir          string
 	actionDigest *pb.Digest
@@ -134,7 +133,7 @@ func (w *worker) prepareDir(action *pb.Action) *rpcstatus.Status {
 	defer cancel()
 	dirs, err := w.client.GetDirectoryTree(ctx, action.InputRootDigest)
 	if err != nil {
-		return status(codes.InvalidPrecondition, "Invalid input root: %s", err)
+		return status(codes.FailedPrecondition, "Invalid input root: %s", err)
 	}
 	for _, dir := range dirs {
 		dirname := path.Join(w.dir, dir.Name)
@@ -336,7 +335,7 @@ func (w *worker) update(stage pb.ExecutionStage_Value, response *pb.ExecuteRespo
 }
 
 // readBlobToProto reads an entire blob and deserialises it into a message.
-func (c *Client) readBlobToProto(digest *pb.Digest, msg proto.Message) error {
+func (w *worker) readBlobToProto(digest *pb.Digest, msg proto.Message) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	b, err := c.client.ReadBlob(ctx, digest)
