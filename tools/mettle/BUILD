@@ -1,9 +1,10 @@
 go_binary(
-    name = "elan",
+    name = "mettle",
     srcs = ["main.go"],
     deps = [
         "//src/cli",
-        "//tools/mettle/mettle",
+        "//tools/mettle/worker",
+        "//tools/mettle/api",
         "//third_party/go:logging",
         "//third_party/go/prometheus",
     ],

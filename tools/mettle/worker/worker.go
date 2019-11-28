@@ -118,9 +118,9 @@ func (w *worker) readRequest(msg []byte) (*pb.ExecuteRequest, *pb.Action, *pb.Co
 	command := &pb.Command{}
 	if err := proto.Unmarshal(msg, req); err != nil {
 		return nil, nil, nil, status(codes.FailedPrecondition, "Badly serialised request: %s", err)
-	} else if err := c.readBlobToProto(req.ActionDigest, action); err != nil {
+	} else if err := w.readBlobToProto(req.ActionDigest, action); err != nil {
 		return nil, nil, nil, status(codes.FailedPrecondition, "Invalid action digest: %s", err)
-	} else if err := c.readBlobToProto(action.CommandDigest, command); err != nil {
+	} else if err := w.readBlobToProto(action.CommandDigest, command); err != nil {
 		return nil, nil, nil, status(codes.FailedPrecondition, "Invalid command digest: %s", err)
 	}
 	return req, action, command, nil
