@@ -2,6 +2,7 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bazelbuild/remote-apis-sdks/go/pkg/client"
+	sdkdigest "github.com/bazelbuild/remote-apis-sdks/go/pkg/digest"
 	pb "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
@@ -129,31 +131,8 @@ func (w *worker) readRequest(msg []byte) (*pb.ExecuteRequest, *pb.Action, *pb.Co
 func (w *worker) prepareDir(action *pb.Action) *rpcstatus.Status {
 	w.update(pb.ExecutionStage_EXECUTING, nil)
 	w.metadata.InputFetchStartTimestamp = ptypes.TimestampNow()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	dirs, err := w.client.GetDirectoryTree(ctx, action.InputRootDigest)
-	if err != nil {
-		return status(codes.FailedPrecondition, "Invalid input root: %s", err)
-	}
-	for _, dir := range dirs {
-		dirname := path.Join(w.dir, dir.Name)
-		for _, file := range dir.Files {
-			filename := path.Join(dirname, file.Name)
-			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			defer cancel()
-			if _, err := w.client.ReadBlobToFile(ctx, file.Digest, filename); err != nil {
-				return status(codes.InternalError, "Failed to read blob: %s", err)
-			} else if file.IsExecutable {
-				if err := os.Chmod(filename, 0555); err != nil {
-					return status(codes.InternalError, "Failed to make file executable: %s", err)
-				}
-			}
-		}
-		for _, sym := range dir.Symlinks {
-			if err := os.Symlink(sym.Target, path.Join(dirname, sym.Name)); err != nil {
-				return status(codes.InternalError("Failed to create symlink: %s", err))
-			}
-		}
+	if err := w.downloadDirectory(w.dir, action.InputRootDigest); err != nil {
+		return status(codes.Internal, "Failed to download input root: %s", err)
 	}
 	w.metadata.InputFetchCompletedTimestamp = ptypes.TimestampNow()
 	return nil
@@ -161,50 +140,52 @@ func (w *worker) prepareDir(action *pb.Action) *rpcstatus.Status {
 
 // execute runs the actual commands once the inputs are prepared.
 func (w *worker) execute(action *pb.Action, command *pb.Command) *pb.ExecuteResponse {
-	w.ExecutionStartTimestamp = ptypes.TimestampNow()
+	w.metadata.ExecutionStartTimestamp = ptypes.TimestampNow()
 	duration, _ := ptypes.Duration(action.Timeout)
 	ctx, cancel := context.WithTimeout(context.Background(), duration)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, command.Arguments[0], command.Arguments[1:]...)
 	cmd.Dir = path.Join(w.dir, command.WorkingDirectory)
-	cmd.Stdout = &bytes.Buffer{}
-	cmd.Stderr = &bytes.Buffer{}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	cmd.Env = make([]string, len(command.EnvironmentVariables))
 	for i, v := range command.EnvironmentVariables {
 		cmd.Env[i] = v.Name + "=" + v.Value
 	}
 	err := cmd.Run()
-	w.ExecutionCompletedTimestamp = ptypes.TimestampNow()
-	w.OutputUploadStartTimestamp = ptypes.TimestampNow()
+	w.metadata.ExecutionCompletedTimestamp = ptypes.TimestampNow()
+	w.metadata.OutputUploadStartTimestamp = ptypes.TimestampNow()
 	// Regardless of the result, upload stdout / stderr.
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel = context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	stdoutDigest, _ := w.client.WriteBlob(ctx, cmd.Stdout.Bytes())
-	stderrDigest, _ := w.client.WriteBlob(ctx, cmd.Stderr.Bytes())
+	stdoutDigest, _ := w.client.WriteBlob(ctx, stdout.Bytes())
+	stderrDigest, _ := w.client.WriteBlob(ctx, stderr.Bytes())
 	ar := &pb.ActionResult{
-		ExitCode:     int32(cmd.ProcessState.ExitCode()),
-		StdoutDigest: stdoutDigest,
-		StderrDigest: stderrDigest,
-		Metadata:     w.metadata,
+		ExitCode:          int32(cmd.ProcessState.ExitCode()),
+		StdoutDigest:      stdoutDigest.ToProto(),
+		StderrDigest:      stderrDigest.ToProto(),
+		ExecutionMetadata: w.metadata,
 	}
 	if err != nil {
 		return &pb.ExecuteResponse{
-			Status:       status(codes.Unknown, "Execution failed: %s", err),
-			ActionResult: ar,
+			Status: status(codes.Unknown, "Execution failed: %s", err),
+			Result: ar,
 		}
 	}
 	for _, out := range command.OutputPaths {
 		if err := w.collectOutput(ar, out); err != nil {
 			return &pb.ExecuteResponse{
-				Status:       status(codes.Unknown, "Failed to collect output %s: %s", out, err),
-				ActionResult: ar,
+				Status: status(codes.Unknown, "Failed to collect output %s: %s", out, err),
+				Result: ar,
 			}
 		}
 	}
 	w.metadata.OutputUploadCompletedTimestamp = ptypes.TimestampNow()
 	return &pb.ExecuteResponse{
-		Status:       &rpcstatus.Status{Code: codes.OK},
-		ActionResult: ar,
+		Status: &rpcstatus.Status{Code: int32(codes.OK)},
+		Result: ar,
 	}
 }
 
@@ -229,7 +210,7 @@ func (w *worker) collectOutput(ar *pb.ActionResult, output string) error {
 		}
 		ar.OutputDirectories = append(ar.OutputDirectories, &pb.OutputDirectory{
 			Path:       output,
-			TreeDigest: digest,
+			TreeDigest: digest.ToProto(),
 		})
 	} else if mode&os.ModeSymlink == os.ModeSymlink {
 		target, err := os.Readlink(filename)
@@ -260,7 +241,7 @@ func (w *worker) collectDir(dirname string) (*pb.Directory, *pb.Digest, []*pb.Di
 	var children []*pb.Directory
 	entries, err := ioutil.ReadDir(dirname)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	for _, entry := range entries {
 		name := entry.Name()
@@ -268,7 +249,7 @@ func (w *worker) collectDir(dirname string) (*pb.Directory, *pb.Digest, []*pb.Di
 		if entry.IsDir() {
 			dir, digest, children, err := w.collectDir(filename)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			d.Directories = append(d.Directories, &pb.DirectoryNode{
 				Name:   name,
@@ -278,7 +259,7 @@ func (w *worker) collectDir(dirname string) (*pb.Directory, *pb.Digest, []*pb.Di
 		} else if mode := entry.Mode(); mode&os.ModeSymlink != 0 {
 			target, err := os.Readlink(filename)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			d.Symlinks = append(d.Symlinks, &pb.SymlinkNode{
 				Name:   name,
@@ -287,7 +268,7 @@ func (w *worker) collectDir(dirname string) (*pb.Directory, *pb.Digest, []*pb.Di
 		} else {
 			digest, err := w.collectFile(filename)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			d.Files = append(d.Files, &pb.FileNode{
 				Name:         name,
@@ -300,20 +281,22 @@ func (w *worker) collectDir(dirname string) (*pb.Directory, *pb.Digest, []*pb.Di
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	digest, err := w.client.WriteProto(ctx, d)
-	return d, digest, children, err
+	return d, digest.ToProto(), children, err
 }
 
 // collectFile collects a single file.
 func (w *worker) collectFile(filename string) (*pb.Digest, error) {
-	// TODO(peterebden): This is a bit crap (reading the whole thing into memory)
-	//                   but the sdk library doesn't offer much of help here.
+	// This is a bit crap (reading the whole thing into memory) but the sdk library doesn't
+	// offer much of help here. Fundamentally the only alternative is to double-read it since we
+	// need to have the hash before we upload it.
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	return w.client.WriteBlob(ctx, b)
+	d, err := w.client.WriteBlob(ctx, b)
+	return d.ToProto(), err
 }
 
 // update sends an update on the response channel
@@ -327,7 +310,7 @@ func (w *worker) update(stage pb.ExecutionStage_Value, response *pb.ExecuteRespo
 		any, _ = ptypes.MarshalAny(response)
 		op.Result = &longrunning.Operation_Response{Response: any}
 	}
-	body, _ := proto.Marshal()
+	body, _ := proto.Marshal(op)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	return w.responses.Send(ctx, &pubsub.Message{Body: body})
@@ -337,7 +320,7 @@ func (w *worker) update(stage pb.ExecutionStage_Value, response *pb.ExecuteRespo
 func (w *worker) readBlobToProto(digest *pb.Digest, msg proto.Message) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	b, err := c.client.ReadBlob(ctx, digest)
+	b, err := w.client.ReadBlob(ctx, sdkdigest.NewFromProtoUnvalidated(digest))
 	if err != nil {
 		return err
 	}
@@ -346,7 +329,7 @@ func (w *worker) readBlobToProto(digest *pb.Digest, msg proto.Message) error {
 
 func status(code codes.Code, msg string, args ...interface{}) *rpcstatus.Status {
 	return &rpcstatus.Status{
-		Code:    code,
+		Code:    int32(code),
 		Message: fmt.Sprintf(msg, args...),
 	}
 }
