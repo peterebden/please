@@ -1,0 +1,10 @@
+[build]
+HashFunction = sha256
+
+[remote]
+URL = 127.0.0.1:7778
+Instance = mettle
+Name = mettle
+NumExecutors = 20
+HomeDir = /home/pebers
+DisplayUrl = http://127.0.0.1:7779

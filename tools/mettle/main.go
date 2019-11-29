@@ -10,6 +10,7 @@ import (
 
 	"github.com/thought-machine/please/src/cli"
 	"github.com/thought-machine/please/tools/mettle/api"
+	"github.com/thought-machine/please/tools/mettle/common"
 	"github.com/thought-machine/please/tools/mettle/worker"
 )
 
@@ -23,13 +24,13 @@ var opts = struct {
 	Storage       string        `short:"s" long:"storage" required:"true" description:"URL to connect to the CAS server on, e.g. localhost:7878"`
 	MetricsPort   int           `short:"m" long:"metrics_port" description:"Port to serve Prometheus metrics on"`
 	API           struct {
-		Port int `short:"p" long:"port" default:"7777" description:"Port to serve on"`
+		Port int `short:"p" long:"port" default:"7778" description:"Port to serve on"`
 	} `command:"api" description:"Start as an API server"`
 	Worker struct {
 		Dir string `short:"d" long:"dir" default:"." description:"Directory to run actions in"`
 	} `command:"worker" description:"Start as a worker"`
 	Dual struct {
-		Port int `short:"p" long:"port" default:"7777" description:"Port to serve on"`
+		Port int `short:"p" long:"port" default:"7778" description:"Port to serve on"`
 	} `command:"dual" description:"Start as both API server and worker. For local testing only."`
 }{
 	Usage: `
@@ -75,6 +76,9 @@ func main() {
 		}()
 	}
 	if cmd == "dual" {
+		// Must ensure the topics are created ahead of time.
+		common.MustOpenTopic(opts.RequestQueue)
+		common.MustOpenTopic(opts.ResponseQueue)
 		go worker.RunForever(opts.RequestQueue, opts.ResponseQueue, opts.Storage, ".")
 		api.ServeForever(opts.Dual.Port, opts.RequestQueue, opts.ResponseQueue, opts.Storage)
 	} else if cmd == "worker" {

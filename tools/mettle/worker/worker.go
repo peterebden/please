@@ -34,12 +34,15 @@ const timeout = 30 * time.Second
 // RunForever runs the worker, receiving jobs until terminated.
 func RunForever(requestQueue, responseQueue, storage, dir string) {
 	if err := runForever(requestQueue, responseQueue, storage, dir); err != nil {
-		log.Fatalf("%s", err)
+		log.Fatalf("Failed to run: %s", err)
 	}
 }
 
 func runForever(requestQueue, responseQueue, storage, dir string) error {
-	client, err := client.NewClient(context.Background(), "", client.DialParams{Service: storage})
+	client, err := client.NewClient(context.Background(), "mettle", client.DialParams{
+		Service:    storage,
+		NoSecurity: true,
+	})
 	if err != nil {
 		return err
 	}

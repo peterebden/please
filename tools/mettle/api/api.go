@@ -75,7 +75,7 @@ func serve(port int, requestQueue, responseQueue, storage string) (*grpc.Server,
 	}
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		return nil, nil, fmt.Errorf("Failed to listen on %s: %v", lis.Addr(), err)
+		return nil, nil, fmt.Errorf("Failed to listen on %d: %v", port, err)
 	}
 	srv := &server{
 		requests:  common.MustOpenTopic(requestQueue),
