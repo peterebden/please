@@ -1,6 +1,9 @@
 go_library(
     name = "worker",
-    srcs = ["worker.go"],
+    srcs = [
+        "worker.go",
+        "download.go",
+    ],
     deps = [
         "//third_party/go/gocloud",
         "//third_party/go:bytestream",
@@ -13,6 +16,5 @@ go_library(
         "//third_party/go:remote-apis-sdks",
         "//third_party/go:rpcstatus",
         "//tools/mettle/common",
-    ],
-    visibility = ["//tools/mettle/..."],
+    ],    visibility = ["//tools/mettle/..."],
 )

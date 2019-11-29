@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bazelbuild/remote-apis-sdks/go/client"
+	"github.com/bazelbuild/remote-apis-sdks/go/pkg/client"
 	pb "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
@@ -193,8 +193,7 @@ func (w *worker) execute(action *pb.Action, command *pb.Command) *pb.ExecuteResp
 			ActionResult: ar,
 		}
 	}
-	// TODO(peterebden): Convert this to use the new output scheme once that is available.
-	for _, out := range append(command.OutputFiles, command.OutputDirectories...) {
+	for _, out := range command.OutputPaths {
 		if err := w.collectOutput(ar, out); err != nil {
 			return &pb.ExecuteResponse{
 				Status:       status(codes.Unknown, "Failed to collect output %s: %s", out, err),
