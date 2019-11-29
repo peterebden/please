@@ -9,6 +9,7 @@ import (
 	"time"
 
 	pb "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
+	"github.com/bazelbuild/remote-apis/build/bazel/semver"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/grpc-ecosystem/go-grpc-middleware"
@@ -94,6 +95,7 @@ func serve(port int, requestQueue, responseQueue, storage string) (*grpc.Server,
 			grpc_prometheus.StreamServerInterceptor,
 		)),
 	)
+	pb.RegisterCapabilitiesServer(s, srv)
 	pb.RegisterExecutionServer(s, srv)
 	grpc_prometheus.Register(s)
 	return s, lis, nil
@@ -105,6 +107,17 @@ type server struct {
 	storage   pb.ActionCacheClient
 	jobs      map[string]*job
 	mutex     sync.Mutex
+}
+
+func (s *server) GetCapabilities(ctx context.Context, req *pb.GetCapabilitiesRequest) (*pb.ServerCapabilities, error) {
+	return &pb.ServerCapabilities{
+		ExecutionCapabilities: &pb.ExecutionCapabilities{
+			DigestFunction: pb.DigestFunction_SHA256,
+			ExecEnabled:    true,
+		},
+		LowApiVersion:  &semver.SemVer{Major: 2, Minor: 0},
+		HighApiVersion: &semver.SemVer{Major: 2, Minor: 1}, // optimistic
+	}, nil
 }
 
 func (s *server) Execute(req *pb.ExecuteRequest, stream pb.Execution_ExecuteServer) error {

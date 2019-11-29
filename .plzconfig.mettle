@@ -3,6 +3,7 @@ HashFunction = sha256
 
 [remote]
 URL = 127.0.0.1:7778
+CASURL = 127.0.0.1:7777
 Instance = mettle
 Name = mettle
 NumExecutors = 20
