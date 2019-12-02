@@ -255,6 +255,9 @@ func (s *server) process(msg *pubsub.Message) {
 	} else if err := ptypes.UnmarshalAny(op.Metadata, metadata); err != nil {
 		log.Error("Failed to deserialise metadata: %s", err)
 		return
+	} else if metadata.ActionDigest == nil {
+		log.Error("ActionDigest in received message is nil: %s", op)
+		return
 	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()

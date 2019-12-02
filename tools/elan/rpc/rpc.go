@@ -56,10 +56,15 @@ func init() {
 func ServeForever(port int, storage string) {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		log.Fatalf("Failed to listen on %s: %v", lis.Addr(), err)
+		log.Fatalf("Failed to listen on port %d: %v", port, err)
+	}
+	bucket, err := blob.OpenBucket(context.Background(), storage)
+	if err != nil {
+		log.Fatalf("Failed to open storage %s: %v", storage, err)
 	}
 	srv := &server{
 		bytestreamRe: regexp.MustCompile("(?:uploads/[0-9a-f-]+/)?blobs/([0-9a-f]+)/([0-9]+)"),
+		bucket:       bucket,
 	}
 	s := grpc.NewServer(
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(

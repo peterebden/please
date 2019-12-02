@@ -34,6 +34,7 @@ require (
 	github.com/stretchr/testify v1.3.0
 	github.com/texttheater/golang-levenshtein v0.0.0-20180516184445-d188e65d659e
 	github.com/ulikunitz/xz v0.5.6
+	gocloud.dev v0.18.0 // indirect
 	golang.org/x/crypto v0.0.0-20190605123033-f99c8df09eb5
 	golang.org/x/net v0.0.0-20191101175033-0deb6923b6d9
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e

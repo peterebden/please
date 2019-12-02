@@ -85,6 +85,7 @@ func (w *worker) RunTask(ctx context.Context) error {
 	log.Notice("Waiting for next task...")
 	msg, err := w.requests.Receive(ctx)
 	if err != nil {
+		log.Error("Error receiving message: %s", err)
 		return err
 	}
 	// Mark message as consumed now. Alternatively we could not ack it until we
@@ -99,12 +100,17 @@ func (w *worker) RunTask(ctx context.Context) error {
 func (w *worker) runTask(msg []byte) *pb.ExecuteResponse {
 	w.metadata = &pb.ExecutedActionMetadata{WorkerStartTimestamp: ptypes.TimestampNow()}
 	req, action, command, status := w.readRequest(msg)
+	if req != nil {
+		w.actionDigest = req.ActionDigest
+	}
 	if status != nil {
+		log.Error("Bad request: %s", status)
 		return &pb.ExecuteResponse{
 			Result: &pb.ActionResult{},
 			Status: status,
 		}
 	}
+	log.Notice("Received task for action digest %s", w.actionDigest.Hash)
 	w.actionDigest = req.ActionDigest
 	if status := w.prepareDir(action); status != nil {
 		return &pb.ExecuteResponse{
@@ -123,9 +129,9 @@ func (w *worker) readRequest(msg []byte) (*pb.ExecuteRequest, *pb.Action, *pb.Co
 	if err := proto.Unmarshal(msg, req); err != nil {
 		return nil, nil, nil, status(codes.FailedPrecondition, "Badly serialised request: %s", err)
 	} else if err := w.readBlobToProto(req.ActionDigest, action); err != nil {
-		return nil, nil, nil, status(codes.FailedPrecondition, "Invalid action digest: %s", err)
+		return req, nil, nil, status(codes.FailedPrecondition, "Invalid action digest: %s", err)
 	} else if err := w.readBlobToProto(action.CommandDigest, command); err != nil {
-		return nil, nil, nil, status(codes.FailedPrecondition, "Invalid command digest: %s", err)
+		return req, nil, nil, status(codes.FailedPrecondition, "Invalid command digest: %s", err)
 	}
 	return req, action, command, nil
 }
@@ -143,6 +149,7 @@ func (w *worker) prepareDir(action *pb.Action) *rpcstatus.Status {
 
 // execute runs the actual commands once the inputs are prepared.
 func (w *worker) execute(action *pb.Action, command *pb.Command) *pb.ExecuteResponse {
+	log.Notice("Beginning execution for %s", w.actionDigest.Hash)
 	w.metadata.ExecutionStartTimestamp = ptypes.TimestampNow()
 	duration, _ := ptypes.Duration(action.Timeout)
 	ctx, cancel := context.WithTimeout(context.Background(), duration)
@@ -171,6 +178,7 @@ func (w *worker) execute(action *pb.Action, command *pb.Command) *pb.ExecuteResp
 		StderrDigest:      stderrDigest.ToProto(),
 		ExecutionMetadata: w.metadata,
 	}
+	log.Notice("Completed execution for %s", w.actionDigest.Hash)
 	if err != nil {
 		return &pb.ExecuteResponse{
 			Status: status(codes.Unknown, "Execution failed: %s", err),
