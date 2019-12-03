@@ -70,10 +70,12 @@ func ServeForever(port int, storage string) {
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
 			grpc_recovery.UnaryServerInterceptor(),
 			grpc_prometheus.UnaryServerInterceptor,
+			logUnaryRequests,
 		)),
 		grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
 			grpc_recovery.StreamServerInterceptor(),
 			grpc_prometheus.StreamServerInterceptor,
+			logStreamRequests,
 		)),
 	)
 	pb.RegisterCapabilitiesServer(s, srv)
@@ -371,4 +373,24 @@ func (r *countingReader) Read(buf []byte) (int, error) {
 
 func (r *countingReader) Close() error {
 	return r.r.Close()
+}
+
+func logUnaryRequests(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	resp, err := handler(ctx, req)
+	if err != nil {
+		log.Error("Error handling %s: %s", info.FullMethod, err)
+	} else {
+		log.Debug("Handled %s successfully", info.FullMethod)
+	}
+	return resp, err
+}
+
+func logStreamRequests(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	err := handler(srv, ss)
+	if err != nil {
+		log.Error("Error handling %s: %s", info.FullMethod, err)
+	} else {
+		log.Debug("Handled %s successfully", info.FullMethod)
+	}
+	return err
 }
