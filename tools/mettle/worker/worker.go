@@ -50,7 +50,7 @@ func runForever(requestQueue, responseQueue, storage, dir string) error {
 		requests:  common.MustOpenSubscription(requestQueue),
 		responses: common.MustOpenTopic(responseQueue),
 		client:    client,
-		dir:       dir,
+		rootDir:   dir,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	ch := make(chan os.Signal, 2)
@@ -73,7 +73,7 @@ type worker struct {
 	requests     *pubsub.Subscription
 	responses    *pubsub.Topic
 	client       *client.Client
-	dir          string
+	dir, rootDir string
 	actionDigest *pb.Digest
 	metadata     *pb.ExecutedActionMetadata
 }
@@ -139,6 +139,11 @@ func (w *worker) readRequest(msg []byte) (*pb.ExecuteRequest, *pb.Action, *pb.Co
 // prepareDir prepares the directory for executing this request.
 func (w *worker) prepareDir(action *pb.Action) *rpcstatus.Status {
 	w.update(pb.ExecutionStage_EXECUTING, nil)
+	dir, err := ioutil.TempDir(w.rootDir, "mettle")
+	if err != nil {
+		return status(codes.Internal, "Failed to create temp dir: %s", err)
+	}
+	w.dir = dir
 	w.metadata.InputFetchStartTimestamp = ptypes.TimestampNow()
 	if err := w.downloadDirectory(w.dir, action.InputRootDigest); err != nil {
 		return status(codes.Internal, "Failed to download input root: %s", err)
