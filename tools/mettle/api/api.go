@@ -121,6 +121,10 @@ func (s *server) GetCapabilities(ctx context.Context, req *pb.GetCapabilitiesReq
 }
 
 func (s *server) Execute(req *pb.ExecuteRequest, stream pb.Execution_ExecuteServer) error {
+	if req.ActionDigest == nil {
+		return status.Errorf(codes.InvalidArgument, "Action digest not specified")
+	}
+	log.Debug("Received an ExecuteRequest for %s", req.ActionDigest.Hash)
 	totalRequests.Inc()
 	currentRequests.Inc()
 	if !req.SkipCacheLookup {

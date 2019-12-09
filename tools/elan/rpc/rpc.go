@@ -111,11 +111,11 @@ func (s *server) GetCapabilities(ctx context.Context, req *pb.GetCapabilitiesReq
 
 func (s *server) GetActionResult(ctx context.Context, req *pb.GetActionResultRequest) (*pb.ActionResult, error) {
 	ar := &pb.ActionResult{}
-	if err := s.readBlobIntoMessage(ctx, req.ActionDigest, ar); err != nil {
+	if err := s.readBlobIntoMessage(ctx, "ac", req.ActionDigest, ar); err != nil {
 		return nil, err
 	}
 	if req.InlineStdout && ar.StdoutDigest != nil {
-		b, err := s.readAllBlob(ctx, ar.StdoutDigest)
+		b, err := s.readAllBlob(ctx, "cas", ar.StdoutDigest)
 		ar.StdoutRaw = b
 		return ar, err
 	}
@@ -123,7 +123,7 @@ func (s *server) GetActionResult(ctx context.Context, req *pb.GetActionResultReq
 }
 
 func (s *server) UpdateActionResult(ctx context.Context, req *pb.UpdateActionResultRequest) (*pb.ActionResult, error) {
-	return req.ActionResult, s.writeMessage(ctx, req.ActionDigest, req.ActionResult)
+	return req.ActionResult, s.writeMessage(ctx, "ac", req.ActionDigest, req.ActionResult)
 }
 
 func (s *server) FindMissingBlobs(ctx context.Context, req *pb.FindMissingBlobsRequest) (*pb.FindMissingBlobsResponse, error) {
@@ -133,7 +133,7 @@ func (s *server) FindMissingBlobs(ctx context.Context, req *pb.FindMissingBlobsR
 	var mutex sync.Mutex
 	for _, d := range req.BlobDigests {
 		go func(d *pb.Digest) {
-			if exists, _ := s.bucket.Exists(ctx, s.key(d)); !exists {
+			if exists, _ := s.bucket.Exists(ctx, s.key("cas", d)); !exists {
 				mutex.Lock()
 				resp.MissingBlobDigests = append(resp.MissingBlobDigests, d)
 				mutex.Unlock()
@@ -161,7 +161,7 @@ func (s *server) BatchUpdateBlobs(ctx context.Context, req *pb.BatchUpdateBlobsR
 			if len(r.Data) != int(r.Digest.SizeBytes) {
 				rr.Status.Code = int32(codes.InvalidArgument)
 				rr.Status.Message = fmt.Sprintf("Blob sizes do not match (%d / %d)", len(r.Data), r.Digest.SizeBytes)
-			} else if err := s.writeBlob(ctx, r.Digest, bytes.NewReader(r.Data)); err != nil {
+			} else if err := s.writeBlob(ctx, "cas", r.Digest, bytes.NewReader(r.Data)); err != nil {
 				rr.Status.Code = int32(status.Code(err))
 				rr.Status.Message = err.Error()
 			} else {
@@ -187,7 +187,7 @@ func (s *server) BatchReadBlobs(ctx context.Context, req *pb.BatchReadBlobsReque
 				Digest: d,
 			}
 			resp.Responses[i] = rr
-			if data, err := s.readAllBlob(ctx, d); err != nil {
+			if data, err := s.readAllBlob(ctx, "cas", d); err != nil {
 				rr.Status.Code = int32(status.Code(err))
 				rr.Status.Message = err.Error()
 			} else {
@@ -212,7 +212,7 @@ func (s *server) Read(req *bs.ReadRequest, srv bs.ByteStream_ReadServer) error {
 	if req.ReadLimit == 0 {
 		req.ReadLimit = -1
 	}
-	r, err := s.readBlob(srv.Context(), digest, req.ReadOffset, req.ReadLimit)
+	r, err := s.readBlob(srv.Context(), "cas", digest, req.ReadOffset, req.ReadLimit)
 	if err != nil {
 		return err
 	}
@@ -246,7 +246,7 @@ func (s *server) Write(srv bs.ByteStream_WriteServer) error {
 		return err
 	}
 	r := &bytestreamReader{stream: srv, buf: req.Data}
-	if err := s.writeBlob(srv.Context(), digest, r); err != nil {
+	if err := s.writeBlob(srv.Context(), "cas", digest, r); err != nil {
 		return err
 	} else if r.TotalSize != digest.SizeBytes {
 		return status.Errorf(codes.InvalidArgument, "invalid digest size")
@@ -263,8 +263,8 @@ func (s *server) QueryWriteStatus(ctx context.Context, req *bs.QueryWriteStatusR
 	return nil, status.Errorf(codes.NotFound, "write %s not found", req.ResourceName)
 }
 
-func (s *server) readBlob(ctx context.Context, digest *pb.Digest, offset, length int64) (io.ReadCloser, error) {
-	r, err := s.bucket.NewRangeReader(ctx, s.key(digest), offset, length, nil)
+func (s *server) readBlob(ctx context.Context, prefix string, digest *pb.Digest, offset, length int64) (io.ReadCloser, error) {
+	r, err := s.bucket.NewRangeReader(ctx, s.key(prefix, digest), offset, length, nil)
 	if err != nil {
 		if gcerrors.Code(err) == gcerrors.NotFound {
 			return nil, status.Errorf(codes.NotFound, "Blob %s not found", digest.Hash)
@@ -274,8 +274,8 @@ func (s *server) readBlob(ctx context.Context, digest *pb.Digest, offset, length
 	return &countingReader{r: r}, err
 }
 
-func (s *server) readAllBlob(ctx context.Context, digest *pb.Digest) ([]byte, error) {
-	r, err := s.readBlob(ctx, digest, 0, 0)
+func (s *server) readAllBlob(ctx context.Context, prefix string, digest *pb.Digest) ([]byte, error) {
+	r, err := s.readBlob(ctx, prefix, digest, 0, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -283,8 +283,8 @@ func (s *server) readAllBlob(ctx context.Context, digest *pb.Digest) ([]byte, er
 	return ioutil.ReadAll(r)
 }
 
-func (s *server) readBlobIntoMessage(ctx context.Context, digest *pb.Digest, message proto.Message) error {
-	if b, err := s.readAllBlob(ctx, digest); err != nil {
+func (s *server) readBlobIntoMessage(ctx context.Context, prefix string, digest *pb.Digest, message proto.Message) error {
+	if b, err := s.readAllBlob(ctx, prefix, digest); err != nil {
 		return err
 	} else if err := proto.Unmarshal(b, message); err != nil {
 		return status.Errorf(codes.Unknown, "%s", err)
@@ -292,9 +292,9 @@ func (s *server) readBlobIntoMessage(ctx context.Context, digest *pb.Digest, mes
 	return nil
 }
 
-func (s *server) writeBlob(ctx context.Context, digest *pb.Digest, r io.Reader) error {
+func (s *server) writeBlob(ctx context.Context, prefix string, digest *pb.Digest, r io.Reader) error {
 	ctx, cancel := context.WithCancel(ctx)
-	w, err := s.bucket.NewWriter(ctx, s.key(digest), nil)
+	w, err := s.bucket.NewWriter(ctx, s.key(prefix, digest), nil)
 	if err != nil {
 		return err
 	}
@@ -307,16 +307,16 @@ func (s *server) writeBlob(ctx context.Context, digest *pb.Digest, r io.Reader) 
 	return w.Close()
 }
 
-func (s *server) writeMessage(ctx context.Context, digest *pb.Digest, message proto.Message) error {
+func (s *server) writeMessage(ctx context.Context, prefix string, digest *pb.Digest, message proto.Message) error {
 	b, err := proto.Marshal(message)
 	if err != nil {
 		return err
 	}
-	return s.writeBlob(ctx, digest, bytes.NewReader(b))
+	return s.writeBlob(ctx, prefix, digest, bytes.NewReader(b))
 }
 
-func (s *server) key(digest *pb.Digest) string {
-	return fmt.Sprintf("%c/%c/%s", digest.Hash[0], digest.Hash[1], digest.Hash)
+func (s *server) key(prefix string, digest *pb.Digest) string {
+	return fmt.Sprintf("%s/%c%c/%s", prefix, digest.Hash[0], digest.Hash[1], digest.Hash)
 }
 
 // bytestreamDigest returns the digest corresponding to a bytestream resource name.
