@@ -132,14 +132,15 @@ func (s *server) FindMissingBlobs(ctx context.Context, req *pb.FindMissingBlobsR
 	wg.Add(len(req.BlobDigests))
 	var mutex sync.Mutex
 	for _, d := range req.BlobDigests {
-		go func() {
+		go func(d *pb.Digest) {
 			if exists, _ := s.bucket.Exists(ctx, s.key(d)); !exists {
 				mutex.Lock()
 				resp.MissingBlobDigests = append(resp.MissingBlobDigests, d)
 				mutex.Unlock()
+				log.Debug("Blob %s found to be missing", d.Hash)
 			}
 			wg.Done()
-		}()
+		}(d)
 	}
 	return resp, nil
 }
@@ -151,7 +152,7 @@ func (s *server) BatchUpdateBlobs(ctx context.Context, req *pb.BatchUpdateBlobsR
 	var wg sync.WaitGroup
 	wg.Add(len(req.Requests))
 	for i, r := range req.Requests {
-		go func() {
+		go func(i int, r *pb.BatchUpdateBlobsRequest_Request) {
 			rr := &pb.BatchUpdateBlobsResponse_Response{
 				Status: &rpcstatus.Status{},
 			}
@@ -162,9 +163,11 @@ func (s *server) BatchUpdateBlobs(ctx context.Context, req *pb.BatchUpdateBlobsR
 			} else if err := s.writeBlob(ctx, r.Digest, bytes.NewReader(r.Data)); err != nil {
 				rr.Status.Code = int32(status.Code(err))
 				rr.Status.Message = err.Error()
+			} else {
+				log.Debug("Stored blob with digest %s", r.Digest.Hash)
 			}
 			wg.Done()
-		}()
+		}(i, r)
 	}
 	wg.Wait()
 	return resp, nil
@@ -177,7 +180,7 @@ func (s *server) BatchReadBlobs(ctx context.Context, req *pb.BatchReadBlobsReque
 	var wg sync.WaitGroup
 	wg.Add(len(req.Digests))
 	for i, d := range req.Digests {
-		go func() {
+		go func(i int, d *pb.Digest) {
 			rr := &pb.BatchReadBlobsResponse_Response{
 				Status: &rpcstatus.Status{},
 				Digest: d,
@@ -190,7 +193,7 @@ func (s *server) BatchReadBlobs(ctx context.Context, req *pb.BatchReadBlobsReque
 				rr.Data = data
 			}
 			wg.Done()
-		}()
+		}(i, d)
 	}
 	wg.Wait()
 	return resp, nil
@@ -247,6 +250,7 @@ func (s *server) Write(srv bs.ByteStream_WriteServer) error {
 	} else if r.TotalSize != digest.SizeBytes {
 		return status.Errorf(codes.InvalidArgument, "invalid digest size")
 	}
+	log.Debug("Stored blob with hash %s", digest.Hash)
 	return srv.SendAndClose(&bs.WriteResponse{
 		CommittedSize: r.TotalSize,
 	})
