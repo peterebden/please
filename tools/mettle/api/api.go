@@ -192,10 +192,12 @@ func (s *server) WaitExecution(req *pb.WaitExecutionRequest, stream pb.Execution
 func (s *server) streamEvents(digest *pb.Digest, ch <-chan *longrunning.Operation, stream pb.Execution_ExecuteServer) error {
 	for op := range ch {
 		if err := stream.Send(op); err != nil {
+			log.Warning("Failed to forward event for %s: %s", digest.Hash, err)
 			s.stopStream(digest, ch)
 			return err
 		}
 	}
+	log.Info("Completed stream for %s", digest.Hash)
 	return nil
 }
 
@@ -214,6 +216,7 @@ func (s *server) eventStream(digest *pb.Digest, create bool) <-chan *longrunning
 		})
 		j = &job{Current: &longrunning.Operation{Metadata: any}}
 		s.jobs[digest.Hash] = j
+		log.Debug("Created job for %s", digest.Hash)
 	}
 	ch := make(chan *longrunning.Operation, 100)
 	j.Streams = append(j.Streams, ch)
@@ -263,10 +266,12 @@ func (s *server) process(msg *pubsub.Message) {
 		log.Error("ActionDigest in received message is nil: %s", op)
 		return
 	}
+	log.Info("Got an update for %s", metadata.ActionDigest.Hash)
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if j, present := s.jobs[metadata.ActionDigest.Hash]; !present {
 		// This is legit, we are getting an update about a job someone else started.
+		log.Debug("Update for %s is for a previously unknown job", metadata.ActionDigest.Hash)
 		s.jobs[metadata.ActionDigest.Hash] = &job{Current: op}
 	} else {
 		j.Current = op
@@ -276,6 +281,7 @@ func (s *server) process(msg *pubsub.Message) {
 				defer func() {
 					recover() // Avoid any chance of panicking from a 'send on closed channel'
 				}()
+				log.Debug("Dispatching update for %s", metadata.ActionDigest.Hash)
 				ch <- op
 				if op.Done {
 					close(ch)
@@ -283,6 +289,7 @@ func (s *server) process(msg *pubsub.Message) {
 			}(stream)
 		}
 		if op.Done {
+			log.Info("Job %s is complete", metadata.ActionDigest.Hash)
 			delete(s.jobs, metadata.ActionDigest.Hash)
 			currentRequests.Dec()
 		}

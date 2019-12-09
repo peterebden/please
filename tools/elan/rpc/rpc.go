@@ -302,6 +302,7 @@ func (s *server) writeBlob(ctx context.Context, prefix string, digest *pb.Digest
 	bytesReceived.Add(float64(n))
 	if err != nil {
 		cancel()
+		w.Close()
 		return err
 	}
 	return w.Close()
@@ -383,7 +384,11 @@ func (r *countingReader) Close() error {
 func logUnaryRequests(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	resp, err := handler(ctx, req)
 	if err != nil {
-		log.Error("Error handling %s: %s", info.FullMethod, err)
+		if status.Code(err) != codes.NotFound {
+			log.Error("Error handling %s: %s", info.FullMethod, err)
+		} else {
+			log.Debug("Not found on %s: %s", info.FullMethod, err)
+		}
 	} else {
 		log.Debug("Handled %s successfully", info.FullMethod)
 	}

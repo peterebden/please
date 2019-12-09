@@ -113,6 +113,7 @@ func (w *worker) runTask(msg []byte) *pb.ExecuteResponse {
 	log.Notice("Received task for action digest %s", w.actionDigest.Hash)
 	w.actionDigest = req.ActionDigest
 	if status := w.prepareDir(action); status != nil {
+		log.Warning("Failed to prepare directory for action digest %s: %s", w.actionDigest.Hash, status)
 		return &pb.ExecuteResponse{
 			Result: &pb.ActionResult{},
 			Status: status,
@@ -138,6 +139,7 @@ func (w *worker) readRequest(msg []byte) (*pb.ExecuteRequest, *pb.Action, *pb.Co
 
 // prepareDir prepares the directory for executing this request.
 func (w *worker) prepareDir(action *pb.Action) *rpcstatus.Status {
+	log.Info("Preparing directory for %s", w.actionDigest.Hash)
 	w.update(pb.ExecutionStage_EXECUTING, nil)
 	dir, err := ioutil.TempDir(w.rootDir, "mettle")
 	if err != nil {
@@ -149,6 +151,7 @@ func (w *worker) prepareDir(action *pb.Action) *rpcstatus.Status {
 		return status(codes.Internal, "Failed to download input root: %s", err)
 	}
 	w.metadata.InputFetchCompletedTimestamp = ptypes.TimestampNow()
+	log.Info("Prepared directory for %s", w.actionDigest.Hash)
 	return nil
 }
 
@@ -321,7 +324,10 @@ func (w *worker) update(stage pb.ExecutionStage_Value, response *pb.ExecuteRespo
 		Stage:        stage,
 		ActionDigest: w.actionDigest,
 	})
-	op := &longrunning.Operation{Metadata: any}
+	op := &longrunning.Operation{
+		Metadata: any,
+		Done:     stage == pb.ExecutionStage_COMPLETED,
+	}
 	if response != nil {
 		any, _ = ptypes.MarshalAny(response)
 		op.Result = &longrunning.Operation_Response{Response: any}
