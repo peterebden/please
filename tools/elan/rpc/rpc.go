@@ -142,6 +142,7 @@ func (s *server) FindMissingBlobs(ctx context.Context, req *pb.FindMissingBlobsR
 			wg.Done()
 		}(d)
 	}
+	wg.Wait()
 	return resp, nil
 }
 
