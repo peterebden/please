@@ -201,6 +201,18 @@ func (w *worker) execute(action *pb.Action, command *pb.Command) *pb.ExecuteResp
 			}
 		}
 	}
+	ctx, cancel = context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if _, err := w.client.UpdateActionResult(ctx, &pb.UpdateActionResultRequest{
+		InstanceName: w.client.InstanceName,
+		ActionDigest: w.actionDigest,
+		ActionResult: ar,
+	}); err != nil {
+		return &pb.ExecuteResponse{
+			Status: status(codes.Unknown, "Failed to upload action result: %s", err),
+			Result: ar,
+		}
+	}
 	w.metadata.OutputUploadCompletedTimestamp = ptypes.TimestampNow()
 	return &pb.ExecuteResponse{
 		Status: &rpcstatus.Status{Code: int32(codes.OK)},
@@ -241,7 +253,7 @@ func (w *worker) collectOutput(ar *pb.ActionResult, output string) error {
 			Target: target,
 		})
 	} else { // regular file
-		digest, err := w.collectFile(output)
+		digest, err := w.collectFile(filename)
 		if err != nil {
 			return err
 		}

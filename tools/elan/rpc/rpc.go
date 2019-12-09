@@ -294,6 +294,7 @@ func (s *server) readBlobIntoMessage(ctx context.Context, prefix string, digest 
 
 func (s *server) writeBlob(ctx context.Context, prefix string, digest *pb.Digest, r io.Reader) error {
 	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	w, err := s.bucket.NewWriter(ctx, s.key(prefix, digest), nil)
 	if err != nil {
 		return err
@@ -301,7 +302,6 @@ func (s *server) writeBlob(ctx context.Context, prefix string, digest *pb.Digest
 	n, err := io.Copy(w, r)
 	bytesReceived.Add(float64(n))
 	if err != nil {
-		cancel()
 		w.Close()
 		return err
 	}
