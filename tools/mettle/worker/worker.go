@@ -226,7 +226,7 @@ func (w *worker) collectOutput(ar *pb.ActionResult, output string) error {
 	if info, err := os.Lstat(filename); err != nil {
 		return err
 	} else if mode := info.Mode(); info.IsDir() {
-		dir, _, children, err := w.collectDir(output)
+		dir, _, children, err := w.collectDir(filename)
 		if err != nil {
 			return err
 		}
