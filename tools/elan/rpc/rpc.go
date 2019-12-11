@@ -68,14 +68,14 @@ func ServeForever(port int, storage string) {
 	}
 	s := grpc.NewServer(
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
-			grpc_recovery.UnaryServerInterceptor(),
-			grpc_prometheus.UnaryServerInterceptor,
 			logUnaryRequests,
+			grpc_prometheus.UnaryServerInterceptor,
+			grpc_recovery.UnaryServerInterceptor(),
 		)),
 		grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
-			grpc_recovery.StreamServerInterceptor(),
-			grpc_prometheus.StreamServerInterceptor,
 			logStreamRequests,
+			grpc_prometheus.StreamServerInterceptor,
+			grpc_recovery.StreamServerInterceptor(),
 		)),
 	)
 	pb.RegisterCapabilitiesServer(s, srv)
