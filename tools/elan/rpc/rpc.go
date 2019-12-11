@@ -249,7 +249,7 @@ func (s *server) Write(srv bs.ByteStream_WriteServer) error {
 	if err := s.writeBlob(srv.Context(), "cas", digest, r); err != nil {
 		return err
 	} else if r.TotalSize != digest.SizeBytes {
-		return status.Errorf(codes.InvalidArgument, "invalid digest size")
+		return status.Errorf(codes.InvalidArgument, "invalid digest size (digest: %d, wrote: %d)", digest.SizeBytes, r.TotalSize)
 	}
 	log.Debug("Stored blob with hash %s", digest.Hash)
 	return srv.SendAndClose(&bs.WriteResponse{
@@ -341,9 +341,14 @@ type bytestreamReader struct {
 }
 
 func (r *bytestreamReader) Read(buf []byte) (int, error) {
-	r.TotalSize = int64(len(r.buf))
+	n, err := r.read(buf)
+	r.TotalSize += int64(n)
+	return n, err
+}
+
+func (r *bytestreamReader) read(buf []byte) (int, error) {
 	for {
-		if n := len(buf); len(r.buf) <= n {
+		if n := len(buf); len(r.buf) >= n {
 			// can fulfil entire read out of existing buffer
 			copy(buf, r.buf[:n])
 			r.buf = r.buf[n:]
@@ -362,7 +367,6 @@ func (r *bytestreamReader) Read(buf []byte) (int, error) {
 			return 0, status.Errorf(codes.InvalidArgument, "incorrect WriteOffset (was %d, should be %d)", req.WriteOffset, r.TotalSize)
 		}
 		r.buf = append(r.buf, req.Data...)
-		r.TotalSize += int64(len(req.Data))
 	}
 }
 
