@@ -275,7 +275,7 @@ func (s *server) readBlob(ctx context.Context, prefix string, digest *pb.Digest,
 }
 
 func (s *server) readAllBlob(ctx context.Context, prefix string, digest *pb.Digest) ([]byte, error) {
-	r, err := s.readBlob(ctx, prefix, digest, 0, 0)
+	r, err := s.readBlob(ctx, prefix, digest, 0, -1)
 	if err != nil {
 		return nil, err
 	}
