@@ -33,13 +33,13 @@ var log = logging.MustGetLogger("worker")
 const timeout = 30 * time.Second
 
 // RunForever runs the worker, receiving jobs until terminated.
-func RunForever(requestQueue, responseQueue, storage, dir string) {
-	if err := runForever(requestQueue, responseQueue, storage, dir); err != nil {
+func RunForever(requestQueue, responseQueue, storage, dir string, clean bool) {
+	if err := runForever(requestQueue, responseQueue, storage, dir, clean); err != nil {
 		log.Fatalf("Failed to run: %s", err)
 	}
 }
 
-func runForever(requestQueue, responseQueue, storage, dir string) error {
+func runForever(requestQueue, responseQueue, storage, dir string, clean bool) error {
 	client, err := client.NewClient(context.Background(), "mettle", client.DialParams{
 		Service:    storage,
 		NoSecurity: true,
@@ -52,6 +52,7 @@ func runForever(requestQueue, responseQueue, storage, dir string) error {
 		responses: common.MustOpenTopic(responseQueue),
 		client:    client,
 		rootDir:   dir,
+		clean:     clean,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	ch := make(chan os.Signal, 2)
@@ -77,6 +78,7 @@ type worker struct {
 	dir, rootDir string
 	actionDigest *pb.Digest
 	metadata     *pb.ExecutedActionMetadata
+	clean        bool
 }
 
 // RunTask runs a single task.
@@ -167,6 +169,13 @@ func (w *worker) prepareDir(action *pb.Action, command *pb.Command) *rpcstatus.S
 // execute runs the actual commands once the inputs are prepared.
 func (w *worker) execute(action *pb.Action, command *pb.Command) *pb.ExecuteResponse {
 	log.Notice("Beginning execution for %s", w.actionDigest.Hash)
+	if w.clean {
+		defer func() {
+			if err := os.RemoveAll(w.dir); err != nil {
+				log.Error("Failed to clean workdir: %s", err)
+			}
+		}()
+	}
 	w.metadata.ExecutionStartTimestamp = ptypes.TimestampNow()
 	duration, _ := ptypes.Duration(action.Timeout)
 	ctx, cancel := context.WithTimeout(context.Background(), duration)

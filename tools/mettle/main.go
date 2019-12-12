@@ -27,11 +27,13 @@ var opts = struct {
 		Port int `short:"p" long:"port" default:"7778" description:"Port to serve on"`
 	} `command:"api" description:"Start as an API server"`
 	Worker struct {
-		Dir string `short:"d" long:"dir" default:"." description:"Directory to run actions in"`
+		Dir     string `short:"d" long:"dir" default:"." description:"Directory to run actions in"`
+		NoClean bool   `long:"noclean" description:"Don't clean workdirs after actions complete"`
 	} `command:"worker" description:"Start as a worker"`
 	Dual struct {
-		Port int    `short:"p" long:"port" default:"7778" description:"Port to serve on"`
-		Dir  string `short:"d" long:"dir" default:"." description:"Directory to run actions in"`
+		Port    int    `short:"p" long:"port" default:"7778" description:"Port to serve on"`
+		Dir     string `short:"d" long:"dir" default:"." description:"Directory to run actions in"`
+		NoClean bool   `long:"noclean" description:"Don't clean workdirs after actions complete"`
 	} `command:"dual" description:"Start as both API server and worker. For local testing only."`
 }{
 	Usage: `
@@ -80,10 +82,10 @@ func main() {
 		// Must ensure the topics are created ahead of time.
 		common.MustOpenTopic(opts.RequestQueue)
 		common.MustOpenTopic(opts.ResponseQueue)
-		go worker.RunForever(opts.RequestQueue, opts.ResponseQueue, opts.Storage, opts.Dual.Dir)
+		go worker.RunForever(opts.RequestQueue, opts.ResponseQueue, opts.Storage, opts.Dual.Dir, !opts.Dual.NoClean)
 		api.ServeForever(opts.Dual.Port, opts.RequestQueue, opts.ResponseQueue, opts.Storage)
 	} else if cmd == "worker" {
-		worker.RunForever(opts.RequestQueue, opts.ResponseQueue, opts.Storage, opts.Worker.Dir)
+		worker.RunForever(opts.RequestQueue, opts.ResponseQueue, opts.Storage, opts.Worker.Dir, !opts.Worker.NoClean)
 	} else {
 		api.ServeForever(opts.API.Port, opts.RequestQueue, opts.ResponseQueue, opts.Storage)
 	}
