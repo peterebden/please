@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path"
+	"strings"
 	"syscall"
 	"time"
 
@@ -112,7 +113,7 @@ func (w *worker) runTask(msg []byte) *pb.ExecuteResponse {
 	}
 	log.Notice("Received task for action digest %s", w.actionDigest.Hash)
 	w.actionDigest = req.ActionDigest
-	if status := w.prepareDir(action); status != nil {
+	if status := w.prepareDir(action, command); status != nil {
 		log.Warning("Failed to prepare directory for action digest %s: %s", w.actionDigest.Hash, status)
 		return &pb.ExecuteResponse{
 			Result: &pb.ActionResult{},
@@ -138,7 +139,7 @@ func (w *worker) readRequest(msg []byte) (*pb.ExecuteRequest, *pb.Action, *pb.Co
 }
 
 // prepareDir prepares the directory for executing this request.
-func (w *worker) prepareDir(action *pb.Action) *rpcstatus.Status {
+func (w *worker) prepareDir(action *pb.Action, command *pb.Command) *rpcstatus.Status {
 	log.Info("Preparing directory for %s", w.actionDigest.Hash)
 	w.update(pb.ExecutionStage_EXECUTING, nil)
 	dir, err := ioutil.TempDir(w.rootDir, "mettle")
@@ -149,6 +150,14 @@ func (w *worker) prepareDir(action *pb.Action) *rpcstatus.Status {
 	w.metadata.InputFetchStartTimestamp = ptypes.TimestampNow()
 	if err := w.downloadDirectory(w.dir, action.InputRootDigest); err != nil {
 		return status(codes.Internal, "Failed to download input root: %s", err)
+	}
+	// We are required to create directories for all the outputs.
+	for _, out := range command.OutputPaths {
+		if dir := path.Dir(out); out != "" && out != "." {
+			if err := os.MkdirAll(path.Join(w.dir, dir), os.ModeDir|0755); err != nil {
+				return status(codes.Internal, "Failed to create directory: %s", err)
+			}
+		}
 	}
 	w.metadata.InputFetchCompletedTimestamp = ptypes.TimestampNow()
 	log.Info("Prepared directory for %s", w.actionDigest.Hash)
@@ -188,8 +197,11 @@ func (w *worker) execute(action *pb.Action, command *pb.Command) *pb.ExecuteResp
 	}
 	log.Notice("Completed execution for %s", w.actionDigest.Hash)
 	if err != nil {
+		msg := "Execution failed: " + err.Error()
+		msg = appendStd(msg, "Stdout", stdout.String())
+		msg = appendStd(msg, "Stderr", stderr.String())
 		return &pb.ExecuteResponse{
-			Status: status(codes.Unknown, "Execution failed: %s", err),
+			Status: status(codes.Unknown, msg),
 			Result: ar,
 		}
 	}
@@ -366,4 +378,13 @@ func status(code codes.Code, msg string, args ...interface{}) *rpcstatus.Status 
 		Code:    int32(code),
 		Message: fmt.Sprintf(msg, args...),
 	}
+}
+
+// appendStd appends the contents of a std stream to an error message, if it is not empty.
+func appendStd(msg, name, contents string) string {
+	contents = strings.TrimSpace(contents)
+	if contents == "" {
+		return msg
+	}
+	return fmt.Sprintf("%s\n%s:\n%s\n", msg, name, contents)
 }
