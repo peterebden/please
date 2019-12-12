@@ -188,6 +188,12 @@ func (w *worker) execute(action *pb.Action, command *pb.Command) *pb.ExecuteResp
 	cmd.Stderr = stderr
 	cmd.Env = make([]string, len(command.EnvironmentVariables))
 	for i, v := range command.EnvironmentVariables {
+		// This is a crappy little hack; tool paths that are made relative don't always work
+		// (notably for "go build" which needs an absolute path for -toolexec). For now, we
+		// fix up here, but ideally we shouldn't need to know the detail of this.
+		if strings.HasPrefix(v.Name, "TOOL") && !path.IsAbs(v.Value) && strings.ContainsRune(v.Value, '/') {
+			v.Value = path.Join(w.dir, v.Value)
+		}
 		cmd.Env[i] = v.Name + "=" + v.Value
 	}
 	err := cmd.Run()
