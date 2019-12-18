@@ -81,6 +81,8 @@ type RemoteClient interface {
 	PrintHashes(target *BuildTarget, isTest bool)
 	// DataRate returns an estimate of the current in/out RPC data rates in bytes per second.
 	DataRate() (int, int)
+	// Shutdown shuts down this remote client.
+	Shutdown()
 }
 
 // A TargetHasher is a thing that knows how to create hashes for targets.

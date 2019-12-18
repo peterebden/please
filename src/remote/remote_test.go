@@ -9,6 +9,7 @@ import (
 	"time"
 
 	pb "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
+	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/thought-machine/please/src/core"
@@ -247,5 +248,35 @@ func TestNoAbsolutePaths2(t *testing.T) {
 	for _, env := range cmd.EnvironmentVariables {
 		assert.False(t, path.IsAbs(env.Value), "Env var %s has an absolute path: %s", env.Name, env.Value)
 		assert.NotContains(t, env.Value, core.OutDir, "Env var %s contains %s: %s", env.Name, core.OutDir, env.Value)
+	}
+}
+
+func TestRemoteActionCache(t *testing.T) {
+	// This is a fairly low-level test because it's pretty difficult to synchronise otherwise.
+	c := newClient()
+	assert.NoError(t, c.readCache()) // Not an error, file should just not be there
+	c.outputs[core.BuildLabel{PackageName: "src/remote", Name: "remote"}] = &pb.Directory{
+		Files: []*pb.FileNode{
+			{
+				Name:   "remote.a",
+				Digest: &pb.Digest{Hash: "41af286dc0b172ed2f1ca934fd2278de4a1192302ffa07087cea2682e7d372e3", SizeBytes: 4},
+			},
+		},
+	}
+	c.outputs[core.BuildLabel{PackageName: "src/remote", Name: "remote_test"}] = &pb.Directory{
+		Files: []*pb.FileNode{
+			{
+				Name:   "remote_test",
+				Digest: &pb.Digest{Hash: "1f2946e2fd7d0be6c4295c1ed828f0ff4aec21e89df898f9efbaddbe445c5c7c", SizeBytes: 8},
+			},
+		},
+	}
+	assert.NoError(t, c.writeCache())
+	outputs := c.outputs
+	c.outputs = map[core.BuildLabel]*pb.Directory{}
+	assert.NoError(t, c.readCache())
+	assert.Equal(t, len(outputs), len(c.outputs))
+	for k, v := range outputs {
+		assert.True(t, proto.Equal(v, c.outputs[k]))
 	}
 }

@@ -81,6 +81,13 @@ func New(state *core.BuildState) *Client {
 		outputs:    map[core.BuildLabel]*pb.Directory{},
 	}
 	go c.CheckInitialised() // Kick off init now, but we don't have to wait for it.
+	if c.state.Config.Remote.CacheActions {
+		go func() {
+			if err := c.readCache(); err != nil {
+				log.Warning("Failed to read remote execution action cache: %s", err)
+			}
+		}()
+	}
 	return c
 }
 
