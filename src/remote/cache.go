@@ -22,9 +22,11 @@ const cacheFile = "plz-out/log/remote_action_cache"
 // In our case it writes the local action cache out to a file.
 func (c *Client) Shutdown() {
 	if c.state.Config.Remote.CacheActions {
+		log.Debug("Writing remote execution action cache data...")
 		if err := c.writeCache(); err != nil {
 			log.Error("Failed to write remote execution action cache: %s", err)
 		}
+		log.Debug("Wrote remote execution action cache data")
 	}
 }
 

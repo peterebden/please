@@ -60,6 +60,9 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, config *
 	if state.Cache != nil {
 		state.Cache.Shutdown()
 	}
+	if state.RemoteClient != nil {
+		state.RemoteClient.Shutdown()
+	}
 	state.CloseResults()
 }
 
