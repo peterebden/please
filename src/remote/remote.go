@@ -4,11 +4,8 @@
 package remote
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"os"
-	"path"
 	"sync"
 	"time"
 
@@ -21,7 +18,6 @@ import (
 	"gopkg.in/op/go-logging.v1"
 
 	"github.com/thought-machine/please/src/core"
-	"github.com/thought-machine/please/src/fs"
 )
 
 var log = logging.MustGetLogger("remote")
@@ -193,9 +189,7 @@ func (c *Client) Retrieve(target *core.BuildTarget) (*core.BuildMetadata, error)
 		//                   be used and see if we can use that somehow.
 		return &core.BuildMetadata{}, c.downloadDirectory(context.TODO(), outDir, c.targetOutputs(target.Label))
 	}
-	isTest := target.State() >= core.Built
-	needStdout := target.PostBuildFunction != nil && !isTest // We only care in this case.
-	_, digest, err := c.buildAction(target, isTest)
+	command, digest, err := c.buildAction(target, false)
 	if err != nil {
 		return nil, err
 	}
@@ -203,72 +197,26 @@ func (c *Client) Retrieve(target *core.BuildTarget) (*core.BuildMetadata, error)
 	if !c.state.ForceRebuild && c.outputsExist(target, digest) {
 		return &core.BuildMetadata{}, nil
 	}
+	metadata, ar, err := c.getActionResult(target, digest, command, false)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to find action result for %s: %s", target, err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), c.reqTimeout)
 	defer cancel()
-	resp, err := c.client.GetActionResult(ctx, &pb.GetActionResultRequest{
-		InstanceName: c.instance,
-		ActionDigest: digest,
-		InlineStdout: needStdout,
-	})
-	if err != nil {
+	/*
+		    	// Turn on progress display for measuring download speed
+			    target.ShowProgress = true
+			    bytesRead := 0
+				totalBytes := totalSize(trees, resp.OutputFiles)
+				ctx = context.WithValue(ctx, targetKey, target)
+				ctx = context.WithValue(ctx, bytesKey, &bytesRead)
+				ctx = context.WithValue(ctx, totalBytesKey, &totalBytes)
+	*/
+	if err := c.client.DownloadActionOutputs(ctx, ar, target.OutDir()); err != nil {
 		return nil, err
-	} else if err := c.setOutputs(target.Label, resp); err != nil {
-		return nil, err
-	}
-	mode := target.OutMode()
-	if err := removeOutputs(target); err != nil {
-		return nil, err
-	}
-	trees := make([]*pb.Tree, len(resp.OutputDirectories))
-	for i, dir := range resp.OutputDirectories {
-		trees[i] = &pb.Tree{}
-		if err := c.readByteStreamToProto(context.Background(), dir.TreeDigest, trees[i]); err != nil {
-			return nil, err
-		}
-	}
-
-	// Turn on progress display for measuring download speed
-	target.ShowProgress = true
-	bytesRead := 0
-	totalBytes := totalSize(trees, resp.OutputFiles)
-	ctx = context.WithValue(ctx, targetKey, target)
-	ctx = context.WithValue(ctx, bytesKey, &bytesRead)
-	ctx = context.WithValue(ctx, totalBytesKey, &totalBytes)
-
-	if err := c.downloadBlobs(ctx, func(ch chan<- *blob) error {
-		defer close(ch)
-		for _, file := range resp.OutputFiles {
-			filePath := path.Join(outDir, target.GetRealOutput(file.Path))
-			addPerms := extraPerms(file)
-			if file.Contents != nil {
-				// Inlining must have been requested. Can write it directly.
-				if err := fs.EnsureDir(filePath); err != nil {
-					return err
-				} else if err := fs.WriteFile(bytes.NewReader(file.Contents), filePath, mode|addPerms); err != nil {
-					return err
-				}
-			} else {
-				ch <- &blob{Digest: file.Digest, File: filePath, Mode: mode | addPerms}
-			}
-		}
-		for i, dir := range resp.OutputDirectories {
-			if err := c.downloadDirectory(ctx, path.Join(outDir, dir.Path), trees[i].Root); err != nil {
-				return err
-			}
-		}
-		// For unexplained reasons the protocol treats symlinks differently based on what
-		// they point to. We obviously create them in the same way though.
-		for _, link := range append(resp.OutputFileSymlinks, resp.OutputDirectorySymlinks...) {
-			if err := os.Symlink(link.Target, path.Join(outDir, link.Path)); err != nil {
-				return err
-			}
-		}
-		return nil
-	}); err != nil {
-		return nil, c.wrapActionErr(err, digest)
 	}
 	c.recordAttrs(target, digest)
-	return c.buildMetadata(resp, needStdout, false)
+	return metadata, nil
 }
 
 // Build executes a remote build of the given target.
@@ -327,37 +275,16 @@ func (c *Client) Test(tid int, target *core.BuildTarget) (metadata *core.BuildMe
 // execute submits an action to the remote executor and monitors its progress.
 // The returned ActionResult may be nil on failure.
 func (c *Client) execute(tid int, target *core.BuildTarget, command *pb.Command, digest *pb.Digest, timeout time.Duration, isTest, needStdout bool) (*core.BuildMetadata, *pb.ActionResult, error) {
-	// First see if this execution is cached locally
-	if metadata, ar := c.retrieveLocalResults(target, digest); metadata != nil {
-		log.Debug("Got locally cached results for %s %s", target.Label, c.actionURL(digest, true))
-		return metadata, ar, nil
-	}
-	// Now see if it is cached on the remote server
 	c.state.LogBuildResult(tid, target.Label, core.TargetBuilding, "Checking remote...")
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	if ar, err := c.client.GetActionResult(ctx, &pb.GetActionResultRequest{
-		InstanceName: c.instance,
-		ActionDigest: digest,
-		InlineStdout: needStdout,
-	}); err == nil {
-		// This action already exists and has been cached.
-		if metadata, err := c.buildMetadata(ar, needStdout, false); err == nil {
-			log.Debug("Got remotely cached results for %s %s", target.Label, c.actionURL(digest, true))
-			err := c.verifyActionResult(target, command, digest, ar, c.state.Config.Remote.VerifyOutputs)
-			if err == nil {
-				c.locallyCacheResults(target, digest, metadata, ar)
-				return metadata, ar, nil
-			}
-			log.Debug("Remotely cached results for %s were missing some outputs, forcing a rebuild: %s", target.Label, err)
-		}
+	if metadata, ar, err := c.getActionResult(target, digest, command, needStdout); err == nil {
+		return metadata, ar, nil
 	}
 	// We didn't actually upload the inputs before, so we must do so now.
 	command, digest, err := c.uploadAction(target, isTest)
 	if err != nil {
 		return nil, nil, fmt.Errorf("Failed to upload build action: %s", err)
 	}
-	ctx, cancel = context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	stream, err := c.client.Execute(ctx, &pb.ExecuteRequest{
 		InstanceName:    c.instance,

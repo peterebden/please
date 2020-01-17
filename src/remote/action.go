@@ -421,6 +421,39 @@ func (c *Client) downloadDirectory(ctx context.Context, root string, dir *pb.Dir
 	return nil
 }
 
+// getActionResult gets a previously uploaded (or cached) action result. It returns nil if
+// one could not be found or was not valid.
+func (c *Client) getActionResult(target *core.BuildTarget, digest *pb.Digest, command *pb.Command, needStdout bool) (*core.BuildMetadata, *pb.ActionResult, error) {
+	// First see if this execution is cached locally
+	if metadata, ar := c.retrieveLocalResults(target, digest); metadata != nil {
+		log.Debug("Got locally cached results for %s %s", target.Label, c.actionURL(digest, true))
+		return metadata, ar, nil
+	}
+	// Now see if it is cached on the remote server
+	ctx, cancel := context.WithTimeout(context.Background(), c.reqTimeout)
+	defer cancel()
+	ar, err := c.client.GetActionResult(ctx, &pb.GetActionResultRequest{
+		InstanceName: c.instance,
+		ActionDigest: digest,
+		InlineStdout: needStdout,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	metadata, err := c.buildMetadata(ar, needStdout, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	log.Debug("Got remotely cached results for %s %s", target.Label, c.actionURL(digest, true))
+	err = c.verifyActionResult(target, command, digest, ar, c.state.Config.Remote.VerifyOutputs)
+	if err != nil {
+		log.Debug("Remotely cached results for %s were missing some outputs, forcing a rebuild: %s", target.Label, err)
+		return nil, nil, err
+	}
+	c.locallyCacheResults(target, digest, metadata, ar)
+	return metadata, ar, nil
+}
+
 // verifyActionResult verifies that all the requested outputs actually exist in a returned
 // ActionResult. Servers do not necessarily verify this but we need to make sure they are
 // complete for future requests.
