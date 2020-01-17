@@ -283,65 +283,6 @@ func (c *Client) byteStreamDownloadName(digest *pb.Digest) string {
 	return name
 }
 
-// downloadBlobs downloads a series of blobs from the CAS server.
-// Each blob given must have the File and Digest properties completely set, but
-// Data is not required.
-// The given function is a callback that receives a channel to send these blobs on; it
-// should close it when finished.
-func (c *Client) downloadBlobs(ctx context.Context, f func(ch chan<- *blob) error) error {
-	ch := make(chan *blob, 10)
-	done := make(chan struct{})
-	var g errgroup.Group
-	g.Go(func() error {
-		defer close(done)
-		g.Go(func() error { return f(ch) })
-
-		digests := []*pb.Digest{}
-		filenames := map[string]string{}  // map of hash -> output filename
-		modes := map[string]os.FileMode{} // map of hash -> file mode
-		var totalSize int64
-		for b := range ch {
-			filenames[b.Digest.Hash] = b.File
-			modes[b.Digest.Hash] = b.Mode
-			if b.Digest.SizeBytes > c.maxBlobBatchSize || !c.canBatchBlobReads || len(digests) == maxNumBlobs {
-				// This blob individually exceeds the size, have to use this
-				// ByteStream malarkey instead.
-				if err := c.retrieveByteStream(ctx, b); err != nil {
-					return err
-				}
-				continue
-			} else if b.Digest.SizeBytes+totalSize > c.maxBlobBatchSize {
-				// We have exceeded the total but this blob on its own is OK.
-				// Receive what we have so far then deal with this one.
-				if err := c.receiveBlobs(ctx, digests, filenames, modes); err != nil {
-					return err
-				}
-				updateProgress(ctx, int(totalSize))
-				digests = []*pb.Digest{}
-				totalSize = 0
-			}
-			digests = append(digests, b.Digest)
-			totalSize += b.Digest.SizeBytes
-		}
-		// If there are any digests left over, download them now
-		if len(digests) > 0 {
-			if err := c.receiveBlobs(ctx, digests, filenames, modes); err != nil {
-				return err
-			}
-			updateProgress(ctx, int(totalSize))
-		}
-		return nil
-	})
-
-	select {
-	case <-done:
-		return g.Wait()
-	case <-ctx.Done():
-		return fmt.Errorf("timed out retrieving artifact from remote cache")
-	}
-
-}
-
 // retrieveByteStream receives a file back from the server as a byte stream.
 func (c *Client) retrieveByteStream(ctx context.Context, b *blob) error {
 	if b.Digest == nil {

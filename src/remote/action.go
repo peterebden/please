@@ -390,37 +390,6 @@ func (c *Client) digestForFilename(ar *pb.ActionResult, name string) *pb.Digest 
 	return nil
 }
 
-// downloadDirectory downloads & writes out a single Directory proto.
-func (c *Client) downloadDirectory(ctx context.Context, root string, dir *pb.Directory) error {
-	if err := os.MkdirAll(root, core.DirPermissions); err != nil {
-		return err
-	}
-	for _, file := range dir.Files {
-		if err := c.retrieveByteStream(ctx, &blob{
-			Digest: file.Digest,
-			File:   path.Join(root, file.Name),
-			Mode:   0644 | extraFilePerms(file),
-		}); err != nil {
-			return wrap(err, "Downloading %s", path.Join(root, file.Name))
-		}
-	}
-	for _, dir := range dir.Directories {
-		d := &pb.Directory{}
-		name := path.Join(root, dir.Name)
-		if err := c.readByteStreamToProto(ctx, dir.Digest, d); err != nil {
-			return wrap(err, "Downloading directory metadata for %s", name)
-		} else if err := c.downloadDirectory(ctx, name, d); err != nil {
-			return wrap(err, "Downloading directory %s", name)
-		}
-	}
-	for _, sym := range dir.Symlinks {
-		if err := os.Symlink(sym.Target, path.Join(root, sym.Name)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // getActionResult gets a previously uploaded (or cached) action result. It returns nil if
 // one could not be found or was not valid.
 func (c *Client) getActionResult(target *core.BuildTarget, digest *pb.Digest, command *pb.Command, needStdout bool) (*core.BuildMetadata, *pb.ActionResult, error) {
