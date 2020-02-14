@@ -303,10 +303,15 @@ func (target *BuildTarget) TmpDir() string {
 // OutDir returns the output directory for this target, eg.
 // //mickey/donald:goofy -> plz-out/gen/mickey/donald (or plz-out/bin if it's a binary)
 func (target *BuildTarget) OutDir() string {
+	return path.Join(target.OutPrefix(), target.Label.Subrepo, target.Label.PackageName)
+}
+
+// OutPrefix returns plz-out/bin or plz-out/gen as appropriate for this target.
+func (target *BuildTarget) OutPrefix() string {
 	if target.IsBinary {
-		return path.Join(BinDir, target.Label.Subrepo, target.Label.PackageName)
+		return BinDir
 	}
-	return path.Join(GenDir, target.Label.Subrepo, target.Label.PackageName)
+	return GenDir
 }
 
 // TestDir returns the test directory for this target, eg.
@@ -511,12 +516,17 @@ func (target *BuildTarget) Outputs() []string {
 
 // FullOutputs returns a slice of all the outputs of this rule with the target's output directory prepended.
 func (target *BuildTarget) FullOutputs() []string {
+	return addPathPrefix(target.Outputs(), target.OutDir())
+}
+
+// FullOutputsAndLinks returns a slice of all the outputs of this rule with any output links too.
+func (target *BuildTarget) FullOutputsAndLinks() []string {
 	outs := target.Outputs()
-	outDir := target.OutDir()
-	for i, out := range outs {
-		outs[i] = path.Join(outDir, out)
+	ret := addPathPrefix(outs, target.OutDir())
+	for _, link := range target.OutputLinks {
+		ret = append(ret, addPathPrefix(outs, path.Join(target.OutPrefix(), link))...)
 	}
-	return outs
+	return ret
 }
 
 // NamedOutputs returns a slice of all the outputs of this rule with a given name.

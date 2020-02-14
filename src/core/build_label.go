@@ -285,8 +285,7 @@ func (label BuildLabel) Paths(graph *BuildGraph) []string {
 
 // FullPaths is an implementation of BuildInput interface.
 func (label BuildLabel) FullPaths(graph *BuildGraph) []string {
-	target := graph.TargetOrDie(label)
-	return addPathPrefix(target.Outputs(), target.OutDir())
+	return graph.TargetOrDie(label).FullOutputs()
 }
 
 // addPathPrefix adds a prefix to all the entries in a slice.
