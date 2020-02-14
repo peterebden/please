@@ -57,7 +57,7 @@ def http_archive(name:str, urls:list, strip_prefix:str=None, hashes:str|list&sha
 
 
 def new_http_archive(name:str, urls:list, build_file:str=None, build_file_content:str=None,
-                     strip_prefix:str=None, hashes:str|list&sha256=None,
+                     strip_prefix:str=None, strip_build:bool=False, hashes:str|list&sha256=None,
                      config:str=None, bazel_compat:bool=False, visibility:list=None):
     """Fetches a remote file over HTTP and expands its contents, combined with a BUILD file.
 
@@ -77,6 +77,7 @@ def new_http_archive(name:str, urls:list, build_file:str=None, build_file_conten
       build_file_content: Text content to use for the BUILD file for the subrepository.
                           We suggest using build_file instead, but this is provided for Bazel compatibility.
       strip_prefix: Prefix to strip from the expanded archive.
+      strip_build: True to strip any BUILD files from the archive after download.
       hashes: List of hashes to verify the rule with.
       config: Configuration file to apply to this subrepo.
       bazel_compat: Shorthand to turn on Bazel compatibility. This is equivalent to
@@ -84,6 +85,8 @@ def new_http_archive(name:str, urls:list, build_file:str=None, build_file_conten
                     section.
       visibility: Deprecated, has no effect.
     """
+    if isinstance(hashes, str):
+        hashes = [hashes]
     remote_rule = remote_file(
         name = name,
         _tag = 'download',
@@ -92,13 +95,15 @@ def new_http_archive(name:str, urls:list, build_file:str=None, build_file_conten
         hashes = hashes,
     )
     if strip_prefix:
-        cmd = '$TOOL x $SRCS_REMOTE -o $OUT -s ' + strip_prefix
+        cmd = '$TOOL x $SRCS_REMOTE -o "$OUT" -s ' + strip_prefix
     else:
-        cmd = '$TOOL x $SRCS_REMOTE -o $OUT'
+        cmd = '$TOOL x $SRCS_REMOTE -o "$OUT"'
+    if strip_build:
+        cmd += ' && find . -name BUILD | xargs rm -f'
     if build_file:
-        cmd += ' && mv $SRCS_BUILD $OUT/' + CONFIG.BUILD_FILE_NAMES[0]
+        cmd += ' && mv $SRCS_BUILD "$OUT/' + CONFIG.BUILD_FILE_NAMES[0] + '"'
     elif build_file_content:
-        cmd += ' && cat > $OUT/%s << EOF\n%s\nEOF' % (CONFIG.BUILD_FILE_NAMES[0], build_file_content)
+        cmd += ' && cat > "$OUT"/%s << EOF\n%s\nEOF' % (CONFIG.BUILD_FILE_NAMES[0], build_file_content)
 
     extract_rule = build_rule(
         name = name,
@@ -134,7 +139,7 @@ def new_local_repository(name:str, path:str):
     # Bit of a hack; subrepo() doesn't generate a rule, but the subrepo code internally
     # expects there to be one by this name. Maybe we should use something like system_library
     # to pull it in as a dependency, but that seems pretty heavyweight.
-    subrepo(
+    return subrepo(
         name = name,
         path = path,
         dep = filegroup(
@@ -144,7 +149,8 @@ def new_local_repository(name:str, path:str):
 
 
 def github_repo(name:str, repo:str, revision:str, build_file:str=None, hashes:str|list=None,
-                strip_prefix:str=None, config:str=None, bazel_compat:bool=False):
+                strip_prefix:str=None, strip_build:bool=False, config:str=None,
+                bazel_compat:bool=False):
     """Defines a new subrepo corresponding to a Github project.
 
     This is a convenience alias to the more general new_http_archive. It knows how to
@@ -157,6 +163,7 @@ def github_repo(name:str, repo:str, revision:str, build_file:str=None, hashes:st
       build_file: The file to use as a BUILD file for this subrepository.
       hashes: List of hashes to verify the rule with.
       strip_prefix: Prefix to strip from the contents of the zip. Is usually autodetected for you.
+      strip_build: True to strip any BUILD files from the archive after download.
       config: Configuration file to apply to this subrepo.
       bazel_compat: Shorthand to turn on Bazel compatibility. This is equivalent to
                     specifying a config file with `compatibility = true` in the `[bazel]`
@@ -168,11 +175,13 @@ def github_repo(name:str, repo:str, revision:str, build_file:str=None, hashes:st
         name = name,
         urls = [f'https://github.com/{org}/{repo}/archive/{revision}.zip'],
         strip_prefix = strip_prefix or f'{repo}-{revision}',
+        strip_build = strip_build,
         build_file = build_file,
         hashes = hashes,
         config = config,
         bazel_compat = bazel_compat,
     )
+
 
 def arch(name:str, os:str, arch:str):
     """ Defines an architecture subrepo.
@@ -189,8 +198,23 @@ def arch(name:str, os:str, arch:str):
     arch_str = f'{os}_{arch}'
     assert arch_str.count('_') == 1, "Character '_' disallowed in OS/Arch names"
 
-    subrepo(
+    return subrepo(
         name = name,
         path = "",
         arch = arch_str,
+    )
+
+
+def local_repository(name:str, path:str):
+    """Defines a subrepo within the local repo.
+
+    This is mostly useful for Bazel compatibility.
+
+    Args:
+      name: Name of the rule
+      path: Path within the repo to the new root
+    """
+    return subrepo(
+        name = name,
+        path = path,
     )

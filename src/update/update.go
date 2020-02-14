@@ -14,13 +14,11 @@ import (
 	"archive/tar"
 	"bufio"
 	"compress/gzip"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
-	"os/signal"
 	"path"
 	"runtime"
 	"strconv"
@@ -166,7 +164,9 @@ func downloadPlease(config *core.Configuration, verify bool) {
 			log.Fatalf("Failed to download Please: %s", r)
 		}
 	}()
-	go handleSignals(newDir)
+	cli.AtExit(func() {
+		cleanDir(newDir)
+	})
 	mustClose := func(closer io.Closer) {
 		if err := closer.Close(); err != nil {
 			panic(err)
@@ -179,11 +179,7 @@ func downloadPlease(config *core.Configuration, verify bool) {
 		ext = "xz"
 	}
 	v := config.Please.Version.VersionString()
-	if config.Please.DownloadLocation == core.GithubDownloadLocation {
-		url = fmt.Sprintf("%s/releases/download/v%s/please_%s_%s_%s.tar.%s", url, v, v, runtime.GOOS, runtime.GOARCH, ext)
-	} else {
-		url = fmt.Sprintf("%s/%s_%s/%s/please_%s.tar.%s", url, runtime.GOOS, runtime.GOARCH, v, v, ext)
-	}
+	url = fmt.Sprintf("%s/%s_%s/%s/please_%s.tar.%s", url, runtime.GOOS, runtime.GOARCH, v, v, ext)
 	rc := mustDownload(url, true)
 	defer mustClose(rc)
 	var r io.Reader = bufio.NewReader(rc)
@@ -284,21 +280,8 @@ func cleanDir(newDir string) {
 	}
 }
 
-// handleSignals traps SIGINT and SIGKILL (if possible) and on receiving one cleans the given directory.
-func handleSignals(newDir string) {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, os.Kill)
-	s := <-c
-	log.Notice("Got signal %s", s)
-	cleanDir(newDir)
-	log.Fatalf("Got signal %s", s)
-}
-
 // findLatestVersion attempts to find the latest available version of plz.
 func findLatestVersion(downloadLocation string) *cli.Version {
-	if downloadLocation == core.GithubDownloadLocation {
-		return findLatestGithubRelease()
-	}
 	url := strings.TrimRight(downloadLocation, "/") + "/latest_version"
 	response := mustDownload(url, false)
 	defer response.Close()
@@ -307,19 +290,6 @@ func findLatestVersion(downloadLocation string) *cli.Version {
 		log.Fatalf("Failed to find latest plz version: %s", err)
 	}
 	return cli.MustNewVersion(strings.TrimSpace(string(data)))
-}
-
-// findLatestGithubRelease returns the version corresponding to the latest release on Github.
-func findLatestGithubRelease() *cli.Version {
-	response := mustDownload(core.GithubAPILocation+"/releases/latest", false)
-	defer response.Close()
-	var data struct {
-		TagName string `json:"tag_name"`
-	}
-	if err := json.NewDecoder(response).Decode(&data); err != nil {
-		log.Fatalf("Failed to decode response: %s", err)
-	}
-	return cli.MustNewVersion(strings.TrimPrefix(data.TagName, "v"))
 }
 
 // describe returns a word describing the process we're about to do ("update", "downgrading", etc)

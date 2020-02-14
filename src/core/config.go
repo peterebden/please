@@ -41,35 +41,21 @@ const LocalConfigFileName string = ".plzconfig.local"
 
 // MachineConfigFileName is the file name for the machine-level config - can use this to override
 // things for a particular machine (eg. build machine with different caching behaviour).
-const MachineConfigFileName = "/etc/plzconfig"
+const MachineConfigFileName = "/etc/please/plzconfig"
 
 // UserConfigFileName is the file name for user-specific config (for all their repos).
 const UserConfigFileName = "~/.config/please/plzconfig"
 
-const oldUserConfigFileName = "~/.please/plzconfig"
-
-// GithubDownloadLocation is plz's Github repo, which will become the default download location in future.
-const GithubDownloadLocation = "https://github.com/thought-machine/please"
-
-// GithubAPILocation is as above, but for the API endpoints.
-const GithubAPILocation = "https://api.github.com/repos/thought-machine/please"
-
 func readConfigFile(config *Configuration, filename string) error {
-	log.Debug("Reading config from %s...", filename)
+	log.Debug("Attempting to read config from %s...", filename)
 	if err := gcfg.ReadFileInto(config, filename); err != nil && os.IsNotExist(err) {
 		return nil // It's not an error to not have the file at all.
 	} else if gcfg.FatalOnly(err) != nil {
 		return err
 	} else if err != nil {
 		log.Warning("Error in config file: %s", err)
-	} else if filename == ExpandHomePath(oldUserConfigFileName) {
-		if dest := ExpandHomePath(UserConfigFileName); !fs.PathExists(dest) {
-			log.Warning("Migrating old config from %s to %s", filename, dest)
-			fs.EnsureDir(dest)
-			os.Rename(filename, dest)
-		} else {
-			log.Warning("Read a config file at %s; this location is deprecated in favour of %s", filename, dest)
-		}
+	} else {
+		log.Debug("Read config from %s", filename)
 	}
 	return nil
 }
@@ -81,7 +67,6 @@ func ReadDefaultConfigFiles(profiles []string) (*Configuration, error) {
 	return ReadConfigFiles([]string{
 		MachineConfigFileName,
 		ExpandHomePath(UserConfigFileName),
-		ExpandHomePath(oldUserConfigFileName),
 		path.Join(RepoRoot, ConfigFileName),
 		path.Join(RepoRoot, ArchConfigFileName),
 		path.Join(RepoRoot, LocalConfigFileName),
@@ -125,8 +110,20 @@ func ReadConfigFiles(filenames []string, profiles []string) (*Configuration, err
 		return config, fmt.Errorf("Must pass both rpcprivatekey and rpcpublickey properties for cache")
 	}
 
-	if len(config.Aliases) > 0 {
-		log.Warning("The [aliases] section of .plzconfig is deprecated in favour of [alias]. See https://please.build/config.html for more information.")
+	if config.Colours == nil {
+		config.Colours = map[string]string{
+			"py":   "${GREEN}",
+			"java": "${RED}",
+			"go":   "${YELLOW}",
+			"js":   "${BLUE}",
+		}
+	} else {
+		// You are allowed to just write "yellow" but we map that to a pseudo-variable thing.
+		for k, v := range config.Colours {
+			if v[0] != '$' {
+				config.Colours[k] = "${" + strings.ToUpper(v) + "}"
+			}
+		}
 	}
 
 	// In a few versions we will deprecate Cpp.Coverage completely in favour of this more generic scheme.
@@ -177,9 +174,13 @@ func ReadConfigFiles(filenames []string, profiles []string) (*Configuration, err
 		}
 	}
 
+	config.HomeDir = os.Getenv("HOME")
+	config.PleaseLocation = fs.ExpandHomePathTo(config.Please.Location, config.HomeDir)
+
 	// We can only verify options by reflection (we need struct tags) so run them quickly through this.
 	return config, config.ApplyOverrides(map[string]string{
-		"python.testrunner": config.Python.TestRunner,
+		"python.testrunner":  config.Python.TestRunner,
+		"build.hashfunction": config.Build.HashFunction,
 	})
 }
 
@@ -220,12 +221,14 @@ func defaultPathIfExists(conf *string, dir, file string) {
 }
 
 // DefaultConfiguration returns the default configuration object with no overrides.
+// N.B. Slice fields are not populated by this (since it interferes with reading them)
 func DefaultConfiguration() *Configuration {
 	config := Configuration{buildEnvStored: &storedBuildEnv{}}
 	config.Please.SelfUpdate = true
 	config.Please.Autoclean = true
 	config.Please.DownloadLocation = "https://get.please.build"
 	config.Please.NumOldVersions = 10
+	config.Please.NumThreads = runtime.NumCPU() + 2
 	config.Parse.BuiltinPleasings = true
 	config.Parse.GitFunctions = true
 	config.Build.Arch = cli.NewArch(runtime.GOOS, runtime.GOARCH)
@@ -236,11 +239,12 @@ func DefaultConfiguration() *Configuration {
 	config.Build.FallbackConfig = "opt" // Optimised builds as a fallback on any target that doesn't have a matching one set
 	config.Build.PleaseSandboxTool = "please_sandbox"
 	config.Build.Xattrs = true
+	config.Build.HashFunction = "sha1" // will likely be changed to sha256 at some future date.
 	config.BuildConfig = map[string]string{}
 	config.BuildEnv = map[string]string{}
-	config.Aliases = map[string]string{}
-	config.Cache.HTTPTimeout = cli.Duration(5 * time.Second)
-	config.Cache.RPCTimeout = cli.Duration(5 * time.Second)
+	config.Cache.HTTPWriteable = true
+	config.Cache.HTTPTimeout = cli.Duration(25 * time.Second)
+	config.Cache.RPCTimeout = cli.Duration(25 * time.Second)
 	if dir, err := os.UserCacheDir(); err == nil {
 		config.Cache.Dir = path.Join(dir, "please")
 	}
@@ -251,6 +255,11 @@ func DefaultConfiguration() *Configuration {
 	config.Cache.RPCMaxMsgSize.UnmarshalFlag("200MiB")
 	config.Test.Timeout = cli.Duration(10 * time.Minute)
 	config.Display.SystemStats = true
+	config.Display.MaxWorkers = 40
+	config.Remote.NumExecutors = 20 // kind of arbitrary
+	config.Remote.HomeDir = "~"
+	config.Remote.Secure = true
+	config.Remote.VerifyOutputs = true
 	config.Go.GoTool = "go"
 	config.Go.CgoCCTool = "gcc"
 	config.Go.BuildIDTool = "go_buildid_replacer"
@@ -265,13 +274,7 @@ func DefaultConfiguration() *Configuration {
 	config.Python.TestRunnerBootstrap = ""
 	config.Python.UsePyPI = true
 	config.Python.InterpreterOptions = ""
-	// Annoyingly pip on OSX doesn't seem to work with this flag (you get the dreaded
-	// "must supply either home or prefix/exec-prefix" error). Goodness knows why *adding* this
-	// flag - which otherwise seems exactly what we want - provokes that error, but the logic
-	// of pip is rather a mystery to me.
-	if runtime.GOOS != "darwin" {
-		config.Python.PipFlags = "--isolated"
-	}
+	config.Python.PipFlags = ""
 	config.Java.DefaultTestPackage = ""
 	config.Java.SourceLevel = "8"
 	config.Java.TargetLevel = "8"
@@ -314,6 +317,7 @@ func DefaultConfiguration() *Configuration {
 	config.Proto.PythonGrpcDep = "//third_party/python:grpc"
 	config.Proto.JavaGrpcDep = "//third_party/java:grpc-all"
 	config.Proto.GoGrpcDep = "//third_party/go:grpc"
+	config.Remote.Timeout = cli.Duration(2 * time.Minute)
 	config.Bazel.Compatibility = usingBazelWorkspace
 	return &config
 }
@@ -345,8 +349,10 @@ type Configuration struct {
 	Display struct {
 		UpdateTitle bool `help:"Updates the title bar of the shell window Please is running in as the build progresses. This isn't on by default because not everyone's shell is configured to reset it again after and we don't want to alter it forever."`
 		SystemStats bool `help:"Whether or not to show basic system resource usage in the interactive display. Has no effect without that configured."`
+		MaxWorkers  int  `help:"Maximum number of worker rows to display at any one time."`
 	} `help:"Please has an animated display mode which shows the currently building targets.\nBy default it will autodetect whether it is using an interactive TTY session and choose whether to use it or not, although you can force it on or off via flags.\n\nThe display is heavily inspired by Buck's SuperConsole."`
-	Events struct {
+	Colours map[string]string `help:"Colour code overrides in interactive output. These correspond to requirements on each target."`
+	Events  struct {
 		Port int `help:"Port to start the streaming build event server on."`
 	} `help:"The [events] section in the config contains settings relating to the internal build event system & streaming them externally."`
 	Build struct {
@@ -362,6 +368,7 @@ type Configuration struct {
 		Nonce             string       `help:"This is an arbitrary string that is added to the hash of every build target. It provides a way to force a rebuild of everything when it's changed.\nWe will bump the default of this whenever we think it's required - although it's been a pretty long time now and we hope that'll continue."`
 		PassEnv           []string     `help:"A list of environment variables to pass from the current environment to build rules. For example\n\nPassEnv = HTTP_PROXY\n\nwould copy your HTTP_PROXY environment variable to the build env for any rules."`
 		HTTPProxy         cli.URL      `help:"A URL to use as a proxy server for downloads. Only applies to internal ones - e.g. self-updates or remote_file rules."`
+		HashFunction      string       `help:"The hash function to use internally for build actions." options:"sha1,sha256"`
 	}
 	BuildConfig map[string]string `help:"A section of arbitrary key-value properties that are made available in the BUILD language. These are often useful for writing custom rules that need some configurable property.\n\n[buildconfig]\nandroid-tools-version = 23.0.2\n\nFor example, the above can be accessed as CONFIG.ANDROID_TOOLS_VERSION."`
 	BuildEnv    map[string]string `help:"A set of extra environment variables to define for build rules. For example:\n\n[buildenv]\nsecret-passphrase = 12345\n\nThis would become SECRET_PASSPHRASE for any rules. These can be useful for passing secrets into custom rules; any variables containing SECRET or PASSWORD won't be logged.\n\nIt's also useful if you'd like internal tools to honour some external variable."`
@@ -390,10 +397,21 @@ type Configuration struct {
 		DisableCoverage []string     `help:"Disables coverage for tests that have any of these labels spcified."`
 		Upload          cli.URL      `help:"URL to upload test results to (in XML format)"`
 	}
-	Limit map[string]*struct {
-		Label string `help:"Label to restrict"`
-		Limit int    `help:"Maximum number of targets that can build or test simultaneously"`
-	} `help:"A section of options allowing limiting the number of targets with certain criteria that can run simultaneously"`
+	Remote struct {
+		URL           string       `help:"URL for the remote server."`
+		CASURL        string       `help:"URL for the CAS service, if it is different to the main one."`
+		AssetURL      string       `help:"URL for the remote asset server."`
+		NumExecutors  int          `help:"Maximum number of remote executors to use simultaneously."`
+		Instance      string       `help:"Remote instance name to request; depending on the server this may be required."`
+		Name          string       `help:"A name for this worker instance. This is attached to artifacts uploaded to remote storage." example:"agent-001"`
+		DisplayURL    string       `help:"A URL to browse the remote server with (e.g. using buildbarn-browser). Only used when printing hashes."`
+		Timeout       cli.Duration `help:"Timeout for connections made to the remote server."`
+		ReadOnly      bool         `help:"If true, prevents this client from writing to the remote storage. Is overridden if being used for execution."`
+		Secure        bool         `help:"Whether to use TLS for communication or not."`
+		VerifyOutputs bool         `help:"Whether to verify all outputs are present after a cached remote execution action. Depending on your server implementation, you may require this to ensure files are really present."`
+		HomeDir       string       `help:"The home directory on the build machine."`
+		Platform      []string     `help:"Platform properties to request from remote workers, in the format key=value."`
+	} `help:"Settings related to remote execution & caching using the Google remote execution APIs. This section is still experimental and subject to change."`
 	Size  map[string]*Size `help:"Named sizes of targets; these are the definitions of what can be passed to the 'size' argument."`
 	Cover struct {
 		FileExtension    []string `help:"Extensions of files to consider for coverage.\nDefaults to a reasonably obvious set for the builtin rules including .go, .py, .java, etc."`
@@ -479,7 +497,6 @@ type Configuration struct {
 		Accept []string `help:"Licences that are accepted in this repository.\nWhen this is empty licences are ignored. As soon as it's set any licence detected or assigned must be accepted explicitly here.\nThere's no fuzzy matching, so some package managers (especially PyPI and Maven, but shockingly not npm which rather nicely uses SPDX) will generate a lot of slightly different spellings of the same thing, which will all have to be accepted here. We'd rather that than trying to 'cleverly' match them which might result in matching the wrong thing."`
 		Reject []string `help:"Licences that are explicitly rejected in this repository.\nAn astute observer will notice that this is not very different to just not adding it to the accept section, but it does have the advantage of explicitly documenting things that the team aren't allowed to use."`
 	} `help:"Please has some limited support for declaring acceptable licences and detecting them from some libraries. You should not rely on this for complete licence compliance, but it can be a useful check to try to ensure that unacceptable licences do not slip in."`
-	Aliases  map[string]string `help:"It is possible to define aliases for new commands in your .plzconfig file. These are essentially string-string replacements of the command line, for example 'deploy = run //tools:deployer --' makes 'plz deploy' run a particular tool."`
 	Alias    map[string]*Alias `help:"Allows defining alias replacements with more detail than the [aliases] section. Otherwise follows the same process, i.e. performs replacements of command strings."`
 	Provider map[string]*struct {
 		Target BuildLabel   `help:"The in-repo target to build this provider."`
@@ -489,6 +506,10 @@ type Configuration struct {
 		Compatibility bool `help:"Activates limited Bazel compatibility mode. When this is active several rule arguments are available under different names (e.g. compiler_flags -> copts etc), the WORKSPACE file is interpreted, Makefile-style replacements like $< and $@ are made in genrule commands, etc.\nNote that Skylark is not generally supported and many aspects of compatibility are fairly superficial; it's unlikely this will work for complex setups of either tool." var:"BAZEL_COMPATIBILITY"`
 	} `help:"Bazel is an open-sourced version of Google's internal build tool. Please draws a lot of inspiration from the original tool although the two have now diverged in various ways.\nNonetheless, if you've used Bazel, you will likely find Please familiar."`
 
+	// HomeDir is not a config setting but is used to construct the path.
+	HomeDir string
+	// Similarly this is a fully expanded form of Please.Location
+	PleaseLocation string
 	// buildEnvStored is a cached form of BuildEnv.
 	buildEnvStored *storedBuildEnv
 }
@@ -569,13 +590,12 @@ func (config *Configuration) getBuildEnv(includePath bool) []string {
 		pair := strings.Replace(strings.ToUpper(k), "-", "_", -1) + "=" + v
 		env = append(env, pair)
 	}
-
 	// from the user's environment based on the PassEnv config keyword
 	for _, k := range config.Build.PassEnv {
 		if v, isSet := os.LookupEnv(k); isSet {
 			if k == "PATH" {
 				// plz's install location always needs to be on the path.
-				v = ExpandHomePath(config.Please.Location) + ":" + v
+				v = fs.ExpandHomePathTo(config.Please.Location, config.HomeDir) + ":" + v
 				includePath = false // skip this in a bit
 			}
 			env = append(env, k+"="+v)
@@ -586,7 +606,7 @@ func (config *Configuration) getBuildEnv(includePath bool) []string {
 		// but really external environment variables shouldn't affect this.
 		// The only concession is that ~ is expanded as the user's home directory
 		// in PATH entries.
-		env = append(env, "PATH="+ExpandHomePath(strings.Join(append([]string{config.Please.Location}, config.Build.Path...), ":")))
+		env = append(env, "PATH="+fs.ExpandHomePathTo(strings.Join(append([]string{config.Please.Location}, config.Build.Path...), ":"), config.HomeDir))
 	}
 
 	sort.Strings(env)
@@ -730,7 +750,7 @@ func (config *Configuration) UpdateArgsWithAliases(args []string) []string {
 		if arg == "--" {
 			break
 		}
-		for k, v := range config.AllAliases() {
+		for k, v := range config.Alias {
 			if arg == k {
 				// We could insert every token in v into os.Args at this point and then we could have
 				// aliases defined in terms of other aliases but that seems rather like overkill so just
@@ -747,21 +767,9 @@ func (config *Configuration) UpdateArgsWithAliases(args []string) []string {
 	return args
 }
 
-// AllAliases returns all the aliases defined in this config
-func (config *Configuration) AllAliases() map[string]*Alias {
-	ret := map[string]*Alias{}
-	for k, v := range config.Aliases {
-		ret[k] = &Alias{Cmd: v}
-	}
-	for k, v := range config.Alias {
-		ret[k] = v
-	}
-	return ret
-}
-
 // PrintAliases prints the set of aliases defined in the config.
 func (config *Configuration) PrintAliases(w io.Writer) {
-	aliases := config.AllAliases()
+	aliases := config.Alias
 	names := make([]string, 0, len(aliases))
 	maxlen := 0
 	for alias := range aliases {
@@ -786,4 +794,12 @@ func (config *Configuration) IsABuildFile(name string) bool {
 		}
 	}
 	return false
+}
+
+// NumRemoteExecutors returns the number of actual remote executors we'll have
+func (config *Configuration) NumRemoteExecutors() int {
+	if config.Remote.URL == "" {
+		return 0
+	}
+	return config.Remote.NumExecutors
 }

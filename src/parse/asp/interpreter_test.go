@@ -4,18 +4,17 @@
 package asp
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/rules"
+	"github.com/thought-machine/please/src/core"
 )
 
 func parseFileToStatements(filename string) (*scope, []*Statement, error) {
-	state := core.NewBuildState(1, nil, 4, core.DefaultConfiguration())
+	state := core.NewDefaultBuildState()
 	state.Config.BuildConfig = map[string]string{"parser-engine": "python27"}
 	pkg := core.NewPackage("test/package")
 	parser := NewParser(state)
@@ -25,7 +24,7 @@ func parseFileToStatements(filename string) (*scope, []*Statement, error) {
 		panic(err)
 	}
 	statements = parser.optimise(statements)
-	parser.interpreter.optimiseExpressions(reflect.ValueOf(statements))
+	parser.interpreter.optimiseExpressions(statements)
 	s, err := parser.interpreter.interpretAll(pkg, statements)
 	return s, statements, err
 }
@@ -284,5 +283,11 @@ func TestLen(t *testing.T) {
 func TestFStringDollars(t *testing.T) {
 	s, err := parseFile("src/parse/asp/test_data/interpreter/fstrings.build")
 	assert.NoError(t, err)
-	assert.EqualValues(t, "mickey donald ${goofy} {{sora}}", s.Lookup("z"))
+	assert.EqualValues(t, "mickey donald ${goofy} {sora}", s.Lookup("z"))
+}
+
+func TestDoubleIndex(t *testing.T) {
+	s, err := parseFile("src/parse/asp/test_data/interpreter/double_index.build")
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, s.Lookup("y"))
 }

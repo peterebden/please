@@ -8,12 +8,13 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"os/signal"
 	"sync"
 	"syscall"
 	"time"
 
 	"gopkg.in/op/go-logging.v1"
+
+	"github.com/thought-machine/please/src/cli"
 )
 
 var log = logging.MustGetLogger("progress")
@@ -32,7 +33,7 @@ func New(sandboxCommand string) *Executor {
 		sandboxCommand: sandboxCommand,
 		processes:      map[*exec.Cmd]struct{}{},
 	}
-	go o.handleSignals()
+	cli.AtExit(o.killAll) // Kill any subprocess if we are ourselves killed
 	return o
 }
 
@@ -53,7 +54,7 @@ type Target interface {
 // If the command times out the returned error will be a context.DeadlineExceeded error.
 // If showOutput is true then output will be printed to stderr as well as returned.
 // It returns the stdout only, combined stdout and stderr and any error that occurred.
-func (e *Executor) ExecWithTimeout(target Target, dir string, env []string, timeout time.Duration, showOutput, attachStdStreams bool, argv []string) ([]byte, []byte, error) {
+func (e *Executor) ExecWithTimeout(target Target, dir string, env []string, timeout time.Duration, showOutput, attachStdin, attachStdout bool, argv []string) ([]byte, []byte, error) {
 	// We deliberately don't attach this context to the command, so we have better
 	// control over how the process gets terminated.
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -78,8 +79,10 @@ func (e *Executor) ExecWithTimeout(target Target, dir string, env []string, time
 		cmd.Stdout = newProgressWriter(target, progress, cmd.Stdout)
 		cmd.Stderr = newProgressWriter(target, progress, cmd.Stderr)
 	}
-	if attachStdStreams {
+	if attachStdin {
 		cmd.Stdin = os.Stdin
+	}
+	if attachStdout {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 	}
@@ -126,7 +129,7 @@ func (e *Executor) ExecWithTimeoutShellStdStreams(target Target, dir string, env
 		}
 		c = append([]string{e.sandboxCommand}, c...)
 	}
-	return e.ExecWithTimeout(target, dir, env, timeout, showOutput, attachStdStreams, c)
+	return e.ExecWithTimeout(target, dir, env, timeout, showOutput, attachStdStreams, attachStdStreams, c)
 }
 
 // KillProcess kills a process, attempting to send it a SIGTERM first followed by a SIGKILL
@@ -148,6 +151,10 @@ func (e *Executor) removeProcess(cmd *exec.Cmd) {
 // killProcess implements the two-step killing of processes with a SIGTERM and a SIGKILL if
 // that's unsuccessful. It returns true if the process exited within the timeout.
 func killProcess(cmd *exec.Cmd, sig syscall.Signal, timeout time.Duration) bool {
+	if cmd.Process == nil {
+		log.Debug("Not terminating process, it seems to have not started yet")
+		return false
+	}
 	// This is a bit of a fiddle. We want to wait for the process to exit but only for just so
 	// long (we do not want to get hung up if it ignores our SIGTERM).
 	log.Debug("Sending signal %s to -%d", sig, cmd.Process.Pid)
@@ -218,19 +225,6 @@ func progressMessage(progress *float32) string {
 	return ""
 }
 
-// handleSignals registers to handle SIGHUP, SIGINT, SIGQUIT, SIGABRT, and SIGTERM.
-func (e *Executor) handleSignals() {
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGABRT, syscall.SIGTERM)
-	sig := <-ch
-	log.Notice("Received %s, shutting down all subprocesses...", sig)
-	e.killAll()
-	if s, ok := sig.(syscall.Signal); ok {
-		os.Exit(128 + int(s))
-	}
-	os.Exit(1)
-}
-
 // killAll kills all subprocesses of this executor.
 func (e *Executor) killAll() {
 	e.mutex.Lock()
@@ -258,5 +252,5 @@ func ExecCommand(args ...string) ([]byte, error) {
 	e := New("")
 	cmd := e.ExecCommand(args[0], args[1:]...)
 	defer e.removeProcess(cmd)
-	return cmd.Output()
+	return cmd.CombinedOutput()
 }

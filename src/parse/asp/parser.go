@@ -8,7 +8,6 @@ import (
 	"encoding/gob"
 	"io"
 	"os"
-	"reflect"
 	"strings"
 
 	"gopkg.in/op/go-logging.v1"
@@ -20,6 +19,7 @@ var log = logging.MustGetLogger("asp")
 
 func init() {
 	// gob needs to know how to encode and decode our types.
+	gob.Register(False)
 	gob.Register(None)
 	gob.Register(pyInt(0))
 	gob.Register(pyString(""))
@@ -109,10 +109,11 @@ func (p *Parser) ParseToFile(input, output string) error {
 		return err
 	}
 	stmts = p.optimise(stmts)
-	p.interpreter.optimiseExpressions(reflect.ValueOf(stmts))
+	p.interpreter.optimiseExpressions(stmts)
 	for _, stmt := range stmts {
 		if stmt.FuncDef != nil {
 			stmt.FuncDef.KeywordsOnly = !whitelistedKwargs(stmt.FuncDef.Name, input)
+			stmt.FuncDef.IsBuiltin = true
 		}
 	}
 	f, err := os.Create(output)

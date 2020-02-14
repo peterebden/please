@@ -78,7 +78,7 @@ func TestCanSee(t *testing.T) {
 func TestCanSeeExperimental(t *testing.T) {
 	config := DefaultConfiguration()
 	config.Parse.ExperimentalDir = []string{"experimental"}
-	state := NewBuildState(1, nil, 1, config)
+	state := NewBuildState(config)
 
 	target1 := makeTarget("//src/core:target1", "")
 	target2 := makeTarget("//experimental/user:target2", "PUBLIC")
@@ -341,8 +341,10 @@ func TestToolPath(t *testing.T) {
 	target.AddOutput("file1.go")
 	target.AddOutput("file2.go")
 	wd, _ := os.Getwd()
+	RepoRoot = wd
 	root := wd + "/plz-out/gen/src/core"
-	assert.Equal(t, fmt.Sprintf("%s/file1.go %s/file2.go", root, root), target.toolPath())
+	assert.Equal(t, fmt.Sprintf("%s/file1.go %s/file2.go", root, root), target.toolPath(true))
+	assert.Equal(t, "src/core/file1.go src/core/file2.go", target.toolPath(false))
 }
 
 func TestDependencies(t *testing.T) {
@@ -486,6 +488,18 @@ func TestAllLocalSources(t *testing.T) {
 	target.AddSource(BuildLabel{Name: "target2", PackageName: "src/core"})
 	target.AddSource(SystemFileLabel{Path: "/usr/bin/bash"})
 	assert.Equal(t, []string{"src/core/target1.go"}, target.AllLocalSources())
+}
+
+func TestAllURLs(t *testing.T) {
+	config := DefaultConfiguration()
+	target := makeTarget("//src/core:remote1", "")
+	target.IsRemoteFile = true
+	target.AddSource(URLLabel("https://github.com/thought-machine/please"))
+	target.AddSource(URLLabel("https://github.com/thought-machine/pleasings"))
+	assert.Equal(t, []string{
+		"https://github.com/thought-machine/please",
+		"https://github.com/thought-machine/pleasings",
+	}, target.AllURLs(config))
 }
 
 func TestCheckSecrets(t *testing.T) {

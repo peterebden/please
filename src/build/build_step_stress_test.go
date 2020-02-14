@@ -1,18 +1,21 @@
 // Stress test around the build step stuff, specifically trying to
 // identify concurrent map read / writes.
 
-package build
+package build_test
 
 import (
 	"fmt"
 	"io"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"gopkg.in/op/go-logging.v1"
 
 	"github.com/thought-machine/please/src/core"
+	"github.com/thought-machine/please/src/plz"
 )
+
+var log = logging.MustGetLogger("build_test")
 
 const size = 1000
 const numWorkers = 10
@@ -21,24 +24,20 @@ var state *core.BuildState
 
 func TestBuildLotsOfTargets(t *testing.T) {
 	config, _ := core.ReadConfigFiles(nil, nil)
-	state = core.NewBuildState(numWorkers, nil, 4, config)
+	config.Please.NumThreads = 10
+	state = core.NewBuildState(config)
 	state.Parser = &fakeParser{
 		PostBuildFunctions: buildFunctionMap{},
 	}
 	pkg := core.NewPackage("pkg")
 	state.Graph.AddPackage(pkg)
+
 	for i := 1; i <= size; i++ {
 		addTarget(state, i)
 	}
+	state.TaskDone(true) // Initial target adding counts as one.
+
 	results := state.Results()
-	var wg sync.WaitGroup
-	wg.Add(numWorkers)
-	for i := 0; i < numWorkers; i++ {
-		go func(i int) {
-			please(i, state)
-			wg.Done()
-		}(i)
-	}
 	// Consume and discard any results
 	go func() {
 		for result := range results {
@@ -46,8 +45,8 @@ func TestBuildLotsOfTargets(t *testing.T) {
 			log.Info("%s", result.Description)
 		}
 	}()
-	state.TaskDone(true) // Initial target adding counts as one.
-	wg.Wait()
+
+	plz.RunHost(nil, state)
 }
 
 func addTarget(state *core.BuildState, i int) *core.BuildTarget {
@@ -79,22 +78,6 @@ func addTarget(state *core.BuildState, i int) *core.BuildTarget {
 
 func label(i int) core.BuildLabel {
 	return core.ParseBuildLabel(fmt.Sprintf("//pkg:target%d", i), "")
-}
-
-// please mimics the core build 'loop' from src/please.go.
-func please(tid int, state *core.BuildState) {
-	for {
-		label, _, t := state.NextTask()
-		switch t {
-		case core.Stop, core.Kill:
-			return
-		case core.Build:
-			Build(tid, state, state.Graph.TargetOrDie(label))
-		default:
-			panic(fmt.Sprintf("unexpected task type: %d", t))
-		}
-		state.TaskDone(true)
-	}
 }
 
 // Post-build function that adds new targets & ties in dependencies.

@@ -14,6 +14,8 @@ var log = logging.MustGetLogger("scm")
 
 // An SCM represents an SCM implementation that we can ask for various things.
 type SCM interface {
+	// DescribeIdentifier returns the string that is a "human-readable" identifier of the given revision.
+	DescribeIdentifier(revision string) string
 	// CurrentRevIdentifier returns the string that specifies what the current revision is.
 	CurrentRevIdentifier() string
 	// ChangesIn returns a list of modified files in the given diffSpec.
@@ -27,6 +29,10 @@ type SCM interface {
 	// ChangedLines returns the set of lines that have been modified,
 	// as a map of filename -> affected line numbers.
 	ChangedLines() (map[string][]int, error)
+	// Checkout checks out the given revision.
+	Checkout(revision string) error
+	// CurrentRevDate returns the commit date of the current revision, formatted according to the given format string.
+	CurrentRevDate(format string) string
 }
 
 // New returns a new SCM instance for this repo root.
@@ -46,4 +52,13 @@ func NewFallback(repoRoot string) SCM {
 	}
 	log.Warning("Cannot determine SCM, revision identifiers will be unavailable and `plz query changes/changed` will not work correctly.")
 	return &stub{}
+}
+
+// MustNew returns a new SCM instance for this repo root. It dies on any errors.
+func MustNew(repoRoot string) SCM {
+	scm := New(repoRoot)
+	if scm == nil {
+		log.Fatalf("Cannot determine SCM implementation")
+	}
+	return scm
 }

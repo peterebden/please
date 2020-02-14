@@ -58,11 +58,11 @@ func buildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 // BuildEnvironment creates the shell env vars to be passed into the exec.Command calls made by plz.
 // Note that we lie about the location of HOME in order to keep some tools happy.
 // We read this as being slightly more POSIX-compliant than not having it set at all...
-func BuildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
+func BuildEnvironment(state *BuildState, target *BuildTarget, tmpDir string) BuildEnv {
 	env := buildEnvironment(state, target)
 	sources := target.AllSourcePaths(state.Graph)
-	tmpDir := path.Join(RepoRoot, target.TmpDir())
 	outEnv := target.GetTmpOutputAll(target.Outputs())
+	abs := path.IsAbs(tmpDir)
 
 	env = append(env,
 		"TMP_DIR="+tmpDir,
@@ -70,13 +70,13 @@ func BuildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 		"SRCS="+strings.Join(sources, " "),
 		"OUTS="+strings.Join(outEnv, " "),
 		"HOME="+tmpDir,
-		"TOOLS="+strings.Join(toolPaths(state, target.Tools), " "),
+		"TOOLS="+strings.Join(toolPaths(state, target.Tools, abs), " "),
 		// Set a consistent hash seed for Python. Important for build determinism.
 		"PYTHONHASHSEED=42",
 	)
 	// The OUT variable is only available on rules that have a single output.
 	if len(outEnv) == 1 {
-		env = append(env, "OUT="+path.Join(RepoRoot, target.TmpDir(), outEnv[0]))
+		env = append(env, "OUT="+path.Join(tmpDir, outEnv[0]))
 	}
 	// The SRC variable is only available on rules that have a single source file.
 	if len(sources) == 1 {
@@ -84,7 +84,7 @@ func BuildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 	}
 	// Similarly, TOOL is only available on rules with a single tool.
 	if len(target.Tools) == 1 {
-		env = append(env, "TOOL="+toolPath(state, target.Tools[0]))
+		env = append(env, "TOOL="+toolPath(state, target.Tools[0], abs))
 	}
 	// Named source groups if the target declared any.
 	for name, srcs := range target.NamedSources {
@@ -98,7 +98,7 @@ func BuildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 	}
 	// Named tools as well.
 	for name, tools := range target.namedTools {
-		env = append(env, "TOOLS_"+strings.ToUpper(name)+"="+strings.Join(toolPaths(state, tools), " "))
+		env = append(env, "TOOLS_"+strings.ToUpper(name)+"="+strings.Join(toolPaths(state, tools, abs), " "))
 	}
 	// Secrets, again only if they declared any.
 	if len(target.Secrets) > 0 {
@@ -126,7 +126,7 @@ func BuildEnvironment(state *BuildState, target *BuildTarget) BuildEnv {
 // TestEnvironment creates the environment variables for a test.
 func TestEnvironment(state *BuildState, target *BuildTarget, testDir string) BuildEnv {
 	env := buildEnvironment(state, target)
-	resultsFile := path.Join(testDir, "test.results")
+	resultsFile := path.Join(testDir, TestResultsFile)
 	env = append(env,
 		"TEST_DIR="+testDir,
 		"TMP_DIR="+testDir,
@@ -135,21 +135,31 @@ func TestEnvironment(state *BuildState, target *BuildTarget, testDir string) Bui
 		"RESULTS_FILE="+resultsFile,
 		// We shouldn't really have specific things like this here, but it really is just easier to set it.
 		"GTEST_OUTPUT=xml:"+resultsFile,
+		"PEX_NOCACHE=true",
 	)
 	env = append(env, "HOME="+testDir)
 	if state.NeedCoverage && !target.HasAnyLabel(state.Config.Test.DisableCoverage) {
-		env = append(env, "COVERAGE=true", "COVERAGE_FILE=test.coverage")
+		env = append(env,
+			"COVERAGE=true",
+			"COVERAGE_FILE="+path.Join(testDir, CoverageFile),
+		)
 	}
 	if len(target.Outputs()) > 0 {
 		// Bit of a hack; ideally we would be unaware of the sandbox here.
-		if target.TestSandbox && runtime.GOOS == "linux" && !strings.HasPrefix(RepoRoot, "/tmp/") {
+		if target.TestSandbox && runtime.GOOS == "linux" && !strings.HasPrefix(RepoRoot, "/tmp/") && testDir != "." {
 			env = append(env, "TEST="+path.Join(SandboxDir, target.Outputs()[0]))
 		} else {
 			env = append(env, "TEST="+path.Join(testDir, target.Outputs()[0]))
 		}
 	}
 	if len(target.Data) > 0 {
-		env = append(env, "DATA="+strings.Join(target.AllData(state.Graph), " "))
+		env = append(env, "DATA="+strings.Join(target.AllDataPaths(state.Graph), " "))
+	}
+	if target.namedData != nil {
+		for name, data := range target.namedData {
+			paths := target.SourcePaths(state.Graph, data)
+			env = append(env, "DATA_"+strings.ToUpper(name)+"="+strings.Join(paths, " "))
+		}
 	}
 	// Bit of a hack for gcov which needs access to its .gcno files.
 	if target.HasLabel("cc") {
@@ -163,11 +173,12 @@ func TestEnvironment(state *BuildState, target *BuildTarget, testDir string) Bui
 
 // StampedBuildEnvironment returns the shell env vars to be passed into exec.Command.
 // Optionally includes a stamp if the target is marked as such.
-func StampedBuildEnvironment(state *BuildState, target *BuildTarget, stamp []byte) BuildEnv {
-	env := BuildEnvironment(state, target)
+func StampedBuildEnvironment(state *BuildState, target *BuildTarget, stamp []byte, tmpDir string) BuildEnv {
+	env := BuildEnvironment(state, target, tmpDir)
 	if target.Stamp {
 		stampEnvOnce.Do(initStampEnv)
 		env = append(env, stampEnv...)
+		env = append(env, "STAMP_FILE="+target.StampFileName())
 		return append(env, "STAMP="+base64.RawURLEncoding.EncodeToString(stamp))
 	}
 	return env
@@ -179,21 +190,32 @@ var stampEnv BuildEnv
 var stampEnvOnce sync.Once
 
 func initStampEnv() {
-	stampEnv = BuildEnv{"SCM_REVISION=" + scm.NewFallback(RepoRoot).CurrentRevIdentifier()}
-}
-
-func toolPath(state *BuildState, tool BuildInput) string {
-	label := tool.Label()
-	if label != nil {
-		return state.Graph.TargetOrDie(*label).toolPath()
+	repoScm := scm.NewFallback(RepoRoot)
+	revision := repoScm.CurrentRevIdentifier()
+	stampEnv = BuildEnv{
+		"SCM_COMMIT_DATE=" + repoScm.CurrentRevDate("20060102"),
+		"SCM_REVISION=" + revision,
+		"SCM_DESCRIBE=" + repoScm.DescribeIdentifier(revision),
 	}
-	return tool.Paths(state.Graph)[0]
 }
 
-func toolPaths(state *BuildState, tools []BuildInput) []string {
+func toolPath(state *BuildState, tool BuildInput, abs bool) string {
+	if label := tool.Label(); label != nil {
+		path := state.Graph.TargetOrDie(*label).toolPath(abs)
+		if !strings.Contains(path, "/") {
+			path = "./" + path
+		}
+		return path
+	} else if path := tool.Paths(state.Graph)[0]; abs || !strings.HasPrefix(path, state.Config.PleaseLocation) {
+		return path
+	}
+	return tool.LocalPaths(state.Graph)[0]
+}
+
+func toolPaths(state *BuildState, tools []BuildInput, abs bool) []string {
 	ret := make([]string, len(tools))
 	for i, tool := range tools {
-		ret[i] = toolPath(state, tool)
+		ret[i] = toolPath(state, tool, abs)
 	}
 	return ret
 }

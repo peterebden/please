@@ -5,7 +5,7 @@ genrule(
         "version": ["//:version"],
     },
     outs = ["versioned.go"],
-    cmd = "sed \"s/1.0.9999/`cat $SRCS_VERSION`/\" $SRCS_GO > $OUT",
+    cmd = "sed \"s/1.0.9999/`cat $SRCS_VERSION`/\" $SRCS_GO > \"$OUT\"",
 )
 
 go_library(
@@ -151,6 +151,24 @@ go_test(
 go_test(
     name = "subrepo_test",
     srcs = ["subrepo_test.go"],
+    deps = [
+        ":core",
+        "//third_party/go:testify",
+    ],
+)
+
+go_test(
+    name = "command_replacements_test",
+    srcs = ["command_replacements_test.go"],
+    deps = [
+        ":core",
+        "//third_party/go:testify",
+    ],
+)
+
+go_test(
+    name = "stamp_test",
+    srcs = ["stamp_test.go"],
     deps = [
         ":core",
         "//third_party/go:testify",

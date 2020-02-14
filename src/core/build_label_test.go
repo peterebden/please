@@ -14,6 +14,15 @@ func TestString(t *testing.T) {
 	assert.Equal(t, "//...", BuildLabel{Name: "..."}.String())
 }
 
+func TestShortString(t *testing.T) {
+	assert.Equal(t, "//src/core:core_test", BuildLabel{PackageName: "src/core", Name: "core_test"}.ShortString(BuildLabel{}))
+	assert.Equal(t, ":core", BuildLabel{PackageName: "src/core", Name: "core"}.ShortString(BuildLabel{PackageName: "src/core"}))
+	assert.Equal(t, "//src/core", BuildLabel{PackageName: "src/core", Name: "core"}.ShortString(BuildLabel{}))
+	assert.Equal(t, "///plz//src/core:core", BuildLabel{Subrepo: "plz", PackageName: "src/core", Name: "core"}.ShortString(BuildLabel{}))
+	assert.Equal(t, "//src/core", BuildLabel{Subrepo: "plz", PackageName: "src/core", Name: "core"}.ShortString(BuildLabel{Subrepo: "plz", PackageName: "blah", Name: "blah"}))
+	assert.Equal(t, ":core", BuildLabel{Subrepo: "plz", PackageName: "src/core", Name: "core"}.ShortString(BuildLabel{Subrepo: "plz", PackageName: "src/core", Name: "blah"}))
+}
+
 func TestIncludes(t *testing.T) {
 	label1 := BuildLabel{PackageName: "src/core", Name: "..."}
 	label2 := BuildLabel{PackageName: "src/parse", Name: "parse"}
@@ -111,8 +120,8 @@ func TestSubrepoLabel(t *testing.T) {
 func TestParseBuildLabelParts(t *testing.T) {
 	target1 := "///unittest_cpp//:unittest_cpp"
 	targetNewSyntax := "@unittest_cpp"
-	pkg, name, subrepo := parseBuildLabelParts(target1, "/", nil)
-	pkg2, name2, subrepo2 := parseBuildLabelParts(targetNewSyntax, "/", nil)
+	pkg, name, subrepo := parseBuildLabelParts(target1, "/", "")
+	pkg2, name2, subrepo2 := parseBuildLabelParts(targetNewSyntax, "/", "")
 	assert.Equal(t, pkg, "")
 	assert.Equal(t, pkg2, "")
 	assert.Equal(t, name, "unittest_cpp")

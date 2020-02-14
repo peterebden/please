@@ -173,9 +173,8 @@ func (p *parser) parseStatement() *Statement {
 		p.l.Next()
 		s.Assert.Expr = p.parseExpression()
 		if p.optional(',') {
-			tok := p.next(String)
-			s.Assert.Message = tok.Value
-			p.endPos = tok.EndPos()
+			s.Assert.Message = p.parseExpression()
+			p.endPos = s.Assert.Message.EndPos
 		}
 		p.next(EOL)
 	default:
@@ -461,8 +460,8 @@ func (p *parser) parseValueExpression() *ValueExpression {
 	}
 
 	tok = p.l.Peek()
-	if tok.Type == '[' {
-		ve.Slice = p.parseSlice()
+	for tok.Type == '[' {
+		ve.Slices = append(ve.Slices, p.parseSlice())
 		tok = p.l.Peek()
 	}
 	if p.optional('.') {
@@ -481,6 +480,9 @@ func (p *parser) parseIdentStatement() *IdentStatement {
 	}
 	_, reserved := keywords[i.Name]
 	p.assert(!reserved, tok, "Cannot operate on keyword or constant %s", i.Name)
+	if tok := p.l.Peek(); tok.Type == EOL {
+		return i
+	}
 	tok = p.l.Next()
 	switch tok.Type {
 	case ',':
@@ -670,7 +672,7 @@ func (p *parser) parseFString() *FString {
 	tok.Pos.Column++ // track position in case of error
 	for idx := p.findBrace(s); idx != -1; idx = p.findBrace(s) {
 		v := &f.Vars[p.newElement(&f.Vars)]
-		v.Prefix = s[:idx]
+		v.Prefix = strings.Replace(strings.Replace(s[:idx], "{{", "{", -1), "}}", "}", -1)
 		s = s[idx+1:]
 		tok.Pos.Column += idx + 1
 		idx = strings.IndexByte(s, '}')
@@ -683,7 +685,7 @@ func (p *parser) parseFString() *FString {
 		s = s[idx+1:]
 		tok.Pos.Column += idx + 1
 	}
-	f.Suffix = s
+	f.Suffix = strings.Replace(strings.Replace(s, "{{", "{", -1), "}}", "}", -1)
 
 	return f
 }

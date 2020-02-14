@@ -1,4 +1,4 @@
-// Diretory-based cache.
+// Directory-based cache.
 
 package cache
 
@@ -8,6 +8,7 @@ import (
 	"compress/gzip"
 	"encoding/base64"
 	"io"
+	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -23,6 +24,8 @@ import (
 	"github.com/thought-machine/please/src/fs"
 )
 
+const remoteActionFilename = ".plz_remote_action"
+
 type dirCache struct {
 	Dir      string
 	Compress bool
@@ -32,7 +35,7 @@ type dirCache struct {
 	mutex    sync.Mutex
 }
 
-func (cache *dirCache) Store(target *core.BuildTarget, key []byte, files ...string) {
+func (cache *dirCache) Store(target *core.BuildTarget, key []byte, metadata *core.BuildMetadata, files []string) {
 	cacheDir := cache.getPath(target, key, "")
 	tmpDir := cache.getFullPath(target, key, "", "=")
 	cache.markDir(cacheDir, 0)
@@ -40,15 +43,21 @@ func (cache *dirCache) Store(target *core.BuildTarget, key []byte, files ...stri
 		log.Warning("Failed to remove existing cache directory %s: %s", cacheDir, err)
 		return
 	}
-	cache.storeFiles(target, key, "", cacheDir, tmpDir, cacheArtifacts(target, files...), true)
+	if target.PostBuildFunction != nil && len(metadata.RemoteAction) == 0 {
+		files = append(files, target.PostBuildOutputFileName())
+	}
+	cache.storeFiles(target, key, "", cacheDir, tmpDir, files, true)
+	if len(metadata.RemoteAction) > 0 {
+		filename := path.Join(tmpDir, remoteActionFilename)
+		if err := cache.ensureStoreReady(filename); err == nil {
+			if err := ioutil.WriteFile(filename, metadata.RemoteAction, 0644); err != nil {
+				log.Warning("Failed to store remote action in local cache: %s", err)
+			}
+		}
+	}
 	if err := os.Rename(tmpDir, cacheDir); err != nil && !os.IsNotExist(err) {
 		log.Warning("Failed to create cache directory %s: %s", cacheDir, err)
 	}
-}
-
-func (cache *dirCache) StoreExtra(target *core.BuildTarget, key []byte, out string) {
-	cacheDir := cache.getPath(target, key, out)
-	cache.storeFiles(target, key, out, cacheDir, cacheDir, []string{out}, false)
 }
 
 // storeFiles stores the given files in the cache, either compressed or not.
@@ -182,12 +191,23 @@ func (cache *dirCache) storeFile(target *core.BuildTarget, out, cacheDir string)
 	return size
 }
 
-func (cache *dirCache) Retrieve(target *core.BuildTarget, key []byte) bool {
-	return cache.retrieveFiles(target, key, "", cacheArtifacts(target))
-}
-
-func (cache *dirCache) RetrieveExtra(target *core.BuildTarget, key []byte, out string) bool {
-	return cache.retrieveFiles(target, key, out, []string{out})
+func (cache *dirCache) Retrieve(target *core.BuildTarget, key []byte, outs []string) *core.BuildMetadata {
+	if needsPostBuildFile(target) {
+		outs = append(outs, target.PostBuildOutputFileName())
+	}
+	if !cache.retrieveFiles(target, key, "", outs) {
+		return nil
+	}
+	metadata := &core.BuildMetadata{}
+	if needsPostBuildFile(target) {
+		metadata = loadPostBuildFile(target)
+	}
+	if len(outs) == 0 && metadata != nil { // Only need to retrieve this in one particular case
+		if data, err := ioutil.ReadFile(path.Join(cache.getPath(target, key, ""), remoteActionFilename)); err == nil {
+			metadata.RemoteAction = data
+		}
+	}
+	return metadata
 }
 
 // retrieveFiles retrieves the given set of files from the cache.
@@ -208,6 +228,9 @@ func (cache *dirCache) retrieveFiles2(target *core.BuildTarget, cacheDir string,
 		return false, nil
 	}
 	cache.markDir(cacheDir, 0)
+	if len(outs) == 0 {
+		return true, nil
+	}
 	if cache.Compress {
 		log.Debug("Retrieving %s: %s from compressed cache", target.Label, cacheDir)
 		return true, cache.retrieveCompressed(target, cacheDir)
@@ -478,5 +501,6 @@ func (cache *dirCache) shouldClean(name string, isDir bool) bool {
 	// 28 == length of 20-byte sha1 hash, encoded to base64, which always gets a trailing =
 	// as padding so we can check that to be "sure".
 	// Also 29 in case we appended an extra = (which we do for temporary files that are still being written to)
-	return (len(name) == 28 || len(name) == 29) && name[27] == '='
+	// Similarly for sha256 which is length 44.
+	return ((len(name) == 28 || len(name) == 29) && name[27] == '=') || ((len(name) == 44 || len(name) == 45) && name[43] == '=')
 }

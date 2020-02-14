@@ -6,16 +6,14 @@ package watch
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/signal"
 	"path"
-	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/streamrail/concurrent-map"
 	"gopkg.in/op/go-logging.v1"
 
+	"github.com/thought-machine/please/src/cli"
 	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/fs"
 	"github.com/thought-machine/please/src/run"
@@ -42,17 +40,11 @@ func Watch(state *core.BuildState, labels core.BuildLabels, callback CallbackFun
 	files := cmap.New()
 	go startWatching(watcher, state, labels, files)
 
-	sigchan := make(chan os.Signal, 1)
-	signal.Notify(sigchan, os.Interrupt)
 	parentCtx, cancelParent := context.WithCancel(context.Background())
-	go func() {
-		for range sigchan {
-			cancelParent()
-			signal.Stop(sigchan)
-			close(sigchan)
-			syscall.Kill(syscall.Getpid(), syscall.SIGINT)
-		}
-	}()
+	cli.AtExit(func() {
+		cancelParent()
+		time.Sleep(5 * time.Millisecond) // Brief pause to give the cancel() call time to progress before the process dies
+	})
 
 	ctx, cancel := context.WithCancel(parentCtx)
 
@@ -104,7 +96,7 @@ func startWatching(watcher *fsnotify.Watcher, state *core.BuildState, labels []c
 		for _, source := range target.AllSources() {
 			addSource(watcher, state, source, dirs, files)
 		}
-		for _, datum := range target.Data {
+		for _, datum := range target.AllData() {
 			addSource(watcher, state, datum, dirs, files)
 		}
 		for _, dep := range target.Dependencies() {
@@ -167,7 +159,8 @@ func anyTests(state *core.BuildState, labels []core.BuildLabel) bool {
 // build invokes a single build while watching.
 func build(ctx context.Context, state *core.BuildState, labels []core.BuildLabel, callback CallbackFunc) {
 	// Set up a new state & copy relevant parts off the existing one.
-	ns := core.NewBuildState(state.Config.Please.NumThreads, state.Cache, state.Verbosity, state.Config)
+	ns := core.NewBuildState(state.Config)
+	ns.Cache = state.Cache
 	ns.VerifyHashes = state.VerifyHashes
 	ns.NumTestRuns = state.NumTestRuns
 	ns.NeedTests = state.NeedTests

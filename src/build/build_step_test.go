@@ -30,7 +30,7 @@ var cache core.Cache
 func TestBuildTargetWithNoDeps(t *testing.T) {
 	state, target := newState("//package1:target1")
 	target.AddOutput("file1")
-	err := buildTarget(1, state, target)
+	err := buildTarget(1, state, target, false)
 	assert.NoError(t, err)
 	assert.Equal(t, core.Built, target.State())
 }
@@ -38,7 +38,7 @@ func TestBuildTargetWithNoDeps(t *testing.T) {
 func TestFailedBuildTarget(t *testing.T) {
 	state, target := newState("//package1:target1a")
 	target.Command = "false"
-	err := buildTarget(1, state, target)
+	err := buildTarget(1, state, target, false)
 	assert.Error(t, err)
 }
 
@@ -47,7 +47,7 @@ func TestBuildTargetWhichNeedsRebuilding(t *testing.T) {
 	// because there's no rule hash file.
 	state, target := newState("//package1:target2")
 	target.AddOutput("file2")
-	err := buildTarget(1, state, target)
+	err := buildTarget(1, state, target, false)
 	assert.NoError(t, err)
 	assert.Equal(t, core.Built, target.State())
 }
@@ -57,7 +57,7 @@ func TestBuildTargetWhichDoesntNeedRebuilding(t *testing.T) {
 	state, target := newState("//package1:target3")
 	target.AddOutput("file3")
 	assert.NoError(t, writeRuleHash(state, target))
-	err := buildTarget(1, state, target)
+	err := buildTarget(1, state, target, false)
 	assert.NoError(t, err)
 	assert.Equal(t, core.Reused, target.State())
 }
@@ -70,7 +70,7 @@ func TestModifiedBuildTargetStillNeedsRebuilding(t *testing.T) {
 	assert.NoError(t, writeRuleHash(state, target))
 	target.Command = "echo 'wibble wibble wibble' > $OUT"
 	target.RuleHash = nil // Have to force a reset of this
-	err := buildTarget(1, state, target)
+	err := buildTarget(1, state, target, false)
 	assert.NoError(t, err)
 	assert.Equal(t, core.Built, target.State())
 }
@@ -81,7 +81,7 @@ func TestSymlinkedOutputs(t *testing.T) {
 	target.AddOutput("file5")
 	target.AddSource(core.FileLabel{File: "src5", Package: "package1"})
 	target.Command = "ln -s $SRC $OUT"
-	err := buildTarget(1, state, target)
+	err := buildTarget(1, state, target, false)
 	assert.NoError(t, err)
 	assert.Equal(t, core.Built, target.State())
 }
@@ -95,7 +95,7 @@ func TestPreBuildFunction(t *testing.T) {
 		target.Command = "echo 'wibble wibble wibble' > $OUT"
 		return nil
 	})
-	err := buildTarget(1, state, target)
+	err := buildTarget(1, state, target, false)
 	assert.NoError(t, err)
 	assert.Equal(t, core.Built, target.State())
 }
@@ -109,7 +109,7 @@ func TestPostBuildFunction(t *testing.T) {
 		assert.Equal(t, "wibble wibble wibble", output)
 		return nil
 	})
-	err := buildTarget(1, state, target)
+	err := buildTarget(1, state, target, false)
 	assert.NoError(t, err)
 	assert.Equal(t, core.Built, target.State())
 	assert.Equal(t, []string{"file7"}, target.Outputs())
@@ -121,7 +121,7 @@ func TestCacheRetrieval(t *testing.T) {
 	target.AddOutput("file8")
 	target.Command = "false" // Will fail if we try to build it.
 	state.Cache = cache
-	err := buildTarget(1, state, target)
+	err := buildTarget(1, state, target, false)
 	assert.NoError(t, err)
 	assert.Equal(t, core.Cached, target.State())
 }
@@ -139,7 +139,7 @@ func TestPostBuildFunctionAndCache(t *testing.T) {
 		return nil
 	})
 	state.Cache = cache
-	err := buildTarget(1, state, target)
+	err := buildTarget(1, state, target, false)
 	assert.NoError(t, err)
 	assert.Equal(t, core.Built, target.State())
 	assert.True(t, called)
@@ -159,7 +159,7 @@ func TestPostBuildFunctionAndCache2(t *testing.T) {
 		return nil
 	})
 	state.Cache = cache
-	err := buildTarget(1, state, target)
+	err := buildTarget(1, state, target, false)
 	assert.NoError(t, err)
 	assert.Equal(t, core.Cached, target.State())
 	assert.True(t, called)
@@ -169,9 +169,11 @@ func TestInitPyCreation(t *testing.T) {
 	state, _ := newState("//pypkg:wevs")
 	target1 := newPyFilegroup(state, "//pypkg:target1", "file1.py")
 	target2 := newPyFilegroup(state, "//pypkg:target2", "__init__.py")
-	assert.NoError(t, buildFilegroup(state, target1))
+	_, err := buildFilegroup(state, target1)
+	assert.NoError(t, err)
 	assert.True(t, fs.FileExists("plz-out/gen/pypkg/__init__.py"))
-	assert.NoError(t, buildFilegroup(state, target2))
+	_, err = buildFilegroup(state, target2)
+	assert.NoError(t, err)
 	d, err := ioutil.ReadFile("plz-out/gen/pypkg/__init__.py")
 	assert.NoError(t, err)
 	assert.Equal(t, `"""output from //pypkg:target2"""`, strings.TrimSpace(string(d)))
@@ -180,7 +182,8 @@ func TestInitPyCreation(t *testing.T) {
 func TestRecursiveInitPyCreation(t *testing.T) {
 	state, _ := newState("//package1/package2:wevs")
 	target1 := newPyFilegroup(state, "//package1/package2:target1", "file1.py")
-	assert.NoError(t, buildFilegroup(state, target1))
+	_, err := buildFilegroup(state, target1)
+	assert.NoError(t, err)
 	assert.True(t, fs.FileExists("plz-out/gen/package1/package2/__init__.py"))
 	assert.True(t, fs.FileExists("plz-out/gen/package1/__init__.py"))
 }
@@ -190,7 +193,7 @@ func TestCreatePlzOutGo(t *testing.T) {
 	target.AddLabel("link:plz-out/go/${PKG}/src")
 	target.AddOutput("file1.go")
 	assert.False(t, fs.PathExists("plz-out/go"))
-	assert.NoError(t, buildTarget(1, state, target))
+	assert.NoError(t, buildTarget(1, state, target, false))
 	assert.True(t, fs.PathExists("plz-out/go/gopkg/src/file1.go"))
 }
 
@@ -231,7 +234,7 @@ func TestFileGroupBinDir(t *testing.T) {
 	target.IsBinary = true
 	target.IsFilegroup = true
 
-	err := buildFilegroup(state, target)
+	_, err := buildFilegroup(state, target)
 	assert.NoError(t, err)
 
 	assert.True(t, fs.PathExists("plz-out/bin/package1/package2/"))
@@ -248,7 +251,7 @@ func TestOutputHash(t *testing.T) {
 	state, target := newState("//package3:target1")
 	target.AddOutput("file1")
 	target.Hashes = []string{"6c6d66a0852b49cdeeb0e183b4f10b0309c5dd4a"}
-	b, err := OutputHash(state, target)
+	b, err := state.TargetHasher.OutputHash(target)
 	assert.NoError(t, err)
 	assert.Equal(t, "6c6d66a0852b49cdeeb0e183b4f10b0309c5dd4a", hex.EncodeToString(b))
 }
@@ -259,7 +262,7 @@ func TestCheckRuleHashes(t *testing.T) {
 	target.Hashes = []string{"6c6d66a0852b49cdeeb0e183b4f10b0309c5dd4a"}
 
 	// This is the normal sha1-with-combine hash calculation
-	b, _ := OutputHash(state, target)
+	b, _ := state.TargetHasher.OutputHash(target)
 	err := checkRuleHashes(state, target, b)
 	assert.NoError(t, err)
 
@@ -281,12 +284,13 @@ func TestCheckRuleHashes(t *testing.T) {
 
 func newState(label string) (*core.BuildState, *core.BuildTarget) {
 	config, _ := core.ReadConfigFiles(nil, nil)
-	state := core.NewBuildState(1, nil, 4, config)
+	state := core.NewBuildState(config)
 	target := core.NewBuildTarget(core.ParseBuildLabel(label, ""))
 	target.Command = fmt.Sprintf("echo 'output of %s' > $OUT", target.Label)
 	target.BuildTimeout = 100 * time.Second
 	state.Graph.AddTarget(target)
 	state.Parser = &fakeParser{}
+	Init(state)
 	return state, target
 }
 
@@ -303,29 +307,18 @@ func newPyFilegroup(state *core.BuildState, label, filename string) *core.BuildT
 // Fake cache implementation with hardcoded behaviour for the various tests above.
 type mockCache struct{}
 
-func (*mockCache) Store(target *core.BuildTarget, key []byte, files ...string) {
+func (*mockCache) Store(target *core.BuildTarget, key []byte, metadata *core.BuildMetadata, files []string) {
 }
 
-func (*mockCache) StoreExtra(target *core.BuildTarget, key []byte, file string) {
-}
-
-func (*mockCache) Retrieve(target *core.BuildTarget, key []byte) bool {
+func (*mockCache) Retrieve(target *core.BuildTarget, key []byte, outputs []string) *core.BuildMetadata {
 	if target.Label.Name == "target8" {
 		ioutil.WriteFile("plz-out/gen/package1/file8", []byte("retrieved from cache"), 0664)
-		return true
+		return &core.BuildMetadata{}
 	} else if target.Label.Name == "target10" {
 		ioutil.WriteFile("plz-out/gen/package1/file10", []byte("retrieved from cache"), 0664)
-		return true
+		return &core.BuildMetadata{Stdout: []byte("retrieved from cache")}
 	}
-	return false
-}
-
-func (*mockCache) RetrieveExtra(target *core.BuildTarget, key []byte, file string) bool {
-	if target.Label.Name == "target10" && file == target.PostBuildOutputFileName() {
-		ioutil.WriteFile(postBuildOutputFileName(target), []byte("retrieved from cache"), 0664)
-		return true
-	}
-	return false
+	return nil
 }
 
 func (*mockCache) Clean(target *core.BuildTarget) {}
@@ -370,7 +363,7 @@ func TestMain(m *testing.M) {
 	// Move ourselves to the root of the test data tree
 	wd, _ := os.Getwd()
 	core.RepoRoot = path.Join(wd, "src/build/test_data")
-	Init(nil)
+	Init(core.NewDefaultBuildState())
 	if err := os.Chdir(core.RepoRoot); err != nil {
 		panic(err)
 	}

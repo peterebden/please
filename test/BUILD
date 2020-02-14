@@ -385,7 +385,7 @@ genrule(
     name = "symlink_gen",
     srcs = ["symlink_test.txt"],
     outs = ["symlink_test.txt"],
-    cmd = "ln -s $SRCS $OUTS",
+    cmd = 'ln -s $SRCS "$OUTS"',
 )
 
 gentest(
@@ -434,7 +434,7 @@ sh_test(
 genrule(
     name = "pass_env",
     outs = ["pass_env.sh"],
-    cmd = "echo \"export USER='$USER'\" > $OUT",
+    cmd = "echo \"export USER='$USER'\" > \"$OUT\"",
     pass_env = ["USER"],
 )
 
@@ -443,4 +443,33 @@ sh_test(
     src = "pass_env_test.sh",
     data = [":pass_env"],
     labels = ["manual"],  # Unclear what a good env var to pass is that works locally & on CI.
+)
+
+genrule(
+    name = "print_rule",
+    cmd = "true",
+    labels = [
+        "a:hello",
+        "a:greetings",
+        "b:goodbye",
+        "hello",
+        "manual",
+    ],
+)
+
+plz_e2e_test(
+    name = "query_print_test",
+    cmd = "plz query print -l a: //test:print_rule",
+    expected_output = "query_print_test.txt",
+)
+
+gentest(
+    name = "failing_test",
+    labels = ["manual"],
+    test_cmd = "false",
+)
+
+plz_e2e_test(
+    name = "failing_tests_ok_test",
+    cmd = "plz test //test:failing_test --failing_tests_ok",
 )

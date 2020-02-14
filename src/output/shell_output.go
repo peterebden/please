@@ -4,6 +4,7 @@ package output
 
 import (
 	"bufio"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"math/rand"
@@ -16,7 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thought-machine/please/src/build"
 	"github.com/thought-machine/please/src/cli"
 	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/test"
@@ -52,49 +52,46 @@ type buildingTargetData struct {
 	Eta          time.Duration
 }
 
-// MonitorState monitors the build while it's running (essentially until state.TestCases is closed)
-// and prints output while it's happening.
-func MonitorState(state *core.BuildState, numThreads int, plainOutput, detailedTests bool, traceFile string) {
+// MonitorState monitors the build while it's running and prints output.
+// The caller must cancel the given context once they want this function to stop displaying things.
+func MonitorState(ctx context.Context, state *core.BuildState, plainOutput, detailedTests, streamTestResults bool, traceFile string) {
+	initPrintf(state.Config)
 	failedTargetMap := map[core.BuildLabel]error{}
-	buildingTargets := make([]buildingTarget, numThreads)
+	buildingTargets := make([]buildingTarget, state.Config.Please.NumThreads+state.Config.NumRemoteExecutors())
 
 	if len(state.Config.Please.Motd) != 0 {
 		r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 		printf("%s\n", state.Config.Please.Motd[r.Intn(len(state.Config.Please.Motd))])
 	}
 
-	displayDone := make(chan struct{})
-	stop := make(chan struct{})
-	if plainOutput {
-		go logProgress(state, &buildingTargets, stop, displayDone)
-	} else {
-		go display(state, &buildingTargets, stop, displayDone)
-	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel() // not really necessary but keeps linter happy
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		if plainOutput {
+			logProgress(ctx, state, buildingTargets)
+		} else {
+			display(ctx, state, buildingTargets)
+		}
+		wg.Done()
+	}()
 	failedTargets := []core.BuildLabel{}
 	failedNonTests := []core.BuildLabel{}
 	for result := range state.Results() {
 		if state.DebugTests && result.Status == core.TargetTesting {
-			stop <- struct{}{}
-			<-displayDone
-			// Ensure that this works again later and we don't deadlock
-			// TODO(peterebden): this does not seem like a gloriously elegant synchronisation mechanism...
-			go func() {
-				<-stop
-				displayDone <- struct{}{}
-			}()
+			cancel() // signals the interactive display goroutines to stop
 		}
-		processResult(state, result, buildingTargets, plainOutput, &failedTargets, &failedNonTests, failedTargetMap, traceFile != "")
+		processResult(state, result, buildingTargets, plainOutput, &failedTargets, &failedNonTests, failedTargetMap, traceFile != "", streamTestResults)
 	}
-	stop <- struct{}{}
-	<-displayDone
+	<-ctx.Done()
+	wg.Wait()
 	if traceFile != "" {
 		writeTrace(traceFile)
 	}
 	duration := time.Since(state.StartTime).Round(durationGranularity)
 	if len(failedNonTests) > 0 { // Something failed in the build step.
-		if state.Verbosity > 0 {
-			printFailedBuildResults(failedNonTests, failedTargetMap, duration)
-		}
+		printFailedBuildResults(failedNonTests, failedTargetMap, duration)
 		return
 	}
 	// Check all the targets we wanted to build actually have been built.
@@ -110,7 +107,7 @@ func MonitorState(state *core.BuildState, numThreads int, plainOutput, detailedT
 			log.Fatalf("Target %s hasn't built but we have no pending tasks left.\n%s", label, cycle)
 		}
 	}
-	if state.Verbosity > 0 && state.NeedBuild && len(failedNonTests) == 0 {
+	if state.NeedBuild && len(failedNonTests) == 0 {
 		if state.PrepareOnly || state.PrepareShell {
 			printTempDirs(state, duration)
 		} else if state.NeedTests { // Got to the test phase, report their results.
@@ -165,7 +162,7 @@ func yesNo(b bool) string {
 }
 
 func processResult(state *core.BuildState, result *core.BuildResult, buildingTargets []buildingTarget, plainOutput bool,
-	failedTargets, failedNonTests *[]core.BuildLabel, failedTargetMap map[core.BuildLabel]error, shouldTrace bool) {
+	failedTargets, failedNonTests *[]core.BuildLabel, failedTargetMap map[core.BuildLabel]error, shouldTrace, streamTestResults bool) {
 	label := result.Label
 	active := result.Status.IsActive()
 	failed := result.Status.IsFailure()
@@ -185,8 +182,8 @@ func processResult(state *core.BuildState, result *core.BuildResult, buildingTar
 		// Don't stop here after test failure, aggregate them for later.
 		if result.Status != core.TargetTestFailed {
 			// Reset colour so the entire compiler error output doesn't appear red.
-			log.Errorf("%s failed:${RESET}\n%s", result.Label, shortError(result.Err))
-			state.KillAll()
+			log.Errorf("%s failed:\x1b[0m\n%s", result.Label, shortError(result.Err))
+			state.Stop()
 		} else if !plainOutput { // plain output will have already logged this
 			log.Errorf("%s failed: %s", result.Label, shortError(result.Err))
 		}
@@ -204,6 +201,10 @@ func processResult(state *core.BuildState, result *core.BuildResult, buildingTar
 				showExecutionOutput(testExecution)
 			}
 		}
+	}
+	if streamTestResults && (result.Status == core.TargetTested || result.Status == core.TargetTestFailed) {
+		os.Stdout.Write(test.SerialiseResultsToXML(target, false))
+		os.Stdout.Write([]byte{'\n'})
 	}
 }
 
@@ -380,21 +381,21 @@ func maybeToString(duration *time.Duration) string {
 }
 
 // logProgress continually logs progress messages every 10s explaining where we're up to.
-func logProgress(state *core.BuildState, buildingTargets *[]buildingTarget, stop <-chan struct{}, done chan<- struct{}) {
+func logProgress(ctx context.Context, state *core.BuildState, buildingTargets []buildingTarget) {
+	done := ctx.Done()
 	t := time.NewTicker(10 * time.Second)
 	defer t.Stop()
 	for {
 		select {
 		case <-t.C:
 			busy := 0
-			for i := 0; i < len(*buildingTargets); i++ {
-				if (*buildingTargets)[i].Active {
+			for i := 0; i < len(buildingTargets); i++ {
+				if buildingTargets[i].Active {
 					busy++
 				}
 			}
 			log.Notice("Build running for %s, %d / %d tasks done, %s busy", time.Since(state.StartTime).Round(time.Second), state.NumDone(), state.NumActive(), pluralise(busy, "worker", "workers"))
-		case <-stop:
-			done <- struct{}{}
+		case <-done:
 			return
 		}
 	}
@@ -457,7 +458,7 @@ func printBuildResults(state *core.BuildState, duration time.Duration) {
 func printHashes(state *core.BuildState, duration time.Duration) {
 	fmt.Printf("Hashes calculated, total time %s:\n", duration)
 	for _, label := range state.ExpandVisibleOriginalTargets() {
-		hash, err := build.OutputHash(state, state.Graph.TargetOrDie(label))
+		hash, err := state.TargetHasher.OutputHash(state.Graph.TargetOrDie(label))
 		if err != nil {
 			fmt.Printf("  %s: cannot calculate: %s\n", label, err)
 		} else {
@@ -473,13 +474,14 @@ func printTempDirs(state *core.BuildState, duration time.Duration) {
 		target := state.Graph.TargetOrDie(label)
 		cmd := target.GetCommand(state)
 		dir := target.TmpDir()
-		env := core.StampedBuildEnvironment(state, target, nil)
+		env := core.StampedBuildEnvironment(state, target, nil, path.Join(core.RepoRoot, target.TmpDir()))
 		if state.NeedTests {
 			cmd = target.GetTestCommand(state)
 			dir = path.Join(core.RepoRoot, target.TestDir())
 			env = core.TestEnvironment(state, target, dir)
 		}
-		cmd = build.ReplaceSequences(state, target, cmd)
+		cmd, _ = core.ReplaceSequences(state, target, cmd)
+		env = append(env, "CMD="+cmd)
 		fmt.Printf("  %s: %s\n", label, dir)
 		fmt.Printf("    Command: %s\n", cmd)
 		if !state.PrepareShell {
@@ -578,20 +580,10 @@ func targetColour(target *core.BuildTarget) string {
 }
 
 func targetColour2(target *core.BuildTarget) string {
-	// Quick heuristic on language types. May want to make this configurable.
 	for _, require := range target.Requires {
-		if require == "py" {
-			return "${GREEN}"
-		} else if require == "java" {
-			return "${RED}"
-		} else if require == "go" {
-			return "${YELLOW}"
-		} else if require == "js" {
-			return "${BLUE}"
+		if colour, present := replacements[require]; present {
+			return colour
 		}
-	}
-	if strings.Contains(target.Label.PackageName, "third_party") {
-		return "${MAGENTA}"
 	}
 	return "${WHITE}"
 }

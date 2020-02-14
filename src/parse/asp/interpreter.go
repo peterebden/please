@@ -11,12 +11,13 @@ import (
 
 // An interpreter holds the package-independent state about our parsing process.
 type interpreter struct {
-	scope       *scope
-	parser      *Parser
-	subincludes map[string]pyDict
-	config      map[*core.Configuration]*pyConfig
-	mutex       sync.RWMutex
-	configMutex sync.RWMutex
+	scope           *scope
+	parser          *Parser
+	subincludes     map[string]pyDict
+	config          map[*core.Configuration]*pyConfig
+	mutex           sync.RWMutex
+	configMutex     sync.RWMutex
+	breakpointMutex sync.Mutex
 }
 
 // newInterpreter creates and returns a new interpreter instance.
@@ -52,7 +53,8 @@ func (i *interpreter) LoadBuiltins(filename string, contents []byte, statements 
 	}
 	defer i.scope.SetAll(s.Freeze(), true)
 	if statements != nil {
-		return i.interpretStatements(s, statements)
+		_, err := i.interpretStatements(s, statements)
+		return err
 	} else if len(contents) != 0 {
 		stmts, err := i.parser.ParseData(contents, filename)
 		return i.loadBuiltinStatements(s, stmts, err)
@@ -66,8 +68,9 @@ func (i *interpreter) loadBuiltinStatements(s *scope, statements []*Statement, e
 	if err != nil {
 		return err
 	}
-	i.optimiseExpressions(reflect.ValueOf(statements))
-	return i.interpretStatements(s, i.parser.optimise(statements))
+	i.optimiseExpressions(statements)
+	_, err = i.interpretStatements(s, i.parser.optimise(statements))
+	return err
 }
 
 // interpretAll runs a series of statements in the context of the given package.
@@ -79,7 +82,7 @@ func (i *interpreter) interpretAll(pkg *core.Package, statements []*Statement) (
 	// mutating operations like .setdefault() otherwise.
 	s.config = i.pkgConfig(pkg).Copy()
 	s.Set("CONFIG", s.config)
-	err = i.interpretStatements(s, statements)
+	_, err = i.interpretStatements(s, statements)
 	if err == nil {
 		s.Callback = true // From here on, if anything else uses this scope, it's in a post-build callback.
 	}
@@ -87,7 +90,7 @@ func (i *interpreter) interpretAll(pkg *core.Package, statements []*Statement) (
 }
 
 // interpretStatements runs a series of statements in the context of the given scope.
-func (i *interpreter) interpretStatements(s *scope, statements []*Statement) (err error) {
+func (i *interpreter) interpretStatements(s *scope, statements []*Statement) (ret pyObject, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if e, ok := r.(error); ok {
@@ -97,8 +100,7 @@ func (i *interpreter) interpretStatements(s *scope, statements []*Statement) (er
 			}
 		}
 	}()
-	s.interpretStatements(statements)
-	return nil // Would have panicked if there was an error
+	return s.interpretStatements(statements), nil // Would have panicked if there was an error
 }
 
 // Subinclude returns the global values corresponding to subincluding the given file.
@@ -123,7 +125,7 @@ func (i *interpreter) Subinclude(path string, pkg *core.Package) pyDict {
 	// Scope needs a local version of CONFIG
 	s.config = i.scope.config.Copy()
 	s.Set("CONFIG", s.config)
-	i.optimiseExpressions(reflect.ValueOf(stmts))
+	i.optimiseExpressions(stmts)
 	s.interpretStatements(stmts)
 	locals := s.Freeze()
 	if s.config.overlay == nil {
@@ -160,25 +162,24 @@ func (i *interpreter) pkgConfig(pkg *core.Package) *pyConfig {
 
 // optimiseExpressions implements a peephole optimiser for expressions by precalculating constants
 // and identifying simple local variable lookups.
-func (i *interpreter) optimiseExpressions(v reflect.Value) {
-	callback := func(astStruct interface{}) interface{} {
-		if expr, ok := astStruct.(*Expression); ok && expr != nil {
-			if constant := i.scope.Constant(expr); constant != nil {
-				expr.Optimised = &OptimisedExpression{Constant: constant} // Extract constant expression
+func (i *interpreter) optimiseExpressions(stmts []*Statement) {
+	WalkAST(stmts, func(expr *Expression) bool {
+		if constant := i.scope.Constant(expr); constant != nil {
+			expr.Optimised = &OptimisedExpression{Constant: constant} // Extract constant expression
+			expr.Val = nil
+			return false
+		} else if expr.Val != nil && expr.Val.Ident != nil && expr.Val.Call == nil && expr.Op == nil && expr.If == nil && len(expr.Val.Slices) == 0 {
+			if expr.Val.Property == nil && len(expr.Val.Ident.Action) == 0 {
+				expr.Optimised = &OptimisedExpression{Local: expr.Val.Ident.Name}
+				return false
+			} else if expr.Val.Ident.Name == "CONFIG" && len(expr.Val.Ident.Action) == 1 && expr.Val.Ident.Action[0].Property != nil && len(expr.Val.Ident.Action[0].Property.Action) == 0 {
+				expr.Optimised = &OptimisedExpression{Config: expr.Val.Ident.Action[0].Property.Name}
 				expr.Val = nil
-			} else if expr.Val != nil && expr.Val.Ident != nil && expr.Val.Call == nil && expr.Op == nil && expr.If == nil && expr.Val.Slice == nil {
-				if expr.Val.Property == nil && len(expr.Val.Ident.Action) == 0 {
-					expr.Optimised = &OptimisedExpression{Local: expr.Val.Ident.Name}
-				} else if expr.Val.Ident.Name == "CONFIG" && len(expr.Val.Ident.Action) == 1 && expr.Val.Ident.Action[0].Property != nil && len(expr.Val.Ident.Action[0].Property.Action) == 0 {
-					expr.Optimised = &OptimisedExpression{Config: expr.Val.Ident.Action[0].Property.Name}
-					expr.Val = nil
-				}
+				return false
 			}
 		}
-		return nil
-	}
-
-	WalkAST(v, callback)
+		return true
+	})
 }
 
 // A scope contains all the information about a lexical scope.
@@ -329,7 +330,13 @@ func (s *scope) interpretStatements(statements []*Statement) pyObject {
 		} else if stmt.Ident != nil {
 			s.interpretIdentStatement(stmt.Ident)
 		} else if stmt.Assert != nil {
-			s.Assert(s.interpretExpression(stmt.Assert.Expr).IsTruthy(), stmt.Assert.Message)
+			if !s.interpretExpression(stmt.Assert.Expr).IsTruthy() {
+				if stmt.Assert.Message == nil {
+					s.Error("assertion failed")
+				} else {
+					s.Error(s.interpretExpression(stmt.Assert.Message).String())
+				}
+			}
 		} else if stmt.Raise != nil {
 			s.Error(s.interpretExpression(stmt.Raise).String())
 		} else if stmt.Literal != nil {
@@ -362,7 +369,7 @@ func (s *scope) interpretFor(stmt *ForStatement) pyObject {
 	for _, li := range s.iterate(&stmt.Expr) {
 		s.unpackNames(stmt.Names, li)
 		if ret := s.interpretStatements(stmt.Statements); ret != nil {
-			if b, ok := ret.(pyBool); ok && b == continueIteration {
+			if s, ok := ret.(pySentinel); ok && s == continueIteration {
 				continue
 			}
 			return ret
@@ -418,10 +425,18 @@ func (s *scope) interpretExpression(expr *Expression) pyObject {
 		case NotEqual:
 			obj = newPyBool(!reflect.DeepEqual(obj, s.interpretExpression(op.Expr)))
 		case Is:
-			// Is only works on boolean types.
-			b1, isBool1 := obj.(pyBool)
-			b2, isBool2 := s.interpretExpression(op.Expr).(pyBool)
-			obj = newPyBool(isBool1 && isBool2 && b1 == b2)
+			// Is only works None or boolean types.
+			expr := s.interpretExpression(op.Expr)
+			switch tobj := obj.(type) {
+			case pyNone:
+				_, ok := expr.(pyNone)
+				obj = newPyBool(ok)
+			case pyBool:
+				b, ok := expr.(pyBool)
+				obj = newPyBool(ok && b == tobj)
+			default:
+				obj = newPyBool(false)
+			}
 		case In, NotIn:
 			// the implementation of in is defined by the right-hand side, not the left.
 			obj = s.interpretExpression(op.Expr).Operator(op.Op, obj)
@@ -434,13 +449,13 @@ func (s *scope) interpretExpression(expr *Expression) pyObject {
 
 func (s *scope) interpretValueExpression(expr *ValueExpression) pyObject {
 	obj := s.interpretValueExpressionPart(expr)
-	if expr.Slice != nil {
-		if expr.Slice.Colon == "" {
+	for _, sl := range expr.Slices {
+		if sl.Colon == "" {
 			// Indexing, much simpler...
-			s.Assert(expr.Slice.End == nil, "Invalid syntax")
-			obj = obj.Operator(Index, s.interpretExpression(expr.Slice.Start))
+			s.Assert(sl.End == nil, "Invalid syntax")
+			obj = obj.Operator(Index, s.interpretExpression(sl.Start))
 		} else {
-			obj = s.interpretSlice(obj, expr.Slice)
+			obj = s.interpretSlice(obj, sl)
 		}
 	}
 	if expr.Property != nil {
@@ -543,7 +558,7 @@ func (s *scope) interpretIdent(obj pyObject, expr *IdentExpr) pyObject {
 	return obj
 }
 
-func (s *scope) interpretIdentStatement(stmt *IdentStatement) {
+func (s *scope) interpretIdentStatement(stmt *IdentStatement) pyObject {
 	if stmt.Index != nil {
 		// Need to special-case these, because types are immutable so we can't return a modifiable reference to them.
 		obj := s.Lookup(stmt.Name)
@@ -563,17 +578,22 @@ func (s *scope) interpretIdentStatement(stmt *IdentStatement) {
 		for i, name := range stmt.Unpack.Names {
 			s.Set(name, l[i+1])
 		}
-	} else if stmt.Action.Property != nil {
-		s.interpretIdent(s.Lookup(stmt.Name).Property(stmt.Action.Property.Name), stmt.Action.Property)
-	} else if stmt.Action.Call != nil {
-		s.callObject(stmt.Name, s.Lookup(stmt.Name), stmt.Action.Call)
-	} else if stmt.Action.Assign != nil {
-		s.Set(stmt.Name, s.interpretExpression(stmt.Action.Assign))
-	} else if stmt.Action.AugAssign != nil {
-		// The only augmented assignment operation we support is +=, and it's implemented
-		// exactly as x += y -> x = x + y since that matches the semantics of Go types.
-		s.Set(stmt.Name, s.Lookup(stmt.Name).Operator(Add, s.interpretExpression(stmt.Action.AugAssign)))
+	} else if stmt.Action != nil {
+		if stmt.Action.Property != nil {
+			return s.interpretIdent(s.Lookup(stmt.Name).Property(stmt.Action.Property.Name), stmt.Action.Property)
+		} else if stmt.Action.Call != nil {
+			return s.callObject(stmt.Name, s.Lookup(stmt.Name), stmt.Action.Call)
+		} else if stmt.Action.Assign != nil {
+			s.Set(stmt.Name, s.interpretExpression(stmt.Action.Assign))
+		} else if stmt.Action.AugAssign != nil {
+			// The only augmented assignment operation we support is +=, and it's implemented
+			// exactly as x += y -> x = x + y since that matches the semantics of Go types.
+			s.Set(stmt.Name, s.Lookup(stmt.Name).Operator(Add, s.interpretExpression(stmt.Action.AugAssign)))
+		}
+	} else {
+		return s.Lookup(stmt.Name)
 	}
+	return nil
 }
 
 func (s *scope) interpretList(expr *List) pyList {
@@ -697,7 +717,7 @@ func (s *scope) Constant(expr *Expression) pyObject {
 	// but it's rare that people would write something of that nature in this language.
 	if expr.Optimised != nil && expr.Optimised.Constant != nil {
 		return expr.Optimised.Constant
-	} else if expr.Val == nil || expr.Val.Slice != nil || expr.Val.Property != nil || expr.Val.Call != nil || expr.Op != nil || expr.If != nil {
+	} else if expr.Val == nil || len(expr.Val.Slices) != 0 || expr.Val.Property != nil || expr.Val.Call != nil || expr.Op != nil || expr.If != nil {
 		return nil
 	} else if expr.Val.Bool != "" || expr.Val.String != "" || expr.Val.Int != nil {
 		return s.interpretValueExpression(expr.Val)

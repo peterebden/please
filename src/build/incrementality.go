@@ -142,7 +142,7 @@ func mustSourceHash(state *core.BuildState, target *core.BuildTarget) []byte {
 // Calculate the hash of all sources of this rule
 func sourceHash(state *core.BuildState, target *core.BuildTarget) ([]byte, error) {
 	h := sha1.New()
-	for source := range core.IterSources(state.Graph, target) {
+	for source := range core.IterSources(state.Graph, target, false) {
 		result, err := state.PathHasher.Hash(source.Src, false, true)
 		if err != nil {
 			return nil, err
@@ -229,7 +229,7 @@ func ruleHash(state *core.BuildState, target *core.BuildTarget, runtime bool) []
 	if runtime {
 		// Similarly, we only hash the current command here again.
 		h.Write([]byte(target.GetTestCommand(state)))
-		for _, datum := range target.Data {
+		for _, datum := range target.AllData() {
 			h.Write([]byte(datum.String()))
 		}
 		hashOptionalBool(h, target.TestSandbox)
@@ -244,6 +244,7 @@ func ruleHash(state *core.BuildState, target *core.BuildTarget, runtime bool) []
 	hashOptionalBool(h, target.IsFilegroup)
 	hashOptionalBool(h, target.IsHashFilegroup)
 	hashOptionalBool(h, target.IsRemoteFile)
+	hashOptionalBool(h, target.Local)
 	for _, require := range target.Requires {
 		h.Write([]byte(require))
 	}
@@ -409,18 +410,13 @@ func mustShortTargetHash(state *core.BuildState, target *core.BuildTarget) []byt
 	return core.CollapseHash(mustTargetHash(state, target))
 }
 
-// RuntimeHash returns the target hash, source hash, config hash & runtime file hash,
+// RuntimeHash returns the target hash, config hash & runtime file hash,
 // all rolled into one. Essentially this is one hash needed to determine if the runtime
 // state is consistent.
 func RuntimeHash(state *core.BuildState, target *core.BuildTarget) ([]byte, error) {
 	hash := append(RuleHash(state, target, true, false), RuleHash(state, target, true, true)...)
 	hash = append(hash, state.Hashes.Config...)
-	sh, err := sourceHash(state, target)
-	if err != nil {
-		return nil, err
-	}
 	h := sha1.New()
-	h.Write(sh)
 	for source := range core.IterRuntimeFiles(state.Graph, target, true) {
 		result, err := state.PathHasher.Hash(source.Src, false, true)
 		if err != nil {
@@ -441,7 +437,7 @@ func PrintHashes(state *core.BuildState, target *core.BuildTarget) {
 	fmt.Printf("  Source: %s\n", b64(mustSourceHash(state, target)))
 	// Note that the logic here mimics sourceHash, but I don't want to pollute that with
 	// optional printing nonsense since it's on our hot path.
-	for source := range core.IterSources(state.Graph, target) {
+	for source := range core.IterSources(state.Graph, target, false) {
 		fmt.Printf("  Source: %s: %s\n", source.Src, b64(state.PathHasher.MustHash(source.Src)))
 	}
 	for _, tool := range target.AllTools() {
@@ -450,6 +446,9 @@ func PrintHashes(state *core.BuildState, target *core.BuildTarget) {
 		} else {
 			fmt.Printf("    Tool: %s: %s\n", tool, b64(state.PathHasher.MustHash(tool.FullPaths(state.Graph)[0])))
 		}
+	}
+	if state.RemoteClient != nil {
+		state.RemoteClient.PrintHashes(target, false)
 	}
 }
 

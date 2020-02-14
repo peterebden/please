@@ -10,17 +10,11 @@ filegroup(
     visibility = ["//third_party/python:all"],
 )
 
-filegroup(
-    name = "ansi_escapes",
-    srcs = ["ansi_escapes.build_defs"],
-    visibility = ["//src/output:all"],
-)
-
 genrule(
     name = "version",
     srcs = ["//:version"],
     outs = ["version.build_defs"],
-    cmd = "echo \"VERSION = '`cat $SRCS`'\" > $OUT",
+    cmd = "echo \"VERSION = '`cat $SRCS`'\" > \"$OUT\"",
     visibility = ["PUBLIC"],
 )
 

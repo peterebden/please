@@ -30,26 +30,30 @@ const dummyCoverage = "<?xml version=\"1.0\" ?><coverage></coverage>"
 const xattrName = "user.plz_test"
 
 // Test runs the tests for a single target.
-func Test(tid int, state *core.BuildState, target *core.BuildTarget) {
-	state.LogBuildResult(tid, target.Label, core.TargetTesting, "Testing...")
-	test(tid, state.ForTarget(target), target.Label, target)
+func Test(tid int, state *core.BuildState, label core.BuildLabel, remote bool) {
+	state.LogBuildResult(tid, label, core.TargetTesting, "Testing...")
+	target := state.Graph.TargetOrDie(label)
+	test(tid, state.ForTarget(target), label, target, remote)
+	if state.Config.Test.Upload != "" {
+		if err := uploadResults(target, state.Config.Test.Upload.String()); err != nil {
+			log.Warning("%s", err)
+		}
+	}
 }
 
-func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.BuildTarget) {
-	hash, err := build.RuntimeHash(state, target)
+func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.BuildTarget, runRemotely bool) {
+	hash, err := runtimeHash(state, target, runRemotely)
 	if err != nil {
 		state.LogBuildError(tid, label, core.TargetTestFailed, err, "Failed to calculate target hash")
 		return
 	}
-	// Check the cached output files if the target wasn't rebuilt.
-	hash = core.CollapseHash(hash)
+
 	cachedOutputFile := target.TestResultsFile()
 	cachedCoverageFile := target.CoverageFile()
-	resultsFileName := path.Base(cachedOutputFile)
-	coverageFileName := path.Base(cachedCoverageFile)
-	outputFile := path.Join(target.TestDir(), "test.results")
-	coverageFile := path.Join(target.TestDir(), "test.coverage")
-	needCoverage := state.NeedCoverage && !target.NoTestOutput && !target.HasAnyLabel(state.Config.Test.DisableCoverage)
+	outputFile := path.Join(target.TestDir(), core.TestResultsFile)
+	coverageFile := path.Join(target.TestDir(), core.CoverageFile)
+	needCoverage := target.NeedCoverage(state)
+	metadata := &core.BuildMetadata{Test: true, StartTime: time.Now()}
 
 	// If the user passed --shell then just prepare the directory.
 	if state.PrepareShell {
@@ -65,7 +69,7 @@ func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.B
 	cachedTestResults := func() *core.TestSuite {
 		log.Debug("Not re-running test %s; got cached results.", label)
 		coverage := parseCoverageFile(target, cachedCoverageFile)
-		results, err := parseTestResults(cachedOutputFile)
+		results, err := parseTestResults(cachedOutputFile, nil)
 		results.Package = strings.Replace(target.Label.PackageName, "/", ".", -1)
 		results.Name = target.Label.Name
 		results.Cached = true
@@ -76,7 +80,7 @@ func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.B
 			state.Cache.Clean(target)
 			return nil
 		} else {
-			logTestSuccess(state, tid, label, &results, &coverage)
+			logTestSuccess(state, tid, label, &results, coverage)
 		}
 		return &results
 	}
@@ -92,23 +96,29 @@ func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.B
 			log.Debug("Not caching results for %s, test had failures", label)
 			return true
 		}
-		if err := moveAndCacheOutputFile(state, target, hash, outputFile, cachedOutputFile, resultsFileName, dummyOutput); err != nil {
+		outs := []string{path.Base(cachedOutputFile)}
+		if err := moveOutputFile(state, target, hash, outputFile, cachedOutputFile, dummyOutput); err != nil {
 			state.LogTestResult(tid, label, core.TargetTestFailed, results, coverage, err, "Failed to move test output file")
 			return false
 		}
 		if needCoverage || core.PathExists(coverageFile) {
-			if err := moveAndCacheOutputFile(state, target, hash, coverageFile, cachedCoverageFile, coverageFileName, dummyCoverage); err != nil {
+			if err := moveOutputFile(state, target, hash, coverageFile, cachedCoverageFile, dummyCoverage); err != nil {
 				state.LogTestResult(tid, label, core.TargetTestFailed, results, coverage, err, "Failed to move test coverage file")
 				return false
 			}
+			outs = append(outs, path.Base(cachedCoverageFile))
 		}
 		for _, output := range target.TestOutputs {
 			tmpFile := path.Join(target.TestDir(), output)
 			outFile := path.Join(target.OutDir(), output)
-			if err := moveAndCacheOutputFile(state, target, hash, tmpFile, outFile, output, ""); err != nil {
+			if err := moveOutputFile(state, target, hash, tmpFile, outFile, ""); err != nil {
 				state.LogTestResult(tid, label, core.TargetTestFailed, results, coverage, err, "Failed to move test output file")
 				return false
 			}
+			outs = append(outs, output)
+		}
+		if state.Cache != nil {
+			state.Cache.Store(target, hash, metadata, outs)
 		}
 		return true
 	}
@@ -128,25 +138,15 @@ func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.B
 		}
 		log.Debug("Output file %s does not exist for %s", cachedOutputFile, target.Label)
 		// Check the cache for these artifacts.
-		if state.Cache == nil {
-			return true
+		files := []string{path.Base(target.TestResultsFile())}
+		if needCoverage {
+			files = append(files, path.Base(target.CoverageFile()))
 		}
-		if !state.Cache.RetrieveExtra(target, hash, resultsFileName) {
-			return true
-		}
-		if needCoverage && !state.Cache.RetrieveExtra(target, hash, coverageFileName) {
-			return true
-		}
-		for _, output := range target.TestOutputs {
-			if !state.Cache.RetrieveExtra(target, hash, output) {
-				return true
-			}
-		}
-		return false
+		return state.Cache == nil || state.Cache.Retrieve(target, hash, files) == nil
 	}
 
 	// Don't cache when doing multiple runs, presumably the user explicitly wants to check it.
-	if state.NumTestRuns == 1 && !needToRun() {
+	if state.NumTestRuns == 1 && !runRemotely && !needToRun() {
 		if cachedResults := cachedTestResults(); cachedResults != nil {
 			target.Results = *cachedResults
 			return
@@ -182,23 +182,24 @@ func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.B
 		target.Results.TestCases = append(target.Results.TestCases, testCase)
 		return
 	}
-
-	var coverage core.TestCoverage
+	coverage := &core.TestCoverage{}
 
 	// Always run the test this number of times
 	for runs := 1; runs <= state.NumTestRuns; runs++ {
 		status := "Testing"
 		var runStatus string
+		var numFlakes int
 		if state.NumTestRuns > 1 {
 			runStatus = status + fmt.Sprintf(" (run %d of %d)", runs, state.NumTestRuns)
+			numFlakes = 1 // only run the test NumTestRuns times if this is greater than 1
 		} else {
 			runStatus = status
+			// Run tests at least once, but possibly more if it's flaky.
+			// Flakiness will be `3` if `flaky` is `True` in the build_def.
+			numFlakes = utils.Max(target.Flakiness, 1)
 		}
 		// New group of test cases for each group of flaky runs
 		flakeResults := core.TestSuite{}
-		// Run tests at least once, but possibly more if it's flaky.
-		// Flakiness will be `3` if `flaky` is `True` in the build_def.
-		numFlakes := utils.Max(target.Flakiness, 1)
 		for flakes := 1; flakes <= numFlakes; flakes++ {
 			var flakeStatus string
 			if numFlakes > 1 {
@@ -208,7 +209,7 @@ func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.B
 			}
 			state.LogBuildResult(tid, label, core.TargetTesting, fmt.Sprintf("%s...", flakeStatus))
 
-			testSuite := doTest(tid, state, target, outputFile)
+			testSuite, cov := doTest(tid, state, target, outputFile, runRemotely)
 
 			flakeResults.TimedOut = flakeResults.TimedOut || testSuite.TimedOut
 			flakeResults.Properties = testSuite.Properties
@@ -216,6 +217,7 @@ func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.B
 			// Each set of executions is treated as a group
 			// So if a test flakes three times, three executions will be part of one test case.
 			flakeResults.Add(testSuite.TestCases...)
+			coverage.Aggregate(cov)
 
 			// If execution succeeded, we can break out of the flake loop
 			if testSuite.TestCases.AllSucceeded() {
@@ -226,43 +228,46 @@ func test(tid int, state *core.BuildState, label core.BuildLabel, target *core.B
 		// So if you ask for 3 runs you get 3 separate `PASS`es.
 		target.Results.Collapse(flakeResults)
 	}
+	metadata.EndTime = time.Now()
+	if target.Results.TestCases.AllSucceeded() && !runRemotely {
+		// Success, store in cache
+		moveAndCacheOutputFiles(&target.Results, coverage)
+	}
+	logTargetResults(tid, state, target, coverage)
+}
 
-	coverage = parseCoverageFile(target, coverageFile)
-
+func logTargetResults(tid int, state *core.BuildState, target *core.BuildTarget, coverage *core.TestCoverage) {
 	if target.Results.TestCases.AllSucceeded() {
-		// Success, clean things up
-		if moveAndCacheOutputFiles(&target.Results, &coverage) {
-			logTestSuccess(state, tid, label, &target.Results, &coverage)
-		}
 		// Clean up the test directory.
 		if state.CleanWorkdirs {
 			if err := os.RemoveAll(target.TestDir()); err != nil {
 				log.Warning("Failed to remove test directory for %s: %s", target.Label, err)
 			}
 		}
-	} else {
-		var resultErr error
-		var resultMsg string
-		if target.Results.Failures() > 0 {
-			resultMsg = "Tests failed"
-			for _, testCase := range target.Results.TestCases {
-				if len(testCase.Failures()) > 0 {
-					resultErr = fmt.Errorf(testCase.Failures()[0].Failure.Message)
-				}
-			}
-		} else if target.Results.Errors() > 0 {
-			resultMsg = "Tests errored"
-			for _, testCase := range target.Results.TestCases {
-				if len(testCase.Errors()) > 0 {
-					resultErr = fmt.Errorf(testCase.Errors()[0].Error.Message)
-				}
-			}
-		} else {
-			resultErr = fmt.Errorf("unknown error")
-			resultMsg = "Something went wrong"
-		}
-		state.LogTestResult(tid, label, core.TargetTestFailed, &target.Results, &coverage, resultErr, resultMsg)
+		logTestSuccess(state, tid, target.Label, &target.Results, coverage)
+		return
 	}
+	var resultErr error
+	var resultMsg string
+	if target.Results.Failures() > 0 {
+		resultMsg = "Tests failed"
+		for _, testCase := range target.Results.TestCases {
+			if len(testCase.Failures()) > 0 {
+				resultErr = fmt.Errorf(testCase.Failures()[0].Failure.Message)
+			}
+		}
+	} else if target.Results.Errors() > 0 {
+		resultMsg = "Tests errored"
+		for _, testCase := range target.Results.TestCases {
+			if len(testCase.Errors()) > 0 {
+				resultErr = fmt.Errorf(testCase.Errors()[0].Error.Message)
+			}
+		}
+	} else {
+		resultErr = fmt.Errorf("unknown error")
+		resultMsg = "Something went wrong"
+	}
+	state.LogTestResult(tid, target.Label, core.TargetTestFailed, &target.Results, coverage, resultErr, resultMsg)
 }
 
 func logTestSuccess(state *core.BuildState, tid int, label core.BuildLabel, results *core.TestSuite, coverage *core.TestCoverage) {
@@ -300,39 +305,64 @@ func prepareTestDir(graph *core.BuildGraph, target *core.BuildTarget) error {
 }
 
 // testCommandAndEnv returns the test command & environment for a target.
-func testCommandAndEnv(state *core.BuildState, target *core.BuildTarget) (string, []string) {
-	replacedCmd := build.ReplaceTestSequences(state, target, target.GetTestCommand(state))
+func testCommandAndEnv(state *core.BuildState, target *core.BuildTarget) (string, []string, error) {
+	replacedCmd, err := core.ReplaceTestSequences(state, target, target.GetTestCommand(state))
 	env := core.TestEnvironment(state, target, path.Join(core.RepoRoot, target.TestDir()))
 	if len(state.TestArgs) > 0 {
 		args := strings.Join(state.TestArgs, " ")
 		replacedCmd += " " + args
 		env = append(env, "TESTS="+args)
 	}
-	return replacedCmd, env
+	return replacedCmd, env, err
 }
 
 func runTest(state *core.BuildState, target *core.BuildTarget) ([]byte, error) {
-	replacedCmd, env := testCommandAndEnv(state, target)
+	replacedCmd, env, err := testCommandAndEnv(state, target)
+	if err != nil {
+		return nil, err
+	}
 	log.Debug("Running test %s\nENVIRONMENT:\n%s\n%s", target.Label, strings.Join(env, "\n"), replacedCmd)
 	_, stderr, err := state.ProcessExecutor.ExecWithTimeoutShellStdStreams(target, target.TestDir(), env, target.TestTimeout, state.ShowAllOutput, replacedCmd, target.TestSandbox, state.DebugTests)
 	return stderr, err
 }
 
-func doTest(tid int, state *core.BuildState, target *core.BuildTarget, outputFile string) core.TestSuite {
+func doTest(tid int, state *core.BuildState, target *core.BuildTarget, outputFile string, runRemotely bool) (core.TestSuite, *core.TestCoverage) {
 	startTime := time.Now()
-	stdout, runError := prepareAndRunTest(tid, state, target)
+	metadata, resultsData, coverage, err := doTestResults(tid, state, target, outputFile, runRemotely)
 	duration := time.Since(startTime)
-
-	parsedSuite := parseTestOutput(stdout, "", runError, duration, target, outputFile)
-
+	parsedSuite := parseTestOutput(metadata.Stdout, string(metadata.Stderr), err, duration, target, outputFile, resultsData)
 	return core.TestSuite{
 		Package:    strings.Replace(target.Label.PackageName, "/", ".", -1),
 		Name:       target.Label.Name,
 		Duration:   duration,
-		TimedOut:   runError == context.DeadlineExceeded,
+		TimedOut:   err == context.DeadlineExceeded,
 		Properties: parsedSuite.Properties,
 		TestCases:  parsedSuite.TestCases,
+	}, coverage
+}
+
+func doTestResults(tid int, state *core.BuildState, target *core.BuildTarget, outputFile string, runRemotely bool) (*core.BuildMetadata, [][]byte, *core.TestCoverage, error) {
+	if runRemotely {
+		metadata, results, coverage, err := state.RemoteClient.Test(tid, target)
+		cov, err2 := parseRemoteCoverage(state, target, coverage)
+		if err == nil && err2 != nil {
+			log.Error("Error parsing coverage data: %s", err2)
+		}
+		if metadata == nil {
+			metadata = &core.BuildMetadata{}
+		}
+		return metadata, results, cov, err
 	}
+	stdout, err := prepareAndRunTest(tid, state, target)
+	coverage := parseCoverageFile(target, path.Join(target.TestDir(), core.CoverageFile))
+	return &core.BuildMetadata{Stdout: stdout}, nil, coverage, err
+}
+
+func parseRemoteCoverage(state *core.BuildState, target *core.BuildTarget, coverage []byte) (*core.TestCoverage, error) {
+	if !state.NeedCoverage {
+		return core.NewTestCoverage(), nil
+	}
+	return parseTestCoverage(target, coverage)
 }
 
 // prepareAndRunTest sets up a test directory and runs the test.
@@ -344,7 +374,7 @@ func prepareAndRunTest(tid int, state *core.BuildState, target *core.BuildTarget
 	return runTest(state, target)
 }
 
-func parseTestOutput(stdout []byte, stderr string, runError error, duration time.Duration, target *core.BuildTarget, outputFile string) core.TestSuite {
+func parseTestOutput(stdout []byte, stderr string, runError error, duration time.Duration, target *core.BuildTarget, outputFile string, resultsData [][]byte) core.TestSuite {
 	// This is all pretty involved; there are lots of different possibilities of what could happen.
 	// The contract is that the test must return zero on success or non-zero on failure (Unix FTW).
 	// If it's successful, it must produce a parseable file named "test.results" in its temp folder.
@@ -358,7 +388,7 @@ func parseTestOutput(stdout []byte, stderr string, runError error, duration time
 	// No output and execution error - SYNTHETIC ERROR - Failed to Run
 	// Output and no execution error - PARSE OUTPUT - Ignore noTestOutput
 	// Output and execution error - PARSE OUTPUT + SYNTHETIC ERROR - Incomplete Run
-	if !core.PathExists(outputFile) {
+	if !core.PathExists(outputFile) && len(resultsData) == 0 {
 		if runError == nil && target.NoTestOutput {
 			return core.TestSuite{
 				TestCases: []core.TestCase{
@@ -436,7 +466,7 @@ func parseTestOutput(stdout []byte, stderr string, runError error, duration time
 		}
 	}
 
-	results, parseError := parseTestResults(outputFile)
+	results, parseError := parseTestResults(outputFile, resultsData)
 	if parseError != nil {
 		if runError != nil {
 			return core.TestSuite{
@@ -521,8 +551,8 @@ func parseTestOutput(stdout []byte, stderr string, runError error, duration time
 }
 
 // Parses the coverage output for a single target.
-func parseCoverageFile(target *core.BuildTarget, coverageFile string) core.TestCoverage {
-	coverage, err := parseTestCoverage(target, coverageFile)
+func parseCoverageFile(target *core.BuildTarget, coverageFile string) *core.TestCoverage {
+	coverage, err := parseTestCoverageFile(target, coverageFile)
 	if err != nil {
 		log.Errorf("Failed to parse coverage file for %s: %s", target.Label, err)
 	}
@@ -544,8 +574,9 @@ func RemoveTestOutputs(target *core.BuildTarget) error {
 	return nil
 }
 
-// Attempt to write a dummy coverage file to record that it's been done for a test.
-func moveAndCacheOutputFile(state *core.BuildState, target *core.BuildTarget, hash []byte, from, to, filename, dummy string) error {
+// moveOutputFile moves an output file from the temporary directory to its permanent location.
+// If dummy is given, it writes that into the destination if the file doesn't exist.
+func moveOutputFile(state *core.BuildState, target *core.BuildTarget, hash []byte, from, to, dummy string) error {
 	if !core.PathExists(from) {
 		if dummy == "" {
 			return nil
@@ -556,17 +587,16 @@ func moveAndCacheOutputFile(state *core.BuildState, target *core.BuildTarget, ha
 	} else if err := os.Rename(from, to); err != nil {
 		return err
 	}
-	if state.Cache != nil {
-		state.Cache.StoreExtra(target, hash, filename)
-	}
 	// Set the hash on the new destination file
 	return fs.RecordAttr(to, hash, xattrName, state.XattrsSupported)
 }
 
 // startTestWorkerIfNeeded starts a worker server if the test needs one.
 func startTestWorkerIfNeeded(tid int, state *core.BuildState, target *core.BuildTarget) (string, error) {
-	workerCmd, _, testCmd := build.TestWorkerCommand(state, target)
-	if workerCmd == "" {
+	workerCmd, _, testCmd, err := core.TestWorkerCommand(state, target)
+	if err != nil {
+		return "", err
+	} else if workerCmd == "" {
 		return "", nil
 	}
 	state.LogBuildResult(tid, target.Label, core.TargetTesting, "Starting test worker...")
@@ -584,4 +614,16 @@ func startTestWorkerIfNeeded(tid int, state *core.BuildState, target *core.Build
 // verifyHash verifies that the hash on a test file matches the one for the current test.
 func verifyHash(state *core.BuildState, filename string, hash []byte) bool {
 	return bytes.Equal(hash, fs.ReadAttr(filename, xattrName, state.XattrsSupported))
+}
+
+// runtimeHash returns the runtime hash of a target, or an empty slice if running remotely.
+func runtimeHash(state *core.BuildState, target *core.BuildTarget, runRemotely bool) ([]byte, error) {
+	if runRemotely {
+		return nil, nil
+	}
+	hash, err := build.RuntimeHash(state, target)
+	if err == nil {
+		hash = core.CollapseHash(hash)
+	}
+	return hash, err
 }

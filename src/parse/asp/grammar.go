@@ -35,7 +35,7 @@ type Statement struct {
 	Raise   *Expression
 	Assert  *struct {
 		Expr    *Expression
-		Message string
+		Message *Expression
 	}
 	Ident    *IdentStatement
 	Literal  *Expression
@@ -62,6 +62,8 @@ type FuncDef struct {
 	KeywordsOnly bool
 	// Indicates whether the function is private, i.e. name starts with an underscore.
 	IsPrivate bool
+	// True if the function is builtin to Please.
+	IsBuiltin bool
 }
 
 // A ForStatement implements the 'for' statement.
@@ -138,7 +140,7 @@ type ValueExpression struct {
 	Tuple    *List
 	Lambda   *Lambda
 	Ident    *IdentExpr
-	Slice    *Slice
+	Slices   []*Slice
 	Property *IdentExpr
 	Call     *Call
 }

@@ -6,9 +6,9 @@ go_library(
     ],
     visibility = ["PUBLIC"],
     deps = [
-        "//src/build",
         "//src/core",
         "//src/output",
+        "//src/process",
         "//third_party/go:errgroup",
         "//third_party/go:logging",
     ],

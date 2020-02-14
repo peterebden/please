@@ -12,6 +12,7 @@ import (
 	"github.com/thought-machine/please/src/follow"
 	"github.com/thought-machine/please/src/fs"
 	"github.com/thought-machine/please/src/parse"
+	"github.com/thought-machine/please/src/remote"
 	"github.com/thought-machine/please/src/test"
 	"github.com/thought-machine/please/src/utils"
 )
@@ -26,6 +27,9 @@ var log = logging.MustGetLogger("plz")
 func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, config *core.Configuration, arch cli.Arch) {
 	parse.InitParser(state)
 	build.Init(state)
+	if state.Config.Remote.URL != "" {
+		state.RemoteClient = remote.New(state)
+	}
 
 	if config.Events.Port != 0 && state.NeedBuild {
 		shutdown := follow.InitialiseServer(state, config.Events.Port)
@@ -35,53 +39,70 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, config *
 		go follow.UpdateResources(state)
 	}
 
-	l := newLimiter(state.Config)
 	// Start looking for the initial targets to kick the build off
 	go findOriginalTasks(state, preTargets, targets, arch)
+
+	parses, builds, tests, remoteBuilds, remoteTests := state.TaskQueues()
+
 	// Start up all the build workers
 	var wg sync.WaitGroup
-	wg.Add(config.Please.NumThreads)
+	wg.Add(config.Please.NumThreads + config.NumRemoteExecutors())
 	for i := 0; i < config.Please.NumThreads; i++ {
 		go func(tid int) {
-			doTasks(l, tid, state, state.Include, state.Exclude, arch)
+			doTasks(tid, state, parses, builds, tests, arch, false)
 			wg.Done()
 		}(i)
+	}
+	for i := 0; i < config.NumRemoteExecutors(); i++ {
+		go func(tid int) {
+			doTasks(tid, state, nil, remoteBuilds, remoteTests, arch, true)
+			wg.Done()
+		}(config.Please.NumThreads + i)
 	}
 	// Wait until they've all exited, which they'll do once they have no tasks left.
 	wg.Wait()
 	if state.Cache != nil {
 		state.Cache.Shutdown()
 	}
+	if state.RemoteClient != nil {
+		_, _, in, out := state.RemoteClient.DataRate()
+		log.Info("Total remote RPC data in: %d out: %d", in, out)
+	}
+	state.CloseResults()
 }
 
-func doTasks(l *limiter, tid int, state *core.BuildState, include, exclude []string, arch cli.Arch) {
-	for {
-		label, dependor, t := state.NextTask()
-		switch t {
-		case core.Stop, core.Kill:
-			return
-		case core.Parse, core.SubincludeParse:
-			t := t
-			label := label
-			dependor := dependor
+// RunHost is a convenience function that uses the host architecture, the given state's
+// configuration and no pre targets. It is otherwise identical to Run.
+func RunHost(targets []core.BuildLabel, state *core.BuildState) {
+	Run(targets, nil, state, state.Config, cli.Arch{})
+}
+
+func doTasks(tid int, state *core.BuildState, parses <-chan core.LabelPair, builds, tests <-chan core.BuildLabel, arch cli.Arch, remote bool) {
+	for parses != nil || builds != nil || tests != nil {
+		select {
+		case p, ok := <-parses:
+			if !ok {
+				parses = nil
+				break
+			}
 			state.ParsePool <- func() {
-				parse.Parse(tid, state, label, dependor, include, exclude, t == core.SubincludeParse)
+				parse.Parse(tid, state, p.Label, p.Dependent, p.ForSubinclude)
 				state.TaskDone(false)
 			}
-		case core.Build, core.SubincludeBuild:
-			target := state.Graph.TargetOrDie(label)
-			if l.ShouldRun(state, target, t) {
-				build.Build(tid, state, target)
-				state.TaskDone(true)
-				l.Done(target)
+		case l, ok := <-builds:
+			if !ok {
+				builds = nil
+				break
 			}
-		case core.Test:
-			target := state.Graph.TargetOrDie(label)
-			if l.ShouldRun(state, target, t) {
-				test.Test(tid, state, target)
-				state.TaskDone(true)
-				l.Done(target)
+			build.Build(tid, state, l, remote)
+			state.TaskDone(true)
+		case l, ok := <-tests:
+			if !ok {
+				tests = nil
+				break
 			}
+			test.Test(tid, state, l, remote)
+			state.TaskDone(true)
 		}
 	}
 }
@@ -91,7 +112,7 @@ func findOriginalTasks(state *core.BuildState, preTargets, targets []core.BuildL
 	if state.Config.Bazel.Compatibility && fs.FileExists("WORKSPACE") {
 		// We have to parse the WORKSPACE file before anything else to understand subrepos.
 		// This is a bit crap really since it inhibits parallelism for the first step.
-		parse.Parse(0, state, core.NewBuildLabel("workspace", "all"), core.OriginalTarget, state.Include, state.Exclude, false)
+		parse.Parse(0, state, core.NewBuildLabel("workspace", "all"), core.OriginalTarget, false)
 	}
 	if arch.Arch != "" {
 		// Set up a new subrepo for this architecture.
@@ -117,15 +138,8 @@ func findOriginalTasks(state *core.BuildState, preTargets, targets []core.BuildL
 }
 
 func findOriginalTaskSet(state *core.BuildState, targets []core.BuildLabel, addToList bool, arch cli.Arch) {
-	for _, target := range targets {
-		if target == core.BuildLabelStdin {
-			for label := range cli.ReadStdin() {
-
-				findOriginalTask(state, core.ParseBuildLabels([]string{label})[0], addToList, arch)
-			}
-		} else {
-			findOriginalTask(state, target, addToList, arch)
-		}
+	for _, target := range utils.ReadStdinLabels(targets) {
+		findOriginalTask(state, target, addToList, arch)
 	}
 }
 

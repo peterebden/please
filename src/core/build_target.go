@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -33,6 +32,22 @@ const SandboxDir = "/tmp/plz_sandbox"
 const buildDirSuffix = "._build"
 const testDirSuffix = "._test"
 
+// TestResultsFile is the file that targets output their test results into.
+// This is normally defined for them via an environment variable.
+const TestResultsFile = "test.results"
+
+// CoverageFile is the file that targets output coverage information into.
+// This is similarly defined via an environment variable.
+const CoverageFile = "test.coverage"
+
+// TestResultsDirLabel is a known label that indicates that the test will output results
+// into a directory rather than a file. Please can internally handle either but the remote
+// execution API requires that we specify which is which.
+const TestResultsDirLabel = "test_results_dir"
+
+// tempOutputSuffix is the suffix we attach to temporary outputs to avoid name clashes.
+const tempOutputSuffix = ".out"
+
 // A BuildTarget is a representation of a build target and all information about it;
 // its name, dependencies, build commands, etc.
 type BuildTarget struct {
@@ -53,7 +68,9 @@ type BuildTarget struct {
 	// Named source files of this rule; as above but identified by name.
 	NamedSources map[string][]BuildInput `name:"srcs"`
 	// Data files of this rule. Similar to sources but used at runtime, typically by tests.
-	Data []BuildInput
+	Data []BuildInput `name:"data"`
+	// Data files of this rule by name.
+	namedData map[string][]BuildInput `name:"data"`
 	// Output files of this rule. All are paths relative to this package.
 	outputs []string `name:"outs"`
 	// Named output subsets of this rule. All are paths relative to this package but can be
@@ -103,6 +120,11 @@ type BuildTarget struct {
 	// If true, the rule is given an env var at build time that contains the hash of its
 	// transitive dependencies, which can be used to identify the output in a predictable way.
 	Stamp bool
+	// If true, the target must be run locally (i.e. is not compatible with remote execution).
+	Local bool
+	// If true, the target is needed for a subinclude and therefore we will have to make sure its
+	// outputs are available locally when built.
+	NeededForSubinclude bool
 	// Marks the target as a filegroup.
 	IsFilegroup bool `print:"false"`
 	// Marks the target as a hash_filegroup.
@@ -163,6 +185,25 @@ type BuildTarget struct {
 	TestOutputs []string `name:"test_outputs"`
 }
 
+// BuildMetadata is temporary metadata that's stored around a build target - we don't
+// generally persist it indefinitely.
+type BuildMetadata struct {
+	// Time the build started fetching inputs
+	InputFetchStartTime time.Time
+	// Time the build finished fetching them
+	InputFetchEndTime time.Time
+	// Time the build began
+	StartTime time.Time
+	// Time it ended
+	EndTime time.Time
+	// Standard output & error
+	Stdout, Stderr []byte
+	// Serialised build action metadata.
+	RemoteAction []byte
+	// True if this represents a test run.
+	Test bool
+}
+
 // A PreBuildFunction is a type that allows hooking a pre-build callback.
 type PreBuildFunction interface {
 	fmt.Stringer
@@ -193,17 +234,18 @@ type BuildTargetState int32
 
 // The available states for a target.
 const (
-	Inactive   BuildTargetState = iota // Target isn't used in current build
-	Semiactive                         // Target would be active if we needed a build
-	Active                             // Target is going to be used in current build
-	Pending                            // Target is ready to be built but not yet started.
-	Building                           // Target is currently being built
-	Stopped                            // We stopped building the target because we'd gone as far as needed.
-	Built                              // Target has been successfully built
-	Cached                             // Target has been retrieved from the cache
-	Unchanged                          // Target has been built but hasn't changed since last build
-	Reused                             // Outputs of previous build have been reused.
-	Failed                             // Target failed for some reason
+	Inactive      BuildTargetState = iota // Target isn't used in current build
+	Semiactive                            // Target would be active if we needed a build
+	Active                                // Target is going to be used in current build
+	Pending                               // Target is ready to be built but not yet started.
+	Building                              // Target is currently being built
+	Stopped                               // We stopped building the target because we'd gone as far as needed.
+	Built                                 // Target has been successfully built
+	Cached                                // Target has been retrieved from the cache
+	Unchanged                             // Target has been built but hasn't changed since last build
+	Reused                                // Outputs of previous build have been reused.
+	BuiltRemotely                         // Target has been built but outputs are not necessarily local.
+	Failed                                // Target failed for some reason
 )
 
 // String implements the fmt.Stringer interface.
@@ -308,6 +350,18 @@ func (target *BuildTarget) allSourcePaths(graph *BuildGraph, full buildPathsFunc
 	ret := make([]string, 0, len(target.Sources))
 	for _, source := range target.AllSources() {
 		ret = append(ret, target.sourcePaths(graph, source, full)...)
+	}
+	return ret
+}
+
+// AllURLs returns all the URLs for this target.
+// This should only be called if the target is a remote file.
+// The URLs will have any embedded environment variables expanded according to the given config.
+func (target *BuildTarget) AllURLs(config *Configuration) []string {
+	env := GeneralBuildEnvironment(config)
+	ret := make([]string, len(target.Sources))
+	for i, s := range target.Sources {
+		ret[i] = os.Expand(string(s.(URLLabel)), env.ReplaceEnvironment)
 	}
 	return ret
 }
@@ -481,11 +535,11 @@ func (target *BuildTarget) NamedOutputs(name string) []string {
 // filename(plz-out/tmp/) if output has the same name as the package, this avoids the name conflict issue
 func (target *BuildTarget) GetTmpOutput(parseOutput string) string {
 	if parseOutput == target.Label.PackageName {
-		return parseOutput + ".out"
+		return parseOutput + tempOutputSuffix
 	} else if target.Label.PackageName == "" && target.HasSource(parseOutput) {
 		// This also fixes the case where source and output are the same, which can happen
 		// when we're in the root directory.
-		return parseOutput + ".out"
+		return parseOutput + tempOutputSuffix
 	}
 	return parseOutput
 }
@@ -498,6 +552,19 @@ func (target *BuildTarget) GetTmpOutputAll(parseOutputs []string) []string {
 		tmpOutputs[i] = target.GetTmpOutput(out)
 	}
 	return tmpOutputs
+}
+
+// GetRealOutput returns the real output name for a filename that might have been a temporary output
+// (i.e as returned by GetTmpOutput).
+func (target *BuildTarget) GetRealOutput(output string) string {
+	if strings.HasSuffix(output, tempOutputSuffix) {
+		real := strings.TrimSuffix(output, tempOutputSuffix)
+		// Check this isn't a file that just happens to be named the same way
+		if target.GetTmpOutput(real) == output {
+			return real
+		}
+	}
+	return output
 }
 
 // SourcePaths returns the source paths for a given set of sources.
@@ -760,12 +827,15 @@ func (target *BuildTarget) AddProvide(language string, label BuildLabel) {
 // ProvideFor returns the build label that we'd provide for the given target.
 func (target *BuildTarget) ProvideFor(other *BuildTarget) []BuildLabel {
 	ret := []BuildLabel{}
-	if target.Provides != nil {
-		// Never do this if the other target has a data dependency on us.
+	if target.Provides != nil && len(other.Requires) != 0 {
+		// Never do this if the other target has a data or tool dependency on us.
 		for _, data := range other.Data {
 			if label := data.Label(); label != nil && *label == target.Label {
 				return []BuildLabel{target.Label}
 			}
+		}
+		if other.IsTool(target.Label) {
+			return []BuildLabel{target.Label}
 		}
 		for _, require := range other.Requires {
 			if label, present := target.Provides[require]; present {
@@ -843,6 +913,19 @@ func (target *BuildTarget) AddTool(tool BuildInput) {
 // AddDatum adds a new item of data to the target.
 func (target *BuildTarget) AddDatum(datum BuildInput) {
 	target.Data = append(target.Data, datum)
+	if label := datum.Label(); label != nil {
+		target.AddDependency(*label)
+		target.dependencyInfo(*label).data = true
+	}
+}
+
+// AddNamedDatum adds a data file to the target which is tagged with a particular name.
+func (target *BuildTarget) AddNamedDatum(name string, datum BuildInput) {
+	if target.namedData == nil {
+		target.namedData = map[string][]BuildInput{name: {datum}}
+	} else {
+		target.namedData[name] = append(target.namedData[name], datum)
+	}
 	if label := datum.Label(); label != nil {
 		target.AddDependency(*label)
 		target.dependencyInfo(*label).data = true
@@ -956,7 +1039,7 @@ func (target *BuildTarget) AllLocalSources() []string {
 
 // HasSource returns true if this target has the given file as a source (named or not, or data).
 func (target *BuildTarget) HasSource(source string) bool {
-	for _, src := range append(target.AllSources(), target.Data...) {
+	for _, src := range append(target.AllSources(), target.AllData()...) {
 		if src.String() == source { // Comparison is a bit dodgy tbh
 			return true
 		}
@@ -968,6 +1051,31 @@ func (target *BuildTarget) HasSource(source string) bool {
 // The input source includes the target's package name.
 func (target *BuildTarget) HasAbsoluteSource(source string) bool {
 	return target.HasSource(strings.TrimPrefix(source, target.Label.PackageName+"/"))
+}
+
+// AllData returns all the data files for this rule.
+func (target *BuildTarget) AllData() []BuildInput {
+	ret := target.Data[:]
+	if target.namedData != nil {
+		keys := make([]string, 0, len(target.namedData))
+		for k := range target.namedData {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			ret = append(ret, target.namedData[k]...)
+		}
+	}
+	return ret
+}
+
+// AllDataPaths returns the paths for all the data of this target.
+func (target *BuildTarget) AllDataPaths(graph *BuildGraph) []string {
+	ret := make([]string, 0, len(target.Data))
+	for _, datum := range target.AllData() {
+		ret = append(ret, target.sourcePaths(graph, datum, BuildInput.Paths)...)
+	}
+	return ret
 }
 
 // AllTools returns all the tools for this rule in some canonical order.
@@ -996,15 +1104,6 @@ func (target *BuildTarget) ToolNames() []string {
 // NamedTools returns the tools with the given name.
 func (target *BuildTarget) NamedTools(name string) []BuildInput {
 	return target.namedTools[name]
-}
-
-// AllData returns all the data paths for this target.
-func (target *BuildTarget) AllData(graph *BuildGraph) []string {
-	ret := make([]string, 0, len(target.Data))
-	for _, datum := range target.Data {
-		ret = append(ret, datum.Paths(graph)...)
-	}
-	return ret
 }
 
 // AddDependency adds a dependency to this target. It deduplicates against any existing deps.
@@ -1046,11 +1145,15 @@ func (target *BuildTarget) IsTool(tool BuildLabel) bool {
 }
 
 // toolPath returns a path to this target when used as a tool.
-func (target *BuildTarget) toolPath() string {
+func (target *BuildTarget) toolPath(abs bool) string {
 	outputs := target.Outputs()
 	ret := make([]string, len(outputs))
 	for i, o := range outputs {
-		ret[i], _ = filepath.Abs(path.Join(target.OutDir(), o))
+		if abs {
+			ret[i] = path.Join(RepoRoot, target.OutDir(), o)
+		} else {
+			ret[i] = path.Join(target.Label.PackageName, o)
+		}
 	}
 	return strings.Join(ret, " ")
 }
@@ -1085,6 +1188,7 @@ func (target *BuildTarget) insert(sl []string, s string) []string {
 	if s == "" {
 		panic("Cannot add an empty string as an output of a target")
 	}
+	s = strings.TrimPrefix(s, "./")
 	for i, x := range sl {
 		if s == x {
 			// Already present.
@@ -1134,6 +1238,17 @@ func (target *BuildTarget) OutMode() os.FileMode {
 // PostBuildOutputFileName returns the post-build output file for this target.
 func (target *BuildTarget) PostBuildOutputFileName() string {
 	return ".build_output_" + target.Label.Name
+}
+
+// StampFileName returns the stamp filename for this target.
+func (target *BuildTarget) StampFileName() string {
+	return ".stamp_" + target.Label.Name
+}
+
+// NeedCoverage returns true if this target should output coverage during a test
+// for a particular invocation.
+func (target *BuildTarget) NeedCoverage(state *BuildState) bool {
+	return state.NeedCoverage && !target.NoTestOutput && !target.HasAnyLabel(state.Config.Test.DisableCoverage)
 }
 
 // Parent finds the parent of a build target, or nil if the target is parentless.

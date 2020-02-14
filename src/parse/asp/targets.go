@@ -50,6 +50,7 @@ func createTarget(s *scope, args []pyObject) *core.BuildTarget {
 	target.TestOnly = test || isTruthy(15)
 	target.ShowProgress = isTruthy(36)
 	target.IsRemoteFile = isTruthy(38)
+	target.Local = isTruthy(41)
 
 	var size *core.Size
 	if args[37] != None {
@@ -61,8 +62,8 @@ func createTarget(s *scope, args []pyObject) *core.BuildTarget {
 		l := asStringList(s, args[40], "pass_env")
 		target.PassEnv = &l
 	}
-	if args[41] != None {
-		target.OutputLinks = asStringList(s, args[41], "out_links")
+	if args[42] != None {
+		target.OutputLinks = asStringList(s, args[42], "out_links")
 	}
 
 	target.BuildTimeout = sizeAndTimeout(s, size, args[24], s.state.Config.Build.Timeout)
@@ -159,7 +160,7 @@ func populateTarget(s *scope, t *core.BuildTarget, args []pyObject) {
 	}
 	addMaybeNamed(s, "tools", args[9], t.AddTool, t.AddNamedTool, true, true)
 	addMaybeNamed(s, "system_srcs", args[32], t.AddSource, nil, true, false)
-	addMaybeNamed(s, "data", args[4], t.AddDatum, nil, false, false)
+	addMaybeNamed(s, "data", args[4], t.AddDatum, t.AddNamedDatum, false, false)
 	addMaybeNamedOutput(s, "outs", args[5], t.AddOutput, t.AddNamedOutput, t, false)
 	addMaybeNamedOutput(s, "optional_outs", args[35], t.AddOptionalOutput, nil, t, true)
 	addMaybeNamedOutput(s, "test_outputs", args[31], t.AddTestOutput, nil, t, false)
@@ -384,6 +385,7 @@ func parseSource(s *scope, src string, systemAllowed, tool bool) core.BuildInput
 		// "go" as a source is interpreted as a file, as a tool it's interpreted as something on the PATH.
 		return core.SystemPathLabel{Name: src, Path: s.state.Config.Path()}
 	}
+	src = strings.TrimPrefix(src, "./")
 	// Make sure it's not the actual build file.
 	for _, filename := range s.state.Config.Parse.BuildFileName {
 		s.Assert(filename != src, "You can't specify the BUILD file as an input to a rule")
@@ -419,7 +421,8 @@ func (f *preBuildFunction) Call(target *core.BuildTarget) error {
 	s := f.f.scope.NewPackagedScope(f.f.scope.state.Graph.PackageOrDie(target.Label))
 	s.Callback = true
 	s.Set(f.f.args[0], pyString(target.Label.Name))
-	return annotateCallbackError(s, target, s.interpreter.interpretStatements(s, f.f.code))
+	_, err := s.interpreter.interpretStatements(s, f.f.code)
+	return annotateCallbackError(s, target, err)
 }
 
 func (f *preBuildFunction) String() string {
@@ -437,7 +440,8 @@ func (f *postBuildFunction) Call(target *core.BuildTarget, output string) error 
 	s.Callback = true
 	s.Set(f.f.args[0], pyString(target.Label.Name))
 	s.Set(f.f.args[1], fromStringList(strings.Split(strings.TrimSpace(output), "\n")))
-	return annotateCallbackError(s, target, s.interpreter.interpretStatements(s, f.f.code))
+	_, err := s.interpreter.interpretStatements(s, f.f.code)
+	return annotateCallbackError(s, target, err)
 }
 
 func (f *postBuildFunction) String() string {

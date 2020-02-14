@@ -30,6 +30,7 @@ var KnownFields = map[string]bool{
 	"TestCommand":                 true,
 	"TestCommands":                true,
 	"NeedsTransitiveDependencies": true,
+	"Local":                       true,
 	"OptionalOutputs":             true,
 	"OutputIsComplete":            true,
 	"Requires":                    true,
@@ -52,7 +53,7 @@ var KnownFields = map[string]bool{
 
 	// These only contribute to the runtime hash, not at build time.
 	"Data":              true,
-	"Containerise":      true,
+	"namedData":         true,
 	"TestSandbox":       true,
 	"ContainerSettings": true,
 
@@ -75,6 +76,7 @@ var KnownFields = map[string]bool{
 	"BuildingDescription": true,
 	"ShowProgress":        true,
 	"Progress":            true,
+	"NeededForSubinclude": true,
 
 	// Used to save the rule hash rather than actually being hashed itself.
 	"RuleHash": true,

@@ -125,63 +125,41 @@ type SourcePair struct{ Src, Tmp string }
 // IterSources returns all the sources for a function, allowing for sources that are other rules
 // and rules that require transitive dependencies.
 // Yielded values are pairs of the original source location and its temporary location for this rule.
-func IterSources(graph *BuildGraph, target *BuildTarget) <-chan SourcePair {
+// If includeTools is true it yields the target's tools as well.
+func IterSources(graph *BuildGraph, target *BuildTarget, includeTools bool) <-chan SourcePair {
 	ch := make(chan SourcePair)
-	done := map[BuildLabel]bool{}
-	donePaths := map[string]bool{}
+	done := map[string]bool{}
 	tmpDir := target.TmpDir()
-	var inner func(dependency *BuildTarget)
-	inner = func(dependency *BuildTarget) {
-		sources := dependency.AllSources()
-		if target == dependency {
-			// This is the current build rule, so link its sources.
-			for _, source := range sources {
-				for _, providedSource := range recursivelyProvideSource(graph, target, source) {
-					prefix := ""
-					if l := providedSource.Label(); l != nil {
-						prefix = graph.TargetOrDie(*l).SubrepoPrefix(target.Subrepo)
-					}
-					fullPaths := providedSource.FullPaths(graph)
-					for i, sourcePath := range providedSource.Paths(graph) {
-						tmpPath := path.Join(tmpDir, prefix, sourcePath)
-						ch <- SourcePair{fullPaths[i], tmpPath}
-						donePaths[tmpPath] = true
-					}
-				}
-			}
-		} else {
-			// This is a dependency of the rule, so link its outputs.
-			outDir := dependency.OutDir()
-			prefix := dependency.SubrepoPrefix(target.Subrepo)
-			for _, dep := range dependency.Outputs() {
-				depPath := path.Join(outDir, dep)
-				pkgName := dependency.Label.PackageName
-				tmpPath := path.Join(tmpDir, prefix, pkgName, dep)
-				if !donePaths[tmpPath] {
-					ch <- SourcePair{depPath, tmpPath}
-					donePaths[tmpPath] = true
-				}
-				for _, link := range dependency.OutputLinks {
-					if tmpPath := path.Join(tmpDir, link, dep); !donePaths[tmpPath] {
-						ch <- SourcePair{depPath, tmpPath}
-					}
-				}
-			}
-			// Mark any label-type outputs as done.
-			for _, out := range dependency.DeclaredOutputs() {
-				if LooksLikeABuildLabel(out) {
-					label := ParseBuildLabel(out, target.Label.PackageName)
-					done[label] = true
+	go func() {
+		for input := range IterInputs(graph, target, includeTools, false) {
+			fullPaths := input.FullPaths(graph)
+			for i, sourcePath := range input.Paths(graph) {
+				if tmpPath := path.Join(tmpDir, sourcePath); !done[tmpPath] {
+					ch <- SourcePair{fullPaths[i], tmpPath}
+					done[tmpPath] = true
 				}
 			}
 		}
-		// All the sources of this rule now count as done.
-		for _, source := range sources {
-			if label := source.Label(); label != nil && dependency.IsSourceOnlyDep(*label) {
+		close(ch)
+	}()
+	return ch
+}
+
+// IterInputs iterates all the inputs for a target.
+func IterInputs(graph *BuildGraph, target *BuildTarget, includeTools, sourcesOnly bool) <-chan BuildInput {
+	ch := make(chan BuildInput)
+	done := map[BuildLabel]bool{}
+	var inner func(dependency *BuildTarget)
+	inner = func(dependency *BuildTarget) {
+		if dependency != target {
+			ch <- dependency.Label
+		}
+		// All the sources of this target now count as done
+		for _, src := range dependency.AllSources() {
+			if label := src.Label(); label != nil && dependency.IsSourceOnlyDep(*label) {
 				done[*label] = true
 			}
 		}
-
 		done[dependency.Label] = true
 		if target == dependency || (target.NeedsTransitiveDependencies && !dependency.OutputIsComplete) {
 			for _, dep := range dependency.BuildDependencies() {
@@ -202,7 +180,19 @@ func IterSources(graph *BuildGraph, target *BuildTarget) <-chan SourcePair {
 		}
 	}
 	go func() {
-		inner(target)
+		// Yield the sources of the current target
+		srcs := target.AllSources()
+		if includeTools {
+			srcs = append(srcs, target.AllTools()...)
+		}
+		for _, source := range srcs {
+			for _, src := range recursivelyProvideSource(graph, target, source) {
+				ch <- src
+			}
+		}
+		if !sourcesOnly {
+			inner(target)
+		}
 		close(ch)
 	}()
 	return ch
@@ -251,44 +241,28 @@ func IterRuntimeFiles(graph *BuildGraph, target *BuildTarget, absoluteOuts bool)
 	done := map[string]bool{}
 	ch := make(chan SourcePair)
 
-	makeOut := func(out string) string {
-		if absoluteOuts {
-			return path.Join(RepoRoot, target.TestDir(), out)
-		}
-		return out
-	}
-
 	pushOut := func(src, out string) {
-		out = makeOut(out)
+		if absoluteOuts {
+			out = path.Join(RepoRoot, target.TestDir(), out)
+		}
 		if !done[out] {
 			ch <- SourcePair{src, out}
 			done[out] = true
 		}
 	}
 
-	var inner func(*BuildTarget)
-	inner = func(target *BuildTarget) {
+	go func() {
 		outDir := target.OutDir()
 		for _, out := range target.Outputs() {
 			pushOut(path.Join(outDir, out), out)
 		}
-		for _, data := range target.Data {
+		for _, data := range target.AllData() {
 			fullPaths := data.FullPaths(graph)
 			for i, dataPath := range data.Paths(graph) {
 				pushOut(fullPaths[i], dataPath)
 			}
-			if label := data.Label(); label != nil {
-				for _, dep := range graph.TargetOrDie(*label).ExportedDependencies() {
-					inner(graph.TargetOrDie(dep))
-				}
-			}
 		}
-		for _, dep := range target.ExportedDependencies() {
-			inner(graph.TargetOrDie(dep))
-		}
-	}
-	go func() {
-		inner(target)
+
 		close(ch)
 	}()
 	return ch
@@ -322,7 +296,7 @@ func IterInputPaths(graph *BuildGraph, target *BuildTarget) <-chan string {
 			}
 
 			// Now yield all the data deps of this rule.
-			for _, data := range target.Data {
+			for _, data := range target.AllData() {
 				// If the label is nil add any input paths contained here.
 				if label := data.Label(); label == nil {
 					for _, sourcePath := range data.FullPaths(graph) {
@@ -406,7 +380,7 @@ func LookPath(filename string, paths []string) (string, error) {
 			}
 		}
 	}
-	return "", fmt.Errorf("%s not found in PATH %s", filename, strings.Join(paths, ":"))
+	return "", fmt.Errorf("%s not found in path %s", filename, strings.Join(paths, ":"))
 }
 
 // LookBuildPath is like LookPath but takes the config's build path into account.

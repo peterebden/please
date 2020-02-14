@@ -4,7 +4,7 @@ genrule(
     name = "builtin_rules",
     srcs = build_defs,
     outs = [build_def + ".gob" for build_def in build_defs],
-    cmd = "$TOOL -o $TMP_DIR $SRCS",
+    cmd = '"$TOOL" -o "$TMP_DIR" $SRCS',
     tools = ["//src/parse/asp/main:compiler"],
 )
 
@@ -16,8 +16,5 @@ go_bindata(
 go_library(
     name = "rules",
     srcs = [":builtin_data"],
-    visibility = [
-        "//src/parse/...",
-        "//tools/build_langserver/...",
-    ],
+    visibility = ["PUBLIC"],
 )

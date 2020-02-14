@@ -1,7 +1,7 @@
 package(default_visibility = ["PUBLIC"])
 
 # This is needed to break a circular dependency.
-package(jarcat_tool = "//tools/jarcat:jarcat_unzip")
+package(jarcat_tool = "//:jarcat_unzip")
 
 go_get(
     name = "logging",
@@ -59,36 +59,12 @@ go_get(
 )
 
 go_get(
-    name = "mux",
-    get = "github.com/gorilla/mux",
-    revision = "9c068cf16d982f8bd444b8c352acbeec34c4fe5b",
-    deps = [
-        ":gorilla_context",
-    ],
-)
-
-go_get(
-    name = "gorilla_context",
-    get = "github.com/gorilla/context",
-    revision = "1c83b3eabd45b6d76072b66b746c20815fb2872d",
-)
-
-go_get(
     name = "net",
     get = "golang.org/x/net/...",
     revision = "136a25c244d3019482a795d728110278d6ba09a4",
     deps = [
         ":terminal",
         ":text",
-    ],
-)
-
-go_get(
-    name = "text",
-    get = "golang.org/x/text/...",
-    revision = "4e4a3210bb54bb31f6ab2cdca2edcc0b50c420c1",
-    deps = [
-        ":tools",
     ],
 )
 
@@ -102,25 +78,43 @@ go_get(
 )
 
 go_get(
+    name = "text",
+    get = "golang.org/x/text/...",
+    revision = "4e4a3210bb54bb31f6ab2cdca2edcc0b50c420c1",
+    deps = [
+        ":tools",
+    ],
+)
+
+go_get(
+    name = "cover",
+    get = "github.com/peterebden/tools/cover",
+    revision = "b2a0db951d2a49fe30dfd9a5f4aad49df75fc12f",
+)
+
+go_get(
     name = "grpc",
     exported_deps = [":net"],
     get = "google.golang.org/grpc",
     install = [
         "",
+        "attributes",
+        "backoff",
         "balancer",
         "balancer/base",
+        "balancer/grpclb/...",
         "balancer/roundrobin",
+        "binarylog/...",
         "codes",
         "connectivity",
-        "credentials",
+        "credentials/...",
         "encoding",
         "encoding/gzip",
         "encoding/proto",
-        "grpclb/grpc_lb_v1/messages",
         "grpclog",
         "health",
         "health/grpc_health_v1",
-        "internal",
+        "internal/...",
         "keepalive",
         "metadata",
         "naming",
@@ -128,16 +122,20 @@ go_get(
         "resolver",
         "resolver/dns",
         "resolver/passthrough",
+        "serviceconfig",
         "stats",
         "status",
         "tap",
-        "transport",
     ],
     repo = "github.com/grpc/grpc-go",
-    revision = "v1.10.0",
+    revision = "v1.26.0",
     deps = [
+        ":cmp",
+        ":oauth2",
         ":protobuf",
+        ":rpccode",
         ":rpcstatus",
+        ":unix",
     ],
 )
 
@@ -150,9 +148,16 @@ go_get(
 )
 
 go_get(
+    name = "rpccode",
+    get = "google.golang.org/genproto/googleapis/rpc/code",
+    revision = "2b5a72b8730b0b16380010cfe5286c42108d88e7",
+    deps = [":protobuf"],
+)
+
+go_get(
     name = "protobuf",
     get = "github.com/golang/protobuf/...",
-    revision = "v1.1.0",
+    revision = "v1.3.2",
     strip = [
         "proto/proto3_proto",
         "conformance",
@@ -196,16 +201,6 @@ go_get(
 )
 
 go_get(
-    name = "prompter",
-    get = "github.com/Songmu/prompter",
-    revision = "f49666b0047d12850875d771340e1d862d9e7a0c",
-    deps = [
-        ":go-isatty",
-        ":terminal",
-    ],
-)
-
-go_get(
     name = "levenshtein",
     get = "github.com/texttheater/golang-levenshtein/levenshtein",
     revision = "14026fface0cb806188c85e792a93d625dc37d0f",
@@ -228,78 +223,6 @@ go_get(
     name = "concurrent-map",
     get = "github.com/streamrail/concurrent-map",
     revision = "5fc745307dc80a1883243b978f7e7c0fd5ce7206",
-)
-
-go_get(
-    name = "quantile",
-    get = "github.com/beorn7/perks/quantile",
-    revision = "4c0e84591b9aa9e6dcfdf3e020114cd81f89d5f9",
-)
-
-go_get(
-    name = "pbutil",
-    get = "github.com/matttproud/golang_protobuf_extensions/pbutil",
-    revision = "c12348ce28de40eed0136aa2b644d0ee0650e56c",
-    deps = [":protobuf"],
-)
-
-go_get(
-    name = "prometheus",
-    get = "github.com/prometheus/client_golang/prometheus/...",
-    revision = "v0.8.0",
-    deps = [
-        ":grpc",
-        ":pbutil",
-        ":procfs",
-        ":prometheus_client_model",
-        ":prometheus_common",
-        ":protobuf",
-        ":quantile",
-    ],
-)
-
-go_get(
-    name = "prometheus_common",
-    get = "github.com/prometheus/common",
-    install = [
-        "expfmt",
-        "model",
-        "internal/bitbucket.org/ww/goautoneg",
-    ],
-    revision = "c7de2306084e37d54b8be01f3541a8464345e9a5",
-    deps = [
-        ":pbutil",
-        ":prometheus_client_model",
-        ":protobuf",
-    ],
-)
-
-go_get(
-    name = "prometheus_client_model",
-    get = "github.com/prometheus/client_model/go",
-    revision = "5c3871d89910bfb32f5fcab2aa4b9ec68e65a99f",
-    deps = [
-        ":protobuf",
-    ],
-)
-
-go_get(
-    name = "procfs",
-    get = "github.com/prometheus/procfs/...",
-    revision = "05ee40e3a273f7245e8777337fc7b46e533a9a92",
-    strip = ["fixtures"],  # Test fixture has a symlink to /usr/bin/vim which might not exist
-)
-
-go_get(
-    name = "grpc-prometheus",
-    get = "github.com/grpc-ecosystem/go-grpc-prometheus",
-    revision = "34abd90a014618f61222a1b0a7b7eb834a2d0dc3",
-    deps = [
-        ":grpc",
-        ":procfs",
-        ":prometheus",
-        ":protobuf",
-    ],
 )
 
 go_get(
@@ -331,32 +254,6 @@ go_get(
 )
 
 go_get(
-    name = "memberlist",
-    get = "github.com/hashicorp/memberlist",
-    revision = "2072f3a3ff4b7b3d830be77678d5d4b978362bc4",
-    deps = [
-        ":dns",
-        ":go-metrics",
-        ":go-msgpack",
-        ":go-multierror",
-        ":go-sockaddr",
-        ":seed",
-    ],
-)
-
-go_get(
-    name = "seed",
-    get = "github.com/sean-/seed",
-    revision = "e2103e2c35297fb7e17febb81e49b312087a2372",
-)
-
-go_get(
-    name = "go-msgpack",
-    get = "github.com/hashicorp/go-msgpack/...",
-    revision = "fa3f63826f7c23912c15263591e65d54d080b458",
-)
-
-go_get(
     name = "go-multierror",
     get = "github.com/hashicorp/go-multierror",
     install = [
@@ -364,56 +261,6 @@ go_get(
         "vendor/github.com/hashicorp/errwrap",
     ],
     revision = "b7773ae218740a7be65057fc60b366a49b538a44",
-)
-
-go_get(
-    name = "go-metrics",
-    get = "github.com/armon/go-metrics",
-    revision = "7aa49fde808223f8dadfdbfd3a20ff6c19e5f9ec",
-    deps = [
-        ":go-immutable-radix",
-        ":verify",
-    ],
-)
-
-go_get(
-    name = "go-sockaddr",
-    get = "github.com/hashicorp/go-sockaddr",
-    revision = "6d291a969b86c4b633730bfc6b8b9d64c3aafed9",
-)
-
-go_get(
-    name = "go-immutable-radix",
-    get = "github.com/hashicorp/go-immutable-radix",
-    revision = "7f3cd4390caab3250a57f30efdb2a65dd7649ecf",
-    deps = [
-        ":go-uuid",
-        ":simplelru",
-    ],
-)
-
-go_get(
-    name = "simplelru",
-    get = "github.com/hashicorp/golang-lru/simplelru",
-    revision = "0fb14efe8c47ae851c0034ed7a448854d3d34cf3",
-)
-
-go_get(
-    name = "go-uuid",
-    get = "github.com/hashicorp/go-uuid",
-    revision = "64130c7a86d732268a38cb04cfbaf0cc987fda98",
-)
-
-go_get(
-    name = "verify",
-    get = "github.com/pascaldekloe/goe/verify",
-    revision = "c580d16984352a427218a8e43232313d1c1c6f84",
-)
-
-go_get(
-    name = "dns",
-    get = "github.com/miekg/dns/...",
-    revision = "be5ae6ca7ac994584d2e30167737687f1c1ded8e",
 )
 
 go_get(
@@ -563,7 +410,7 @@ go_get(
 go_get(
     name = "cli-init",
     get = "github.com/peterebden/go-cli-init",
-    revision = "v1.0.0",
+    revision = "v1.2.0",
     deps = [
         ":go-flags",
         ":logging",
@@ -587,4 +434,176 @@ go_get(
     repo = "github.com/sqs/pbtypes",
     revision = "v1.0.0",
     deps = [":gogo-protobuf"],
+)
+
+go_get(
+    name = "remote-apis",
+    get = "github.com/bazelbuild/remote-apis/build/...",
+    revision = "2846a67ac8feb5001e9f704b66f5acc1e90f1ade",
+    deps = [
+        ":annotations",
+        ":grpc",
+        ":longrunning",
+        ":protobuf",
+        ":rpcstatus",
+    ],
+)
+
+go_get(
+    name = "remote-apis-sdks",
+    get = "github.com/bazelbuild/remote-apis-sdks/go/...",
+    revision = "75902a697aeb3eb9c1df860b7ed9de05005b48c1",
+    deps = [
+        ":annotations",
+        ":bytestream",
+        ":cmp",
+        ":errgroup",
+        ":errors",
+        ":glog",
+        ":grpc",
+        ":longrunning",
+        ":oauth2",
+        ":pborman_uuid",
+        ":protobuf",
+        ":remote-apis",
+        ":rpcstatus",
+    ],
+)
+
+go_get(
+    name = "cmp",
+    get = "github.com/google/go-cmp/cmp",
+    revision = "b1c9c4891a6525d98001fea424c8926c6d77bb56",
+)
+
+go_get(
+    name = "glog",
+    get = "github.com/golang/glog",
+    revision = "23def4e6c14b4da8ac2ed8007337bc5eb5007998",
+)
+
+go_get(
+    name = "cloud-metadata",
+    get = "cloud.google.com/go/compute/metadata",
+    revision = "v0.40.0",
+)
+
+go_get(
+    name = "oauth2",
+    get = "golang.org/x/oauth2",
+    install = [
+        "",
+        "google",
+        "internal",
+        "jws",
+        "jwt",
+    ],
+    revision = "d668ce993890a79bda886613ee587a69dd5da7a6",
+    visibility = ["//third_party/go/..."],
+    deps = [
+        ":cloud-metadata",
+        "//third_party/go:net",
+    ],
+)
+
+# TODO(peterebden): Splitting up this & the other bits of genproto is a bit of
+#                   a hack. Replace once we have a better way of describing Go modules.
+go_get(
+    name = "annotations",
+    get = "google.golang.org/genproto/googleapis/api/annotations",
+    revision = "3bdd9d9f5532d75d09efb230bd767d265245cfe5",
+    deps = [
+        ":grpc",
+        ":protobuf",
+    ],
+)
+
+go_get(
+    name = "longrunning",
+    get = "google.golang.org/genproto/googleapis/longrunning",
+    revision = "3bdd9d9f5532d75d09efb230bd767d265245cfe5",
+    deps = [
+        ":annotations",
+        ":grpc",
+        ":protobuf",
+    ],
+)
+
+go_get(
+    name = "bytestream",
+    get = "google.golang.org/genproto/googleapis/bytestream",
+    revision = "3bdd9d9f5532d75d09efb230bd767d265245cfe5",
+    deps = [
+        ":annotations",
+        ":grpc",
+        ":protobuf",
+    ],
+)
+
+go_get(
+    name = "uuid",
+    get = "github.com/google/uuid",
+    revision = "v1.1.1",
+)
+
+go_get(
+    name = "pborman_uuid",
+    get = "github.com/pborman/uuid",
+    revision = "v1.2.0",
+    deps = [":uuid"],
+)
+
+go_get(
+    name = "lsp",
+    get = "github.com/sourcegraph/go-lsp",
+    revision = "0c7d621186c1c8684f3d97868f6970b326609cc7",
+)
+
+go_get(
+    name = "promptui",
+    get = "github.com/manifoldco/promptui/...",
+    revision = "v0.3.2",
+    deps = [
+        ":ansiterm",
+        ":readline",
+    ],
+)
+
+go_get(
+    name = "readline",
+    get = "github.com/chzyer/readline",
+    revision = "2972be24d48e78746da79ba8e24e8b488c9880de",
+)
+
+go_get(
+    name = "ansiterm",
+    get = "github.com/juju/ansiterm/...",
+    revision = "720a0952cc2ac777afc295d9861263e2a4cf96a1",
+    deps = [
+        ":colorable",
+        ":go-isatty",
+        ":vtclean",
+    ],
+)
+
+go_get(
+    name = "vtclean",
+    get = "github.com/lunixbochs/vtclean",
+    revision = "v1.0.0",
+)
+
+go_get(
+    name = "colorable",
+    get = "github.com/mattn/go-colorable",
+    revision = "v0.1.2",
+    deps = [
+        ":go-isatty",
+    ],
+)
+
+go_get(
+    name = "sri",
+    get = "github.com/peterebden/go-sri",
+    revision = "v1.0.0",
+    test_only = True,
 )

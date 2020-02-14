@@ -58,15 +58,15 @@ def java_library(name:str, srcs:list=None, src_dir:str=None, resources:list=None
             srcflag = '--src_dir' if src_dir else ''
             javac_cmd = f'$(worker {CONFIG.JAVAC_WORKER}) {javac_flags} {mflag} {srcflag}'
         else:
-            find = r'`find $TMP_DIR -name "*.jar" | tr \\\\n :`'
+            find = r'`find "$TMP_DIR" -name "*.jar" | tr \\\\n :`'
             srcflag = '$SRCS' if srcs else '`find $SRCS -name "*.java"`'
-            javac_cmd = f'mkdir -p _tmp/META-INF && $TOOLS_JAVAC {javac_flags} -classpath .:{find} -d _tmp {srcflag}'
+            javac_cmd = f'mkdir -p _tmp/META-INF && "$TOOLS_JAVAC" {javac_flags} -classpath .:{find} -d _tmp {srcflag}'
 
         cmd = ' && '.join([
             javac_cmd,
             'find _tmp -name "*.class" | sed -e "s|_tmp/|${PKG} |g" -e "s/\\.class/.java/g" | sort > _tmp/META-INF/please_sourcemap',
             'cd _tmp',
-            '$TOOLS_JARCAT z -d -o $OUT -i .',
+            '"$TOOLS_JARCAT" z -d -o "$OUT" -i .',
         ])
 
         src_dir_label = []
@@ -173,7 +173,7 @@ def java_runtime_image(name:str, main_module:str, main_class:str, modules:list, 
       modules (list): Modules to be included in the runtime image.
       out (str): Name of the folder that contains the runtime image and the binary contained by it. Defaults to 'name'.
       deps (list): Dependencies of this rule.
-      data (list): Runtime data files for this rule.
+      data (list): Deprecated, has no effect.
       visibility (list): Visibility declaration of this rule.
       jlink_args (str): Arguments to pass to the JVM in the run script.
     """
@@ -184,14 +184,13 @@ def java_runtime_image(name:str, main_module:str, main_class:str, modules:list, 
     if not modules:
         raise Exception('You cannot assemble a java runtime image without specifying any modules.')
     out = out or name
-    depflags = r'`find $TMP_DIR -name "*.jar" | tr \\\\n :`'
+    depflags = r'`find "$TMP_DIR" -name "*.jar" | tr \\\\n :`'
     modules = ','.join(modules)
     cmd = f"$TOOL --module-path {depflags}:{CONFIG.JAVA_HOME}/jmods --add-modules {modules} --launcher {name}={main_module}/{main_class} --output {out} {jlink_args}"
 
     return build_rule(
         name=name,
         deps=deps,
-        data=data,
         outs=[out],
         cmd=cmd,
         needs_transitive_deps=True,
@@ -215,7 +214,7 @@ def java_binary(name:str, main_class:str=None, out:str=None, srcs:list=None, dep
       out (str): Name of output .jar file. Defaults to name + .jar.
       srcs (list): Source files to compile.
       deps (list): Dependencies of this rule.
-      data (list): Runtime data files for this rule.
+      data (list): Deprecated, has no effect.
       visibility (list): Visibility declaration of this rule.
       jvm_args (str): Arguments to pass to the JVM in the run script.
       self_executable (bool): True to make the jar self executable.
@@ -238,10 +237,9 @@ def java_binary(name:str, main_class:str=None, out:str=None, srcs:list=None, dep
         # This is essentially a hack to get past some Java things (notably Jersey) failing
         # in subtle ways when the jar has a preamble (srsly...).
         cmd, tools = _jarcat_cmd(main_class, manifest=manifest)
-    build_rule(
+    return build_rule(
         name=name,
         deps=deps,
-        data=data,
         outs=[out or name + '.jar'],
         srcs=[manifest],
         cmd=cmd,
@@ -256,7 +254,8 @@ def java_binary(name:str, main_class:str=None, out:str=None, srcs:list=None, dep
     )
 
 
-def java_test(name:str, srcs:list, resources:list=None, data:list=None, deps:list=None, worker:str='',
+def java_test(name:str, srcs:list, resources:list=None, resources_root:str=None,
+              data:list|dict=None, deps:list=None, worker:str='',
               labels:list&features&tags=[], visibility:list=None, flags:str='',
               sandbox:bool=None, timeout:int=0, flaky:bool|int=0, test_outputs:list=None, size:str=None,
               test_package:str=CONFIG.DEFAULT_TEST_PACKAGE, jvm_args:str=''):
@@ -266,6 +265,9 @@ def java_test(name:str, srcs:list, resources:list=None, data:list=None, deps:lis
       name (str): Name of the rule.
       srcs (list): Java files containing the tests.
       resources (list): Resources to include in the .jar file
+      resources_root (str): Root directory to treat resources relative to; ie. if we are in
+                            //project/main/resources and resources_root is project/main then
+                            the resources in the .jar will be in the subdirectory 'resources'.
       data (list): Runtime data files for this rule.
       deps (list): Dependencies of this rule.
       worker (str): Reference to worker script, A persistent worker process that is used to set up the test.
@@ -280,12 +282,11 @@ def java_test(name:str, srcs:list, resources:list=None, data:list=None, deps:lis
       test_package (str): Java package to scan for test classes to run.
       jvm_args (str): Arguments to pass to the JVM in the run script.
     """
-    # It's a bit sucky doing this in two separate steps, but it is
-    # at least easy and reuses the existing code.
     lib_rule = java_library(
         name=f'_{name}#lib',
         srcs=srcs,
         resources=resources,
+        resources_root=resources_root,
         deps=deps,
         test_only=True,
         labels=labels + ["rule:java_test"],
@@ -294,7 +295,7 @@ def java_test(name:str, srcs:list, resources:list=None, data:list=None, deps:lis
     # As above, would be nicer if we could make the jars self-executing again.
     cmd, tools = _jarcat_cmd('build.please.main.TestMain')
     tools['junit'] = [CONFIG.JUNIT_RUNNER]
-    cmd = 'ln -s $TOOLS_JUNIT . && ' + cmd
+    cmd = 'ln -s `which $TOOLS_JUNIT` . && ' + cmd
     test_cmd = f'java -Dbuild.please.testpackage={test_package} {jvm_args} -jar $(location :{name}) {flags}'
 
     deps = [lib_rule]
@@ -302,7 +303,7 @@ def java_test(name:str, srcs:list, resources:list=None, data:list=None, deps:lis
         test_cmd = f'$(worker {worker}) && {test_cmd} '
         deps += [worker]
 
-    build_rule(
+    return build_rule(
         name=name,
         cmd=cmd,
         test_cmd=test_cmd,
@@ -311,7 +312,7 @@ def java_test(name:str, srcs:list, resources:list=None, data:list=None, deps:lis
         deps=deps,
         visibility=visibility,
         test_sandbox=sandbox,
-        labels=labels,
+        labels=labels + ['test_results_dir'],
         test_timeout=timeout,
         size = size,
         flaky=flaky,
@@ -483,7 +484,7 @@ if CONFIG.BAZEL_COMPATIBILITY:
         This doesn't really have the same semantics and ignores a bunch of arguments but it
         isn't easy for us to behave the same way that they do.
         """
-        package(
+        return package(
             javac_tool = javac,
             java_source_level = source_version,
             java_target_level = target_version,
@@ -491,7 +492,7 @@ if CONFIG.BAZEL_COMPATIBILITY:
 
     def java_import(name, jars, deps=None, exports=None, test_only=False, visibility=None):
         """Mimics java_import, as far as I can tell we don't need to do much here."""
-        filegroup(
+        return filegroup(
             name = name,
             srcs = jars,
             deps = deps,

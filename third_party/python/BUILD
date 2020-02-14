@@ -5,14 +5,6 @@ package(
     python_wheel_repo = "https://get.please.build/third_party/python/py3",
 )
 
-REPOS = [
-    "https://get.please.build/third_party/python/py27",
-    "https://get.please.build/third_party/python/py34",
-    "https://get.please.build/third_party/python/py35",
-    "https://get.please.build/third_party/python/py36",
-    "https://get.please.build/third_party/python/py37",
-]
-
 python_wheel(
     name = "xmlrunner",
     package_name = "unittest_xml_reporting",
@@ -60,11 +52,24 @@ python_wheel(
     deps = [":six"],
 )
 
-python_multiversion_wheel(
-    name = "coverage",
-    repos = REPOS,
-    version = "4.3.4",
-)
+if CONFIG.ARCH == "amd64":
+    python_multiversion_wheel(
+        name = "coverage",
+        repos = [
+            "https://get.please.build/third_party/python/py27",
+            "https://get.please.build/third_party/python/py34",
+            "https://get.please.build/third_party/python/py35",
+            "https://get.please.build/third_party/python/py36",
+            "https://get.please.build/third_party/python/py37",
+        ],
+        version = "4.3.4",
+    )
+else:
+    python_wheel(
+        name = "coverage",
+        hashes = ["sha1: 519e737035a8cc3349b66973e8a9c69f1ba1102a"],
+        version = "4.3.4",
+    )
 
 python_wheel(
     name = "attrs",
@@ -225,4 +230,30 @@ pip_library(
     version = "1.1.0",
     zip_safe = False,
     deps = [":numpy"],
+)
+
+pip_library(
+    name = "importlib_metadata",
+    package_name = "importlib-metadata",
+    licences = ["Apache License, Version 2.0"],
+    test_only = True,
+    version = "0.23",
+    deps = [
+        ":more_itertools",
+        ":zipp",
+    ],
+)
+
+pip_library(
+    name = "zipp",
+    outs = ["zipp.py"],
+    test_only = True,
+    version = "0.6.0",
+)
+
+pip_library(
+    name = "more_itertools",
+    package_name = "more-itertools",
+    test_only = True,
+    version = "7.2.0",
 )

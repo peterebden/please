@@ -4,6 +4,10 @@ import "fmt"
 
 type stub struct{}
 
+func (s *stub) DescribeIdentifier(sha string) string {
+	return "<unknown>"
+}
+
 func (s *stub) CurrentRevIdentifier() string {
 	return "<unknown>"
 }
@@ -26,4 +30,12 @@ func (s *stub) Remove(names []string) error {
 
 func (s *stub) ChangedLines() (map[string][]int, error) {
 	return nil, fmt.Errorf("Unknown SCM, can't calculate changed lines")
+}
+
+func (s *stub) Checkout(revision string) error {
+	return fmt.Errorf("Unknown SCM, can't checkout")
+}
+
+func (s *stub) CurrentRevDate(format string) string {
+	return "Unknown"
 }

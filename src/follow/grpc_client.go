@@ -3,11 +3,11 @@
 package follow
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"time"
 
-	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -26,13 +26,21 @@ var remoteClosed, remoteDisconnected bool
 // It dies on any errors.
 func ConnectClient(state *core.BuildState, url string, retries int, delay time.Duration) bool {
 	connectClient(state, url, retries, delay)
+	// Context must be terminated once all results are consumed.
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		for range state.Results() {
+		}
+		cancel()
+	}()
 	// Now run output, this will exit when the goroutine in connectClient() hits its end.
-	return runOutput(state)
+	return runOutput(ctx, state)
 }
 
 // connectClient connects a gRPC client to the given URL.
 // It is split out of the above for testing purposes.
 func connectClient(state *core.BuildState, url string, retries int, delay time.Duration) {
+	state.TaskQueues() // This is important to start consuming events in the background
 	var err error
 	for i := 0; i <= retries; i++ {
 		if err = connectSingleTry(state, url); err == nil {
@@ -137,8 +145,8 @@ func streamResources(state *core.BuildState, client pb.PlzEventsClient) {
 }
 
 // runOutput is just a wrapper around output.MonitorState for convenience in testing.
-func runOutput(state *core.BuildState) bool {
-	output.MonitorState(state, state.Config.Please.NumThreads, state.Verbosity >= 4, false, "")
+func runOutput(ctx context.Context, state *core.BuildState) bool {
+	output.MonitorState(ctx, state, true, false, false, "")
 	output.PrintDisconnectionMessage(state.Success, remoteClosed, remoteDisconnected)
 	return state.Success
 }

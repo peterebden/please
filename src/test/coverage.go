@@ -17,24 +17,29 @@ import (
 )
 
 // Parses test coverage for a single target from its output file.
-func parseTestCoverage(target *core.BuildTarget, outputFile string) (core.TestCoverage, error) {
-	coverage := core.NewTestCoverage()
+func parseTestCoverageFile(target *core.BuildTarget, outputFile string) (*core.TestCoverage, error) {
 	data, err := ioutil.ReadFile(outputFile)
 	if err != nil && os.IsNotExist(err) {
-		return coverage, nil // Tests aren't required to produce coverage files.
+		return core.NewTestCoverage(), nil // Tests aren't required to produce coverage files.
 	} else if err != nil {
-		return coverage, err
-	} else if len(data) == 0 {
+		return core.NewTestCoverage(), err
+	}
+	return parseTestCoverage(target, data)
+}
+
+// parseTestCoverage parses coverage from loaded data.
+func parseTestCoverage(target *core.BuildTarget, data []byte) (*core.TestCoverage, error) {
+	coverage := core.NewTestCoverage()
+	if len(data) == 0 {
 		return coverage, fmt.Errorf("Empty coverage output")
 	} else if looksLikeGoCoverageResults(data) {
-		// TODO(pebers): this is a little wasteful, we've already read the file once and we must do it again.
-		return coverage, parseGoCoverageResults(target, &coverage, outputFile)
+		return coverage, parseGoCoverageResults(target, coverage, data)
 	} else if looksLikeGcovCoverageResults(data) {
-		return coverage, parseGcovCoverageResults(target, &coverage, data)
+		return coverage, parseGcovCoverageResults(target, coverage, data)
 	} else if looksLikeIstanbulCoverageResults(data) {
-		return coverage, parseIstanbulCoverageResults(target, &coverage, data)
+		return coverage, parseIstanbulCoverageResults(target, coverage, data)
 	} else {
-		return coverage, parseXMLCoverageResults(target, &coverage, data)
+		return coverage, parseXMLCoverageResults(target, coverage, data)
 	}
 }
 
@@ -138,6 +143,7 @@ func WriteCoverageToFileOrDie(coverage core.TestCoverage, filename string, incre
 	out.Files = convertCoverage(coverage.Files, allowedFiles)
 	out.Stats = getStats(coverage)
 	out.Stats.Incremental = incrementalStats
+	out.Stats.CoverageByDirectory = getDirectoryCoverage(coverage)
 	if b, err := json.MarshalIndent(out, "", "    "); err != nil {
 		log.Fatalf("Failed to encode json: %s", err)
 	} else if err := ioutil.WriteFile(filename, b, 0644); err != nil {
@@ -187,6 +193,36 @@ func getStats(coverage core.TestCoverage) stats {
 	return stats
 }
 
+type lines struct {
+	covered        int
+	totalCoverable int
+}
+
+func (lns lines) getPercentage() float32 {
+	return 100.0 * float32(lns.covered) / float32(lns.totalCoverable)
+}
+
+func getDirectoryCoverage(coverage core.TestCoverage) map[string]float32 {
+	dirCoverage := make(map[string]float32)
+	linesByDir := make(map[string]*lines)
+
+	for file, coverage := range coverage.Files {
+		covered, total := CountCoverage(coverage)
+		dirpath := filepath.Dir(file)
+
+		if _, exists := linesByDir[dirpath]; exists {
+			linesByDir[dirpath].covered += covered
+			linesByDir[dirpath].totalCoverable += total
+		} else {
+			linesByDir[dirpath] = &lines{covered, total}
+		}
+
+		dirCoverage[dirpath] = linesByDir[dirpath].getPercentage()
+	}
+
+	return dirCoverage
+}
+
 func convertCoverage(in map[string][]core.LineCoverage, allowedFiles []string) map[string]string {
 	ret := map[string]string{}
 	for k, v := range in {
@@ -206,9 +242,10 @@ type jsonCoverage struct {
 
 // stats is a struct describing summarised coverage stats.
 type stats struct {
-	TotalCoverage  float32            `json:"total_coverage"`
-	CoverageByFile map[string]float32 `json:"coverage_by_file"`
-	Incremental    *IncrementalStats  `json:"incremental,omitempty"`
+	TotalCoverage       float32            `json:"total_coverage"`
+	CoverageByFile      map[string]float32 `json:"coverage_by_file"`
+	CoverageByDirectory map[string]float32 `json:"coverage_by_directory"`
+	Incremental         *IncrementalStats  `json:"incremental,omitempty"`
 }
 
 // IncrementalStats is a struct describing summarised stats for incremental coverage info.

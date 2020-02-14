@@ -9,7 +9,9 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sourcegraph/go-diff/diff"
 )
@@ -17,6 +19,15 @@ import (
 // git implements operations on a git repository.
 type git struct {
 	repoRoot string
+}
+
+// DescribeIdentifier returns the string that is a "human-readable" identifier of the given revision.
+func (g *git) DescribeIdentifier(revision string) string {
+	out, err := exec.Command("git", "describe", "--always", revision).CombinedOutput()
+	if err != nil {
+		log.Fatalf("Failed to read %s: %s", revision, err)
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // CurrentRevIdentifier returns the string that specifies what the current revision is.
@@ -144,4 +155,24 @@ func (g *git) parseHunks(hunks []*diff.Hunk) []int {
 		}
 	}
 	return ret
+}
+
+func (g *git) Checkout(revision string) error {
+	if out, err := exec.Command("git", "checkout", revision).CombinedOutput(); err != nil {
+		return fmt.Errorf("git checkout failed: %s\n%s", err, out)
+	}
+	return nil
+}
+
+func (g *git) CurrentRevDate(format string) string {
+	out, err := exec.Command("git", "show", "-s", "--format=%ct").CombinedOutput()
+	if err != nil {
+		return "Unknown"
+	}
+	timestamp, err := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
+	if err != nil {
+		return err.Error()
+	}
+	t := time.Unix(timestamp, 0)
+	return t.Format(format)
 }

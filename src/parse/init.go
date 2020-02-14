@@ -11,13 +11,16 @@ import (
 
 	"github.com/thought-machine/please/rules"
 	"github.com/thought-machine/please/rules/bazel"
+	"github.com/thought-machine/please/src/cli"
 	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/parse/asp"
 )
 
 // InitParser initialises the parser engine. This is guaranteed to be called exactly once before any calls to Parse().
 func InitParser(state *core.BuildState) {
-	state.Parser = &aspParser{asp: newAspParser(state)}
+	if state.Parser == nil {
+		state.Parser = &aspParser{asp: newAspParser(state)}
+	}
 }
 
 // An aspParser implements the core.Parser interface around our asp package.
@@ -84,7 +87,9 @@ func (p *aspParser) runBuildFunction(tid int, state *core.BuildState, target *co
 	if err != nil {
 		state.LogBuildError(tid, target.Label, core.ParseFailed, err, "Failed %s-build function for %s", callbackType, target.Label)
 	} else {
-		rescanDeps(state, changed)
+		if err := rescanDeps(state, changed); err != nil {
+			return err
+		}
 		state.LogBuildResult(tid, target.Label, core.TargetBuilding, fmt.Sprintf("Finished %s-build function for %s", callbackType, target.Label))
 	}
 	return err
@@ -96,6 +101,7 @@ func createBazelSubrepo(state *core.BuildState) {
 		Name:  "bazel_tools",
 		Root:  dir,
 		State: state,
+		Arch:  cli.HostArch(),
 	})
 	// TODO(peterebden): This is a bit yuck... would be nice if we could avoid hardcoding all
 	//                   this upfront and add a build target to do it for us.

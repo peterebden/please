@@ -2,17 +2,52 @@
 
 import fcntl
 from importlib import import_module
-import zipfile
+from zipfile import ZipFile, ZipInfo, is_zipfile
 import os
 import runpy
 import sys
 
-PY_VERSION = int(sys.version[0])
+PY_VERSION = sys.version_info
 
-if PY_VERSION >= 3:
+if PY_VERSION.major >= 3:
     from importlib import machinery
 else:
     import imp
+
+if PY_VERSION >= (3, 2):
+    from os import makedirs
+else:
+    # backported from cpython 3.8
+    def makedirs(name, mode=0o777, exist_ok=False):
+        """makedirs(name [, mode=0o777][, exist_ok=False])
+        Super-mkdir; create a leaf directory and all intermediate ones.  Works like
+        mkdir, except that any intermediate path segment (not just the rightmost)
+        will be created if it does not exist. If the target directory already
+        exists, raise an OSError if exist_ok is False. Otherwise no exception is
+        raised.  This is recursive.
+        """
+        head, tail = os.path.split(name)
+        if not tail:
+            head, tail = os.path.split(head)
+        if head and tail and not os.path.exists(head):
+            try:
+                makedirs(head, exist_ok=exist_ok)
+            except FileExistsError:
+                # Defeats race condition when another thread created the path
+                pass
+            cdir = curdir
+            if isinstance(tail, bytes):
+                cdir = bytes(curdir, "ASCII")
+            if tail == cdir:  # xxx/newdir/. exists if xxx/newdir exists
+                return
+        try:
+            os.mkdir(name, mode)
+        except OSError:
+            # Cannot rely on checking for EEXIST, since the operating system
+            # could give priority to other errors like EACCES or EROFS
+            if not exist_ok or not os.path.isdir(name):
+                raise
+
 
 try:
     from site import getsitepackages
@@ -57,13 +92,29 @@ ENTRY_POINT = '__ENTRY_POINT__'
 ZIP_SAFE = __ZIP_SAFE__
 PEX_STAMP = '__PEX_STAMP__'
 
+# Workaround for https://bugs.python.org/issue15795
+class ZipFileWithPermissions(ZipFile):
+    """ Custom ZipFile class handling file permissions. """
+
+    def _extract_member(self, member, targetpath, pwd):
+        if not isinstance(member, ZipInfo):
+            member = self.getinfo(member)
+
+        targetpath = super(ZipFileWithPermissions, self)._extract_member(
+            member, targetpath, pwd
+        )
+
+        attr = member.external_attr >> 16
+        if attr != 0:
+            os.chmod(targetpath, attr)
+        return targetpath
 
 class SoImport(object):
     """So import. Much binary. Such dynamic. Wow."""
 
     def __init__(self):
 
-        if PY_VERSION < 3:
+        if PY_VERSION.major < 3:
             self.suffixes = {x[0]: x for x in imp.get_suffixes() if x[2] == imp.C_EXTENSION}
         else:
             self.suffixes = machinery.EXTENSION_SUFFIXES  # list, as importlib will not be using the file description
@@ -71,8 +122,8 @@ class SoImport(object):
         self.suffixes_by_length = sorted(self.suffixes, key=lambda x: -len(x))
         # Identify all the possible modules we could handle.
         self.modules = {}
-        if zipfile.is_zipfile(sys.argv[0]):
-            zf = zipfile.ZipFile(sys.argv[0])
+        if is_zipfile(sys.argv[0]):
+            zf = ZipFileWithPermissions(sys.argv[0])
             for name in zf.namelist():
                 path, _ = self.splitext(name)
                 if path:
@@ -99,7 +150,7 @@ class SoImport(object):
         with tempfile.NamedTemporaryFile(suffix=ext, prefix=os.path.basename(prefix)) as f:
             f.write(self.zf.read(filename))
             f.flush()
-            if PY_VERSION < 3:
+            if PY_VERSION.major < 3:
                 suffix = self.suffixes[ext]
                 mod = imp.load_module(fullname, None, f.name, suffix)
             else:
@@ -138,6 +189,61 @@ class ModuleDirImport(object):
         sys.modules[fullname] = module
         return module
 
+    def find_distributions(self, context):
+        """Return an iterable of all Distribution instances capable of
+        loading the metadata for packages for the indicated ``context``.
+        """
+
+        try:
+            from importlib_metadata import Distribution
+            import re
+        except:
+            pass
+        else:
+
+            class PexDistribution(Distribution):
+                template = r"{path}(-.*)?\.(dist|egg)-info/{filename}"
+
+                def __init__(self, name, prefix=MODULE_DIR):
+                    """Construct a distribution for a pex file to the metadata directory.
+
+                    :param name: A module name
+                    :param prefix: Modules prefix
+                    """
+                    self._name = name
+                    self._prefix = prefix
+
+                def _match_file(self, name, filename):
+                    if re.match(
+                        self.template.format(
+                            path=os.path.join(self._prefix, self._name),
+                            filename=filename,
+                        ),
+                        name,
+                    ):
+                        return name
+
+                def read_text(self, filename):
+                    if is_zipfile(sys.argv[0]):
+                        zf = ZipFileWithPermissions(sys.argv[0])
+                        for name in zf.namelist():
+                            if name and self._match_file(name, filename):
+                                return zf.read(name).decode(encoding="utf-8")
+
+                read_text.__doc__ = Distribution.read_text.__doc__
+
+                def _has_distribution(self):
+                    if is_zipfile(sys.argv[0]):
+                        zf = ZipFileWithPermissions(sys.argv[0])
+                        for name in zf.namelist():
+                            if name and self._match_file(name, ""):
+                                return True
+
+            if context.name in sys.modules:
+                distribution = PexDistribution(context.name)
+                if distribution._has_distribution():
+                    yield distribution
+
     def get_code(self, fullname):
         module = self.load_module(fullname)
         return module.__loader__.get_code(fullname)
@@ -148,10 +254,19 @@ def pex_basepath(temp=False):
         import tempfile
         return tempfile.mkdtemp(dir=os.environ.get('TEMP_DIR'), prefix='pex_')
     else:
-        return os.path.expanduser('~/.cache/pex')
+        return os.environ.get('PEX_CACHE_DIR',os.path.expanduser('~/.cache/pex'))
+
 
 def pex_uniquedir():
     return 'pex-%s' % PEX_STAMP
+
+
+def pex_paths():
+    no_cache = os.environ.get('PEX_NOCACHE')
+    no_cache = no_cache and no_cache.lower() == 'true'
+    basepath, uniquedir = pex_basepath(no_cache), pex_uniquedir()
+    pex_path = os.path.join(basepath, uniquedir)
+    return pex_path, basepath, uniquedir, no_cache
 
 
 def explode_zip():
@@ -178,17 +293,14 @@ def explode_zip():
         # these variables to find out what's going on (e.g. are we zip-safe or not).
         global PEX_PATH
 
-        no_cache = os.environ.get('PEX_NOCACHE')
-        no_cache = no_cache and no_cache.lower() == 'true'
-        basepath, uniquedir = pex_basepath(no_cache), pex_uniquedir()
-        os.makedirs(basepath, exist_ok=True)
+        PEX_PATH, basepath, uniquedir, no_cache = pex_paths()
+        makedirs(basepath, exist_ok=True)
         with pex_lockfile(basepath, uniquedir) as lockfile:
-            PEX_PATH = os.path.join(basepath, uniquedir)
             if len(lockfile.read()) == 0:
                 import compileall, zipfile
 
-                os.makedirs(PEX_PATH, exist_ok=True)
-                with zipfile.ZipFile(PEX, 'r') as zf:
+                makedirs(PEX_PATH, exist_ok=True)
+                with ZipFileWithPermissions(PEX, "r") as zf:
                     zf.extractall(PEX_PATH)
 
                 if not no_cache:  # Don't bother optimizing; we're deleting this when we're done.
@@ -201,7 +313,7 @@ def explode_zip():
         yield
         if no_cache:
             import shutil
-            shutil.rmtree(pex_basepath)
+            shutil.rmtree(basepath)
 
     return _explode_zip
 

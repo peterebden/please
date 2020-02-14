@@ -8,7 +8,7 @@
     <p>Please looks in several locations for these files and builds it up bit by bit. In order
       (from lowest priority to highest):
       <ul>
-        <li><code>/etc/plzconfig</code></li>
+        <li><code>/etc/please/plzconfig</code></li>
         <li><code>~/.config/please/plzconfig</code></li>
         <li><code>.plzconfig</code></li>
         <li><code>.plzconfig_&lt;arch&gt;</code> (e.g. .plzconfig_linux_amd64)</li>
@@ -16,7 +16,7 @@
         <li><code>.plzconfig.local</code></li>
       </ul>
       One would normally check in <code>.plzconfig</code> (and arch-specific equivalents if needed).<br/>
-      <code>/etc/plzconfig</code> is there to facilitate per-machine config in cases where the repo is often
+      <code>/etc/please/plzconfig</code> is there to facilitate per-machine config in cases where the repo is often
       deleted - this is quite common in CI systems.<br/>
       Finally you normally add <code>.plzconfig.local</code> to .gitignore to allow people to override
       settings locally if needed.</p>
@@ -161,7 +161,43 @@
 
     </ul>
 
-    <h3>[Cache]</h3>
+    <h3><a name="buildenv">[BuildEnv]</a></h3>
+
+    <p>A set of extra environment variables to define for build rules. For example:
+
+    <pre><code>
+    [buildenv]
+    secret-passphrase = 12345
+    </code></pre>
+
+    This would become SECRET_PASSPHRASE for any rules. These can be useful for passing
+    secrets into custom rules; any variables containing SECRET or PASSWORD won't be logged.
+    </p>
+
+    <h3><a name="remote">[Remote]</a></h3>
+
+    <p class="experimental">This whole section is still experimental; some settings may not
+      work fully and as a whole it's subject to change. Proceed with caution!</p>
+
+    <ul>
+      <li><b>URL</b><br/>
+        Sets the URL to communicate with the remote server on.<br/>
+        Typically this would look something like <code>127.0.0.1:8989</code>, i.e. it is
+        given without a protocol.</li>
+
+      <li><b>Instance</b><br/>
+        Defines the name of the remote instance to request. Depending on the server implementation
+        or configuration this may be required; if so it must be set here to agree with it.</li>
+
+      <li><b>NumExecutors</b> (int)<br/>
+        Defines the number of remote executors to use simultaneously.</li>
+
+      <li><b>Name</b><br/>
+        A name for this worker instance. This is informational only and attached to artifacts
+        uploaded to remote storage to identify the original machine that created them.</li>
+    </ul>
+
+    <h3><a name="cache">[Cache]</a></h3>
 
     <ul>
 
@@ -542,39 +578,23 @@
 	documenting things that the team aren't allowed to use.</li>
     </ul>
 
-    <h3>[Aliases]</h3>
+    <h3>[Buildconfig]</h3>
 
-    <p>This section lets you define new commands to run at the command line. These are
-      currently implemented as a simple text-based replacement of the original command
-      which limits some applications, but they can still be very useful.</p>
-
-    <p>They're written with a simple <code>alias = replacement</code> syntax:</p>
+    <p>This section lets you define arbitrary key-value pairs that can be consumed by custom
+      build rules. For example:</p>
 
     <pre><code>
-	[aliases]
-	deploy = run //deployment:deployer --
+    [buildconfig]
+    rust-toolchain = //third_party/rust:toolchain
     </code></pre>
 
-    <p>This would transform <code>plz deploy //src:please</code> into
-      <code>plz run //deployment:deployer -- //src:please</code>.</p>
+    <p>The above can then be read in a .build_def or BUILD file as <code>CONFIG.RUST_TOOLCHAIN</code>,
+      i.e. they are upper-cased and hyphens are converted to underscores.</p>
 
-    <p>You can also do subcommands of aliases, with a slightly different syntax:</p>
-
-    <pre><code>
-	[aliases "deploy"]
-	dev = run //deployment:deployer -- --env=dev
-	prod = run //deployment:deployer -- --env=prod
-    </code></pre>
-
-    <p>These are then invoked as <code>plz deploy dev</code> and
-      <code>plz deploy prod</code> respectively.<br/>
-      Due to the limitations of parsing our config format, you can only have one
-      level of subcommand of aliases.</p>
 
     <h3>[Alias]</h3>
 
-    <p>This is (unsurprisingly) very similar to the <code>[Aliases]</code> section, but
-      allows more information to be defined against each one. For example:</p>
+    <p>This section lets you define new commands to run at the command line. For example:</p>
 
     <pre><code>
 	[alias "deploy"]
@@ -586,7 +606,14 @@
     flag = -f
     </code></pre>
 
-    <p>This will tab-complete, taking into account the various sub-commands and flags etc.</p>
+    <p>This lets you run say <code>plz deploy //my:target</code>, which turns into a call to
+      <code>plz run //deployment:deployer -- //my:target</code>. This lets you add in lightweight
+      ways of invoking your custom commands (our developers at Thought Machine use these
+      extensively during their normal day-to-day).</p>
+
+    <p>This will tab-complete, taking into account the various sub-commands and flags etc.<br/>
+      Those commands and flags are not enforced though, they are only informational and used
+      for completion.</p>
 
     <h3><a name="events">[Events]</a></h3>
 
