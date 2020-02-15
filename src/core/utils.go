@@ -126,7 +126,7 @@ type SourcePair struct{ Src, Tmp string }
 // and rules that require transitive dependencies.
 // Yielded values are pairs of the original source location and its temporary location for this rule.
 // If includeTools is true it yields the target's tools as well.
-func IterSources(graph *BuildGraph, target *BuildTarget, includeTools bool) <-chan SourcePair {
+func IterSources(graph *BuildGraph, target *BuildTarget, includeTools, includeLinks bool) <-chan SourcePair {
 	ch := make(chan SourcePair)
 	done := map[string]bool{}
 	tmpDir := target.TmpDir()
@@ -137,6 +137,19 @@ func IterSources(graph *BuildGraph, target *BuildTarget, includeTools bool) <-ch
 				if tmpPath := path.Join(tmpDir, sourcePath); !done[tmpPath] {
 					ch <- SourcePair{fullPaths[i], tmpPath}
 					done[tmpPath] = true
+				}
+			}
+			if includeLinks {
+				if label := input.Label(); label != nil {
+					t := graph.TargetOrDie(*label)
+					for _, link := range t.OutputLinks {
+						for i, p := range input.LocalPaths(graph) {
+							if tmpPath := path.Join(tmpDir, link, p); !done[tmpPath] {
+								ch <- SourcePair{fullPaths[i], tmpPath}
+								done[tmpPath] = true
+							}
+						}
+					}
 				}
 			}
 		}

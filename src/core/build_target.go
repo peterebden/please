@@ -519,16 +519,6 @@ func (target *BuildTarget) FullOutputs() []string {
 	return addPathPrefix(target.Outputs(), target.OutDir())
 }
 
-// FullOutputsAndLinks returns a slice of all the outputs of this rule with any output links too.
-func (target *BuildTarget) FullOutputsAndLinks() []string {
-	outs := target.Outputs()
-	ret := addPathPrefix(outs, target.OutDir())
-	for _, link := range target.OutputLinks {
-		ret = append(ret, addPathPrefix(outs, path.Join(target.OutPrefix(), link))...)
-	}
-	return ret
-}
-
 // NamedOutputs returns a slice of all the outputs of this rule with a given name.
 // If the name is not declared by this rule it panics.
 func (target *BuildTarget) NamedOutputs(name string) []string {
