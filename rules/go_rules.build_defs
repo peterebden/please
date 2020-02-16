@@ -573,7 +573,6 @@ def go_module(name:str, path:str, version:str, repo:str=None, hashes:list=None, 
         revision = version,
         fallback = False,
         infer_build = True,
-        deps = deps,
     )
     sr = subrepo(
         name = name,
