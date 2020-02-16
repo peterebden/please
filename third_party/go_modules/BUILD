@@ -95,6 +95,9 @@ go_module(
     name = "tools",
     path = "golang.org/x/tools",
     version = "2ae76fd1560b622911f444c1e66b70a857e1de67",
+    deps = [
+        ":net",
+    ],
 )
 
 go_module(
