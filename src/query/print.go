@@ -212,6 +212,9 @@ func (p *printer) genericPrint(v reflect.Value) (string, bool) {
 		return fmt.Sprintf("%d", v.Int()), v.Int() > 0
 	case reflect.Struct, reflect.Interface:
 		if stringer, ok := v.Interface().(fmt.Stringer); ok {
+			if label, ok := stringer.(core.BuildLabel); ok {
+				return p.quote(label.ShortString(p.target.Label)), true
+			}
 			return p.quote(stringer.String()), true
 		}
 		return "", false
