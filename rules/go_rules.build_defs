@@ -573,6 +573,7 @@ def go_module(name:str, path:str, version:str, repo:str=None, hashes:list=None, 
         revision = version,
         fallback = False,
         infer_build = True,
+        deps = deps,
     )
     sr = subrepo(
         name = name,
@@ -784,6 +785,7 @@ def _go_get_download(name:str, tag:str, get:str, repo:str='', patch:str=None, ha
     if infer_build:
         tools['provide'] = [CONFIG.GO_PROVIDE_TOOL]
         cmd += [f'$TOOLS_PROVIDE {getroot} $OUT ' + ' '.join([canonicalise(d) for d in deps])]
+        deps = None  # Don't actually attach these to the get rule.
     return build_rule(
         name = name,
         tag = tag,
