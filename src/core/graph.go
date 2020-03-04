@@ -161,7 +161,7 @@ func (graph *BuildGraph) addDependencyForTarget(fromTarget *BuildTarget, to Buil
 	// The dependency may not exist yet if we haven't parsed its package.
 	// In that case we stash it away for later.
 	if toTarget := graph.Target(to); toTarget == nil {
-		graph.addPendingRevDep(fromTarget.Label, to, nil)
+		graph.addPendingRevDep(fromTarget.Label, to)
 	} else {
 		graph.linkDependencies(fromTarget, toTarget)
 	}
@@ -191,14 +191,14 @@ func (graph *BuildGraph) linkDependencies(fromTarget, toTarget *BuildTarget) {
 		if target := graph.Target(label); target != nil {
 			fromTarget.resolveDependency(toTarget.Label, target)
 		} else {
-			graph.addPendingRevDep(fromTarget.Label, label, toTarget)
+			graph.addPendingRevDep(fromTarget.Label, toTarget.Label)
 		}
 	}
 }
 
-func (graph *BuildGraph) addPendingRevDep(from, to BuildLabel, orig *BuildTarget) {
+func (graph *BuildGraph) addPendingRevDep(from, to BuildLabel) {
 	revdeps, _ := graph.pendingRevDeps.LoadOrStore(to, &sync.Map{})
-	revdeps.(*sync.Map).Store(from, orig)
+	revdeps.(*sync.Map).Store(from, nil)
 }
 
 // attachPendingRevDeps attaches any lurking revdeps for a target onto the target itself.
@@ -208,12 +208,7 @@ func (graph *BuildGraph) attachPendingRevDeps(target *BuildTarget) bool {
 		any := false
 		m := revdeps.(*sync.Map)
 		m.Range(func(k, v interface{}) bool {
-			revdep := graph.Target(k.(BuildLabel))
-			if originalTarget, ok := v.(*BuildTarget); ok && originalTarget != nil {
-				graph.linkDependencies(revdep, originalTarget)
-			} else {
-				graph.linkDependencies(revdep, target)
-			}
+			graph.linkDependencies(graph.Target(k.(BuildLabel)), target)
 			any = true
 			m.Delete(k)
 			return true
