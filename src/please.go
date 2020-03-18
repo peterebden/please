@@ -357,6 +357,11 @@ var opts struct {
 			DiffSpec         string `long:"diffspec" description:"Calculate changes contained within given scm spec (commit range/sha/ref/etc)."`
 			IncludeDependees string `long:"include-dependees" default:"none" choice:"none" choice:"direct" choice:"transitive" description:"Include direct or transitive dependees of changed targets."`
 		} `command:"changed" description:"Show changed targets since some diffspec."`
+		RemoteArtifacts struct {
+			Args struct {
+				Targets []core.BuildLabel `positional-arg-name:"targets" description:"Targets to include."`
+			} `positional-args:"true"`
+		} `command:"remoteartifacts" hidden:"true" description:"Prints the set of remote artifacts from all given targets."`
 	} `command:"query" description:"Queries information about the build graph"`
 
 	Ide struct {
@@ -683,6 +688,14 @@ var buildFunctions = map[string]func() int{
 	"filter": func() int {
 		return runQuery(false, opts.Query.Filter.Args.Targets, func(state *core.BuildState) {
 			query.Filter(state, state.ExpandOriginalTargets())
+		})
+	},
+	"remoteartifacts": func() int {
+		return runQuery(false, opts.Query.RemoteArtifacts.Args.Targets, func(state *core.BuildState) {
+			if state.RemoteClient == nil {
+				log.Warningf("Remote execution is not configured")
+			}
+			state.RemoteClient.PrintArtifacts(state.ExpandOriginalTargets())
 		})
 	},
 	"intellij": func() int {
@@ -1058,3 +1071,4 @@ func execute(command string) int {
 func main() {
 	os.Exit(execute(initBuild(os.Args)))
 }
+
