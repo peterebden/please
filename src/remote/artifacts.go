@@ -1,73 +1,81 @@
 package remote
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"sort"
-	
-	pb "github.com/bazelbuild/remote-apis/build/bazel/remote/execution/v2"
-	
+
 	"github.com/thought-machine/please/src/core"
 )
 
 // PrintArtifacts prints all the artifacts we use as a .tsv
 func (c *Client) PrintArtifacts(labels []core.BuildLabel) {
-	artifacts, err := c.remoteArtifacts(labels)
-	if err != nil {
-		log.Fatalf("Failed to calculate artifacts: %s", err)
+	type artifact struct{
+		Name, Hash string
+		Size, Count int
 	}
-	fmt.Printf("%s\n", artifacts)
-}
 
-type artifact struct{
-	Name, Hash string
-	Size, Count int
-}
-
-func (c *Client) remoteArtifacts(labels []core.BuildLabel) ([]artifact, error) {
 	log.Notice("Calculating targets...")
-	targets := make([]*core.BuildTarget, len(labels))
-	for i, l := range labels {
-		targets[i] = c.state.Graph.TargetOrDie(l)
-	}
-	// Roughly order targets in order of dependencies.
-	sort.Slice(targets, func(i, j int) bool { return targets[j].HasDependency(targets[i].Label) })
-
+	targets := map[core.BuildLabel][]*artifact{}
 	artifacts := map[string]*artifact{}
-	addDir := func(dir *pb.Directory) {
-		for _, file := range dir.Files {
-			art, present := artifacts[file.Digest.Hash]
-			if !present {
-				art = &artifact{
-					Name: file.Name,
-					Hash: file.Digest.Hash,
-					Size: int(file.Digest.SizeBytes),
-				}
-				artifacts[file.Digest.Hash] = art
+	arts := []*artifact{}
+	for _, l := range labels {
+		if target := c.state.Graph.TargetOrDie(l); target.State() >= core.Built {
+			command, digest, err := c.buildAction(target, false)
+			if err != nil {
+				log.Errorf("Error calculating outputs for %s: %s", target, err)
+				continue
 			}
-			art.Count++
+			_, ar := c.retrieveResults(target, command, digest, false)
+			if ar == nil {
+				log.Warning("Failed to retrieve results for %s", target)
+				continue
+			}
+			outputs, err := c.client.FlattenActionOutputs(context.Background(), ar)
+			if err != nil {
+				log.Error("Failed to download outputs for %s: %s", target, err)
+				continue
+			}
+			for _, out := range outputs {
+				a, present := artifacts[out.Digest.Hash]
+				if !present {
+					a = &artifact{
+						Name: out.Path,
+						Hash: out.Digest.Hash,
+						Size: int(out.Digest.Size),
+					}
+					artifacts[a.Hash] = a
+					arts = append(arts, a)
+				}
+				targets[l] = append(targets[l], a)
+			}
 		}
 	}
-	log.Notice("Finding inputs...")
-	for _, t := range targets {
-		b, err := c.uploadInputDir(nil, t, false)
-		if err != nil {
-			return nil, err
+	totalSize := 0
+	for _, l := range labels {
+		target := c.state.Graph.TargetOrDie(l)
+		for input := range c.iterInputs(target, false, target.IsFilegroup) {
+			if l := input.Label(); l != nil {
+				for _, a := range targets[*l] {
+					a.Count++
+					totalSize = totalSize + a.Size
+				}
+			}
 		}
-		tree := b.Tree("")
-		addDir(tree.Root)
-		for _, child := range tree.Children {
-			addDir(child)
-		}
-	}
-	arts := make([]artifact, 0, len(artifacts))
-	for _, a := range artifacts {
-		arts = append(arts, *a)
 	}
 	sort.Slice(arts, func(i, j int) bool { return arts[i].Size * arts[i].Count < arts[j].Size * arts[j].Count })
-	return arts, nil
+	f, err := os.Create("plz-out/log/remote_artifacts.csv")
+	if err != nil {
+		log.Errorf("Failed to write remote artifact outputs: %s", err)
+		return
+	}
+	defer f.Close()
+	f.Write([]byte("Name,Hash,Size,Count,Total Size,Cumulative\n"))
+	cumul := 0
+	for _, a := range arts {
+		total := a.Count * a.Size
+		cumul = cumul + total
+		f.Write([]byte(fmt.Sprintf("%s,%s,%d,%d,%d,%f\n", a.Name, a.Hash, a.Size, a.Count, total, float64(cumul) * 100.0 / float64(totalSize))))
+	}
 }
-
-
-
-
-

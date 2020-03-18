@@ -381,6 +381,7 @@ var buildFunctions = map[string]func() int{
 			opts.FeatureFlags.NoCache = true
 		}
 		success, state := runBuild(opts.Build.Args.Targets, true, false, false)
+		state.RemoteClient.PrintArtifacts(state.ExpandOriginalTargets())
 		return toExitCode(success, state)
 	},
 	"hash": func() int {
