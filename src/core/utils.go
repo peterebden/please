@@ -226,7 +226,12 @@ func recursivelyProvideFor(graph *BuildGraph, target, dependency *BuildTarget, d
 }
 
 // recursivelyProvideSource is similar to recursivelyProvideFor but operates on a BuildInput.
-func recursivelyProvideSource(graph *BuildGraph, target *BuildTarget, src BuildInput) []BuildInput {
+func recursivelyProvideSource(graph *BuildGraph, target *BuildTarget, src BuildInput) (ret []BuildInput) {
+	defer func() {
+		if r := recover(); r != nil {
+			ret = []BuildInput{src}
+		}
+	}()
 	if label := src.nonOutputLabel(); label != nil {
 		dep := graph.TargetOrDie(*label)
 		provided := recursivelyProvideFor(graph, target, target, dep.Label)
