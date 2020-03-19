@@ -61,8 +61,6 @@ func (c *asyncCache) CleanAll() {
 
 func (c *asyncCache) Shutdown() {
 	log.Info("Shutting down cache workers...")
-	close(c.requests)
-	c.wg.Wait()
 	log.Debug("Shut down all cache workers")
 }
 
