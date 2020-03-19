@@ -69,7 +69,7 @@ func (c *Client) PrintArtifacts() {
 	for _, target := range c.state.Graph.AllTargets() {
 		updateInputs(target)
 	}
-	sort.Slice(arts, func(i, j int) bool { return arts[i].Size * arts[i].Count < arts[j].Size * arts[j].Count })
+	sort.Slice(arts, func(i, j int) bool { return arts[i].Size * arts[i].Count > arts[j].Size * arts[j].Count })
 	f, err := os.Create("plz-out/log/remote_artifacts.csv")
 	if err != nil {
 		log.Errorf("Failed to write remote artifact outputs: %s", err)
