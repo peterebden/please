@@ -10,7 +10,7 @@ import (
 )
 
 // PrintArtifacts prints all the artifacts we use as a .tsv
-func (c *Client) PrintArtifacts(labels []core.BuildLabel) {
+func (c *Client) PrintArtifacts() {
 	type artifact struct{
 		Name, Hash string
 		Size, Count int
@@ -20,8 +20,8 @@ func (c *Client) PrintArtifacts(labels []core.BuildLabel) {
 	targets := map[core.BuildLabel][]*artifact{}
 	artifacts := map[string]*artifact{}
 	arts := []*artifact{}
-	for _, l := range labels {
-		if target := c.state.Graph.TargetOrDie(l); target.State() >= core.Built {
+	for _, target := range c.state.Graph.AllTargets() {
+		if target.State() >= core.Built {
 			command, digest, err := c.buildAction(target, false)
 			if err != nil {
 				log.Errorf("Error calculating outputs for %s: %s", target, err)
@@ -48,13 +48,12 @@ func (c *Client) PrintArtifacts(labels []core.BuildLabel) {
 					artifacts[a.Hash] = a
 					arts = append(arts, a)
 				}
-				targets[l] = append(targets[l], a)
+				targets[target.Label] = append(targets[target.Label], a)
 			}
 		}
 	}
 	totalSize := 0
-	for _, l := range labels {
-		target := c.state.Graph.TargetOrDie(l)
+	for _, target := range c.state.Graph.AllTargets() {
 		for input := range c.iterInputs(target, false, target.IsFilegroup) {
 			if l := input.Label(); l != nil {
 				for _, a := range targets[*l] {

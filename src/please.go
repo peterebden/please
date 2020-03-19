@@ -381,7 +381,7 @@ var buildFunctions = map[string]func() int{
 			opts.FeatureFlags.NoCache = true
 		}
 		success, state := runBuild(opts.Build.Args.Targets, true, false, false)
-		state.RemoteClient.PrintArtifacts(state.ExpandOriginalTargets())
+		state.RemoteClient.PrintArtifacts()
 		return toExitCode(success, state)
 	},
 	"hash": func() int {
@@ -696,7 +696,7 @@ var buildFunctions = map[string]func() int{
 			if state.RemoteClient == nil {
 				log.Warningf("Remote execution is not configured")
 			}
-			state.RemoteClient.PrintArtifacts(state.ExpandOriginalTargets())
+			state.RemoteClient.PrintArtifacts()
 		})
 	},
 	"intellij": func() int {

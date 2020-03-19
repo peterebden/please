@@ -77,8 +77,8 @@ type RemoteClient interface {
 	Download(target *BuildTarget) error
 	// PrintHashes shows the hashes of a target.
 	PrintHashes(target *BuildTarget, isTest bool)
-	// PrintArtifacts prints the set of artifacts that are used by the given targets with some stats.
-	PrintArtifacts(targets []BuildLabel)
+	// PrintArtifacts prints the set of artifacts that are used by all built targets.
+	PrintArtifacts()
 	// DataRate returns an estimate of the current in/out RPC data rates and totals so far in bytes per second.
 	DataRate() (int, int, int, int)
 }
