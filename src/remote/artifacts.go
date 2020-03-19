@@ -53,7 +53,10 @@ func (c *Client) PrintArtifacts() {
 		}
 	}
 	totalSize := 0
-	for _, target := range c.state.Graph.AllTargets() {
+	updateInputs := func(target *core.BuildTarget) {
+		defer func() {
+			recover()
+		}()
 		for input := range c.iterInputs(target, false, target.IsFilegroup) {
 			if l := input.Label(); l != nil {
 				for _, a := range targets[*l] {
@@ -62,6 +65,9 @@ func (c *Client) PrintArtifacts() {
 				}
 			}
 		}
+	}
+	for _, target := range c.state.Graph.AllTargets() {
+		updateInputs(target)
 	}
 	sort.Slice(arts, func(i, j int) bool { return arts[i].Size * arts[i].Count < arts[j].Size * arts[j].Count })
 	f, err := os.Create("plz-out/log/remote_artifacts.csv")
