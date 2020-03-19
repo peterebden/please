@@ -57,7 +57,7 @@ func (graph *BuildGraph) Target(label BuildLabel) *BuildTarget {
 func (graph *BuildGraph) TargetOrDie(label BuildLabel) *BuildTarget {
 	target := graph.Target(label)
 	if target == nil {
-		log.Fatalf("Target %s not found in build graph\n", label)
+		panic("Target " + label.String() + " not found in build graph")
 	}
 	return target
 }
