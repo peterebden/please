@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/thought-machine/please/src/core"
+	"github.com/dustin/go-humanize"
 )
 
 // PrintArtifacts prints all the artifacts we use as a .tsv
@@ -76,11 +77,11 @@ func (c *Client) PrintArtifacts() {
 		return
 	}
 	defer f.Close()
-	f.Write([]byte("Name,Hash,Size,Count,Total Size,Cumulative\n"))
+	f.Write([]byte("Name,Hash,Size,Count,Total Size,Nice Total,Cumulative\n"))
 	cumul := 0
 	for _, a := range arts {
 		total := a.Count * a.Size
 		cumul = cumul + total
-		f.Write([]byte(fmt.Sprintf("%s,%s,%d,%d,%d,%f\n", a.Name, a.Hash, a.Size, a.Count, total, float64(cumul) * 100.0 / float64(totalSize))))
+		f.Write([]byte(fmt.Sprintf("%s,%s,%d,%d,%d,%s,%f\n", a.Name, a.Hash, a.Size, a.Count, total, humanize.Bytes(uint64(total)), float64(cumul) * 100.0 / float64(totalSize))))
 	}
 }
