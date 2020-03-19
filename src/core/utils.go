@@ -151,6 +151,9 @@ func IterInputs(graph *BuildGraph, target *BuildTarget, includeTools, sourcesOnl
 	done := map[BuildLabel]bool{}
 	var inner func(dependency *BuildTarget)
 	inner = func(dependency *BuildTarget) {
+		defer func() {
+			recover()
+		}()
 		if dependency != target {
 			ch <- dependency.Label
 		}
@@ -425,3 +428,4 @@ func moveDir(dir string) (string, error) {
 func PathExists(filename string) bool {
 	return fs.PathExists(filename)
 }
+
