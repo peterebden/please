@@ -36,6 +36,7 @@ func (c *Client) uploadBlobs(f func(ch chan<- *chunker.Chunker) error) error {
 
 // PrintOutputs prints all the outputs from a set of targets as a .csv
 func (c *Client) PrintArtifacts(labels []core.BuildLabel) {
+	c.state.Cache = nil  // Don't try to store anything in here
 	var total int64
 	w := csv.NewWriter(os.Stdout)
 	for _, l := range labels {
