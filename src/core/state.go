@@ -77,6 +77,8 @@ type RemoteClient interface {
 	Download(target *BuildTarget) error
 	// PrintHashes shows the hashes of a target.
 	PrintHashes(target *BuildTarget, isTest bool)
+	// PrintOutputs prints all the outputs from a set of targets as a .csv
+	PrintArtifacts(targets []BuildLabel)
 	// DataRate returns an estimate of the current in/out RPC data rates and totals so far in bytes per second.
 	DataRate() (int, int, int, int)
 }

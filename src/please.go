@@ -357,6 +357,11 @@ var opts struct {
 			DiffSpec         string `long:"diffspec" description:"Calculate changes contained within given scm spec (commit range/sha/ref/etc)."`
 			IncludeDependees string `long:"include-dependees" default:"none" choice:"none" choice:"direct" choice:"transitive" description:"Include direct or transitive dependees of changed targets."`
 		} `command:"changed" description:"Show changed targets since some diffspec."`
+		RemoteOutputs struct {
+			Args struct {
+				Targets []core.BuildLabel `positional-arg-name:"targets" description:"Targets to build/query" required:"true"`
+			} `positional-args:"true"`
+		} `command:"remoteoutputs" hidden:"true" description:"Prints detailed output of a series of targets. Requires remote execution to be configured."`
 	} `command:"query" description:"Queries information about the build graph"`
 
 	Ide struct {
@@ -684,6 +689,13 @@ var buildFunctions = map[string]func() int{
 		return runQuery(false, opts.Query.Filter.Args.Targets, func(state *core.BuildState) {
 			query.Filter(state, state.ExpandOriginalTargets())
 		})
+	},
+	"remoteoutputs": func() int {
+		success, state := runBuild(opts.Query.RemoteOutputs.Args.Targets, true, false, false)
+		if success {
+			state.RemoteClient.PrintArtifacts(state.ExpandOriginalLabels())
+		}
+		return toExitCode(success, state)
 	},
 	"intellij": func() int {
 		success, state := runBuild(opts.Ide.IntelliJ.Args.Labels, false, false, false)
