@@ -232,6 +232,7 @@ func (c *Client) digestEnum(name string) pb.DigestFunction_Value {
 
 // Build executes a remote build of the given target.
 func (c *Client) Build(tid int, target *core.BuildTarget) (*core.BuildMetadata, error) {
+	log.Debug("remote Build %s", target)
 	if err := c.CheckInitialised(); err != nil {
 		return nil, err
 	}
@@ -239,6 +240,7 @@ func (c *Client) Build(tid int, target *core.BuildTarget) (*core.BuildMetadata, 
 	if err != nil {
 		return metadata, err
 	}
+	log.Debug("remote build complete %s", target)
 	hash, _ := hex.DecodeString(c.digestMessage(ar).Hash)
 	if c.state.TargetHasher != nil {
 		c.state.TargetHasher.SetHash(target, hash)
@@ -249,6 +251,7 @@ func (c *Client) Build(tid int, target *core.BuildTarget) (*core.BuildMetadata, 
 	// Need to download the target if it was originally requested (and the user didn't pass --nodownload).
 	// Also anything needed for subinclude needs to be local.
 	if (c.state.IsOriginalTarget(target.Label) && c.state.DownloadOutputs && !c.state.NeedTests) || target.NeededForSubinclude {
+		log.Debug("remote build download %s", target)
 		if !c.outputsExist(target, digest) {
 			c.state.LogBuildResult(tid, target.Label, core.TargetBuilding, "Downloading")
 			if err := c.download(target, func() error {
