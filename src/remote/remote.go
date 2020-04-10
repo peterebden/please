@@ -274,12 +274,14 @@ func (c *Client) build(tid int, target *core.BuildTarget) (*core.BuildMetadata, 
 		return nil, nil, nil, err
 	}
 	if target.Stamp {
+		log.Debug("remote retrieve stamped results for %s", target)
 		if metadata, ar := c.maybeRetrieveResults(tid, target, command, unstampedDigest, needStdout); metadata != nil {
 			return metadata, ar, stampedDigest, nil
 		}
 	}
 	metadata, ar, err := c.execute(tid, target, command, stampedDigest, target.BuildTimeout, false, needStdout)
 	if target.Stamp && err == nil {
+		log.Debug("remote store stamped results %s", target)
 		// Store results under unstamped digest too.
 		c.locallyCacheResults(target, unstampedDigest, metadata, ar)
 		ctx, cancel := context.WithTimeout(context.Background(), c.reqTimeout)
@@ -412,6 +414,7 @@ func (c *Client) maybeRetrieveResults(tid int, target *core.BuildTarget, command
 // execute submits an action to the remote executor and monitors its progress.
 // The returned ActionResult may be nil on failure.
 func (c *Client) execute(tid int, target *core.BuildTarget, command *pb.Command, digest *pb.Digest, timeout time.Duration, isTest, needStdout bool) (*core.BuildMetadata, *pb.ActionResult, error) {
+	log.Debug("remote execute %s", target)
 	if metadata, ar := c.maybeRetrieveResults(tid, target, command, digest, needStdout); metadata != nil {
 		return metadata, ar, nil
 	}
