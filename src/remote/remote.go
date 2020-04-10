@@ -124,6 +124,16 @@ func (c *Client) initExec() error {
 	// Create a copy of the state where we can modify the config
 	c.state = c.state.ForConfig()
 	c.state.Config.HomeDir = c.state.Config.Remote.HomeDir
+	retrier := client.RetryTransient()
+	shouldRetry := retrier.ShouldRetry
+	retrier.ShouldRetry = func(err error) bool {
+		if shouldRetry(err) {
+			log.Debug("Retrying error %s", err)
+			return true
+		}
+		log.Debug("Not retrying error %s", err)
+		return false
+	}
 	client, err := client.NewClient(context.Background(), c.instance, client.DialParams{
 		Service:            c.state.Config.Remote.URL,
 		CASService:         c.state.Config.Remote.CASURL,
@@ -134,7 +144,7 @@ func (c *Client) initExec() error {
 			// Set an arbitrarily large (400MB) max message size so it isn't a limitation.
 			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(419430400)),
 		},
-	}, client.UseBatchOps(true), client.RetryTransient())
+	}, client.UseBatchOps(true), retrier)
 	if err != nil {
 		return err
 	}
