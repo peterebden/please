@@ -437,6 +437,7 @@ func (c *Client) execute(tid int, target *core.BuildTarget, command *pb.Command,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	log.Debug("remote ExecuteAndWaitProgress %s", target)
 	resp, err := c.client.ExecuteAndWaitProgress(ctx, &pb.ExecuteRequest{
 		InstanceName:    c.instance,
 		ActionDigest:    digest,
@@ -444,6 +445,7 @@ func (c *Client) execute(tid int, target *core.BuildTarget, command *pb.Command,
 	}, func(metadata *pb.ExecuteOperationMetadata) {
 		c.updateProgress(tid, target, metadata)
 	})
+	log.Debug("remote ExecuteAndWaitProgress done %s", target)
 	if err != nil {
 		// Handle timing issues if we try to resume an execution as it fails. If we get a
 		// "not found" we might find that it's already been completed and we can't resume.
