@@ -127,11 +127,14 @@ func (c *Client) initExec() error {
 	retrier := client.RetryTransient()
 	shouldRetry := retrier.ShouldRetry
 	retrier.ShouldRetry = func(err error) bool {
-		if shouldRetry(err) {
-			log.Debug("Retrying error %s", err)
+		if s, ok := status.FromError(err); ok && s.Code() == codes.Internal {
+			log.Debug("Not retrying remote execution error %s", err)
+			return false
+		} else if shouldRetry(err) {
+			log.Debug("Retrying remote execution error %s", err)
 			return true
 		}
-		log.Debug("Not retrying error %s", err)
+		log.Debug("Not retrying remote execution error %s", err)
 		return false
 	}
 	client, err := client.NewClient(context.Background(), c.instance, client.DialParams{
