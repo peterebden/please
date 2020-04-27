@@ -415,6 +415,8 @@ func (c *Client) retrieveResults(target *core.BuildTarget, command *pb.Command, 
 			}
 			log.Debug("Remotely cached results for %s were missing some outputs, forcing a rebuild: %s", target.Label, err)
 		}
+	} else {
+		log.Debug("Didn't find remote action result for %s [%s/%d]: %s", target, digest.Hash, digest.SizeBytes, err)
 	}
 	return nil, nil
 }
