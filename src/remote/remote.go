@@ -396,7 +396,7 @@ func (c *Client) retrieveResults(target *core.BuildTarget, command *pb.Command, 
 		return metadata, ar
 	}
 	// Now see if it is cached on the remote server
-	log.Debug("Checking remote server for %s", digest.Hash)
+	log.Debug("Checking remote server for %s [%s]", target, digest.Hash)
 	ctx, cancel := context.WithTimeout(context.Background(), c.reqTimeout)
 	defer cancel()
 	if ar, err := c.client.GetActionResult(ctx, &pb.GetActionResultRequest{
@@ -404,7 +404,7 @@ func (c *Client) retrieveResults(target *core.BuildTarget, command *pb.Command, 
 		ActionDigest: digest,
 		InlineStdout: needStdout,
 	}); err == nil {
-		log.Debug("Found remote action result for %s", digest.Hash)
+		log.Debug("Found remote action result for %s [%s]", target, digest.Hash)
 		// This action already exists and has been cached.
 		if metadata, err := c.buildMetadata(ar, needStdout, false); err == nil {
 			log.Debug("Got remotely cached results for %s %s", target.Label, c.actionURL(digest, true))
