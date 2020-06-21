@@ -518,6 +518,7 @@ func (c *Client) execute(tid int, target *core.BuildTarget, command *pb.Command,
 			return metadata, ar, nil
 		}
 	}
+	c.state.LogBuildResult(tid, target.Label, core.TargetBuilding, "Building...")
 	// We didn't actually upload the inputs before, so we must do so now.
 	command, digest, err := c.uploadAction(target, isTest, false)
 	if err != nil {
