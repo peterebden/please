@@ -855,6 +855,18 @@ func (state *BuildState) queueTargetAsync(target *BuildTarget, dependent BuildLa
 		}
 	}
 
+	if !dependent.IsAllTargets() {
+		if provided := target.ProvideFor(state.Graph.TargetOrDie(dependent)); len(provided) != 1 || provided[0] != target.Label {
+			for _, p := range provided {
+				if err := state.queueTarget(p, dependent, rescan, forceBuild, forSubinclude); err != nil {
+					state.asyncError(p, err)
+					return
+				}
+			}
+			return
+		}
+	}
+
 	if target.SyncUpdateState(Active, Pending) {
 		state.addPendingBuild(target.Label, dependent.IsAllTargets())
 	}
