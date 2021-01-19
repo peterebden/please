@@ -55,7 +55,7 @@ go_get(
 go_get(
     name = "humanize",
     get = "github.com/dustin/go-humanize",
-    revision = "8929fe90cee4b2cb9deb468b51fb34eba64d1bf0",
+    revision = "v1.0.0",
 )
 
 go_get(
