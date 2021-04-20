@@ -685,7 +685,8 @@ func TestFStringConcat(t *testing.T) {
 			},
 		}
 
-		res := concatStrings(lhs, rhs)
+		concatStrings(lhs, rhs)
+		res := lhs
 
 		require.NotNil(t, res.FString)
 		assert.Len(t, res.FString.Vars, 1)
@@ -716,7 +717,8 @@ func TestFStringConcat(t *testing.T) {
 			String: "\" this is the right hand side\"",
 		}
 
-		res := concatStrings(lhs, rhs)
+		concatStrings(lhs, rhs)
+		res := lhs
 
 		require.NotNil(t, res.FString)
 		assert.Len(t, res.FString.Vars, 1)
@@ -759,7 +761,8 @@ func TestFStringConcat(t *testing.T) {
 				Suffix: " rhs suffix",
 			},
 		}
-		res := concatStrings(lhs, rhs)
+		concatStrings(lhs, rhs)
+		res := lhs
 
 		require.NotNil(t, res.FString)
 		assert.Len(t, res.FString.Vars, 2)
@@ -780,7 +783,8 @@ func TestFStringConcat(t *testing.T) {
 		rhs := &ValueExpression{
 			String: "\" this is the right hand side\"",
 		}
-		res := concatStrings(lhs, rhs)
+		concatStrings(lhs, rhs)
+		res := lhs
 
 		require.NotEmpty(t, res.String)
 		assert.Equal(t, "\"this is the left hand side this is the right hand side\"", res.String)

@@ -390,10 +390,8 @@ func (p *parser) parseUnconditionalExpression() *Expression {
 func (p *parser) parseUnconditionalExpressionInPlace(e *Expression) {
 	if tok := p.l.Peek(); tok.Type == '-' || tok.Value == "not" {
 		p.l.Next()
-		e.UnaryOp = &UnaryOp{
-			Op:   tok.Value,
-			Expr: *p.parseValueExpression(),
-		}
+		e.UnaryOp = &UnaryOp{Op: tok.Value}
+		p.parseValueExpressionInPlace(&e.UnaryOp.Expr)
 	} else {
 		e.Val = p.parseValueExpression()
 	}
@@ -430,41 +428,47 @@ func (p *parser) parseUnconditionalExpressionInPlace(e *Expression) {
 	}
 }
 
-func concatStrings(lhs *ValueExpression, rhs *ValueExpression) *ValueExpression {
-	// If they're both fStrngs
+func concatStrings(lhs *ValueExpression, rhs *ValueExpression) {
+	// If they're both fStrings
 	if lhs.FString != nil && rhs.FString != nil {
 		// If rhs has no variables, handle that
 		if len(rhs.FString.Vars) == 0 {
 			lhs.FString.Suffix += rhs.FString.Suffix
-			return lhs
+			return
 		}
 
 		// Otherwise merge the vars
 		rhs.FString.Vars[0].Prefix = lhs.FString.Suffix + rhs.FString.Vars[0].Prefix
-		rhs.FString.Vars = append(lhs.FString.Vars, rhs.FString.Vars...)
-
-		return rhs
+		lhs.FString.Vars = append(lhs.FString.Vars, rhs.FString.Vars...)
+		lhs.FString.Suffix = rhs.FString.Suffix
+		return
 	}
 
 	// lhs is fString, add rhs to suffix
 	if lhs.FString != nil && rhs.FString == nil {
 		lhs.FString.Suffix += rhs.String[1 : len(rhs.String)-1]
-		return lhs
+		return
 	}
 
 	// lhs is string, add rhs to prefix of first var
 	if lhs.FString == nil && rhs.FString != nil {
 		rhs.FString.Vars[0].Prefix = lhs.String[1:len(lhs.String)-1] + rhs.FString.Vars[0].Prefix
-		return rhs
+		lhs.FString = rhs.FString
+		lhs.String = ""
+		return
 	}
 
 	// otherwise they must both be strings
 	lhs.String = "\"" + lhs.String[1:len(lhs.String)-1] + rhs.String[1:len(rhs.String)-1] + "\""
-	return lhs
 }
 
 func (p *parser) parseValueExpression() *ValueExpression {
 	ve := &ValueExpression{}
+	p.parseValueExpressionInPlace(ve)
+	return ve
+}
+
+func (p *parser) parseValueExpressionInPlace(ve *ValueExpression) {
 	tok := p.l.Peek()
 
 	if tok.Type == String {
@@ -476,7 +480,8 @@ func (p *parser) parseValueExpression() *ValueExpression {
 		}
 
 		if p.l.Peek().Type == String {
-			return concatStrings(ve, p.parseValueExpression())
+			concatStrings(ve, p.parseValueExpression())
+			return
 		}
 	} else if tok.Type == Int {
 		p.assert(len(tok.Value) < 19, tok, "int literal is too large: %s", tok)
@@ -514,7 +519,6 @@ func (p *parser) parseValueExpression() *ValueExpression {
 	} else if p.optional('(') {
 		ve.Call = p.parseCall()
 	}
-	return ve
 }
 
 func (p *parser) parseIdentStatement() *IdentStatement {
