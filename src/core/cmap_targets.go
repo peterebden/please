@@ -17,6 +17,13 @@ const shardCount = 1 << 8
 // shardMask is the mask we apply to hash functions below.
 const shardMask = shardCount - 1
 
+// maxSubShardSize is the size we let a single sub-shard grow to before rehashing.
+const maxSubShardSize = 16
+
+// growthFactor is the amount we grow a subshard by on rehash.
+// It must be a power of 2.
+const growthFactor = 2
+
 // targetMap is a concurrent safe sharded map to scale on multiple cores.
 // It's a fully specialised version of cmap.CMap for our most commonly used types.
 type targetMap struct {
@@ -78,18 +85,32 @@ func newTargetLMap() *targetLMap {
 // Set is the equivalent of `map[key] = val`.
 // It returns true if the item was inserted, false if it already existed (in which case it won't be inserted)
 func (lm *targetLMap) Set(hash uint32, key BuildLabel, v *BuildTarget) bool {
-	k := hash & shardMask
 	lm.l.Lock()
 	defer lm.l.Unlock()
+	k := hash & uint32(len(lm.s)-1)
+	if len(lm.s[k]) == maxSubShardSize {
+		// This shard is too big, we need to rehash.
+		newSize := len(lm.s) * growthFactor
+		newMask := uint32(newSize - 1)
+		rep := make([][]*BuildTarget, newSize)
+		for _, s := range lm.s {
+			for _, t := range s {
+				k := hashBuildLabel(t.Label) & newMask
+				rep[k] = append(rep[k], t)
+			}
+		}
+		lm.s = rep
+		k = hashBuildLabel(key) & newMask
+	}
 	lm.s[k] = append(lm.s[k], v)
 	return true
 }
 
 // GetOK is the equivalent of `val, ok := map[key]`.
 func (lm *targetLMap) GetOK(hash uint32, key BuildLabel) (*BuildTarget, bool) {
-	k := hash & shardMask
 	lm.l.RLock()
 	defer lm.l.RUnlock()
+	k := hash & uint32(len(lm.s)-1)
 	for _, t := range lm.s[k] {
 		if t.Label == key {
 			return t, true
