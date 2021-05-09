@@ -90,20 +90,26 @@ func (lm *targetLMap) Set(hash uint32, key BuildLabel, v *BuildTarget) bool {
 	k := hash & uint32(len(lm.s)-1)
 	if len(lm.s[k]) == maxSubShardSize {
 		// This shard is too big, we need to rehash.
-		newSize := len(lm.s) * growthFactor
-		newMask := uint32(newSize - 1)
-		rep := make([][]*BuildTarget, newSize)
-		for _, s := range lm.s {
-			for _, t := range s {
-				k := hashBuildLabel(t.Label) & newMask
-				rep[k] = append(rep[k], t)
-			}
-		}
-		lm.s = rep
+		newMask := lm.rehash()
 		k = hashBuildLabel(key) & newMask
 	}
 	lm.s[k] = append(lm.s[k], v)
 	return true
+}
+
+// rehash resizes the buckets and rehashes everything into them.
+func (lm *targetLMap) rehash() uint32 {
+	newSize := len(lm.s) * growthFactor
+	newMask := uint32(newSize - 1)
+	rep := make([][]*BuildTarget, newSize)
+	for _, s := range lm.s {
+		for _, t := range s {
+			k := hashBuildLabel(t.Label) & newMask
+			rep[k] = append(rep[k], t)
+		}
+	}
+	lm.s = rep
+	return newMask
 }
 
 // GetOK is the equivalent of `val, ok := map[key]`.
