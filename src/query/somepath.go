@@ -75,10 +75,8 @@ func somePath(graph *core.BuildGraph, target1, target2 *core.BuildTarget, seen m
 	}
 	for _, dep := range target1.DeclaredDependencies() {
 		if t := graph.Target(dep); t != nil {
-			for _, l := range t.ProvideFor(target1) {
-				if path := somePath(graph, graph.TargetOrDie(l), target2, seen); len(path) != 0 {
-					return append([]core.BuildLabel{target1.Label}, path...)
-				}
+			if path := somePath(graph, t, target2, seen); len(path) != 0 {
+				return append([]core.BuildLabel{target1.Label}, path...)
 			}
 		}
 	}
