@@ -455,6 +455,7 @@ func (b *dirBuilder) walk(name string, ch chan<- *uploadinfo.Entry) *pb.Digest {
 		}
 	}
 	dir.Directories = dirs[:0]
+	last = ""
 	for _, d := range dirs {
 		if d.Name != last {
 			dir.Directories = append(dir.Directories, d)
@@ -462,6 +463,7 @@ func (b *dirBuilder) walk(name string, ch chan<- *uploadinfo.Entry) *pb.Digest {
 		}
 	}
 	dir.Symlinks = syms[:0]
+	last = ""
 	for _, s := range syms {
 		if s.Name != last {
 			dir.Symlinks = append(dir.Symlinks, s)
