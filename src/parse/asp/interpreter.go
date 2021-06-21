@@ -227,7 +227,7 @@ func (s *scope) NewPackagedScope(pkg *core.Package, hint int) *scope {
 		pkg:         pkg,
 		contextPkg:  pkg,
 		parent:      s,
-		locals:      make(pyDict, hint + 20),  // Always add some additional space for the locals to grow.
+		locals:      make(pyDict, hint+20), // Always add some additional space for the locals to grow.
 		config:      s.config,
 		Callback:    s.Callback,
 	}
