@@ -5,7 +5,6 @@
 package core
 
 import (
-	"math"
 	"sync"
 
 	"github.com/OneOfOne/cmap/hashers"
@@ -70,7 +69,8 @@ type targetLMap struct {
 	mask    int
 	size    int
 	maxSize int
-	maxLookups int
+    maxDib  int
+	dib     int
 	l sync.RWMutex
 }
 
@@ -83,14 +83,17 @@ func newTargetLMapSize(cap int) *targetLMap {
 
 func (lm *targetLMap) resize(cap int) {
 	const maxLoadFactor = 0.8
+	const maxAverageDib = 2
 
 	old := lm.buckets
 	lm.buckets = make([]entry, cap)
 	lm.mask = cap - 1
 	lm.maxSize = int(float64(cap) * maxLoadFactor)
-	lm.maxLookups = int(math.Log2(float64(cap)))
+	lm.maxDib = maxAverageDib * cap
+	lm.dib = 0
 	for _, b := range old {
-		lm.set(b.Hash, b.Target)
+		dib, _ := lm.set(b.Hash, b.Target)
+		lm.dib += int(dib)
 	}
 }
 
@@ -99,13 +102,11 @@ func (lm *targetLMap) resize(cap int) {
 func (lm *targetLMap) Set(h uint32, v *BuildTarget) bool {
 	lm.l.Lock()
 	defer lm.l.Unlock()
-	if lm.size == lm.maxSize {
+	if lm.size == lm.maxSize || lm.dib >= lm.maxDib {
 		lm.resize(len(lm.buckets) * 2)
 	}
-	maxDib, inserted := lm.set(h, v)
-	if int(maxDib) > lm.maxLookups {
-		lm.resize(len(lm.buckets) * 2)
-	}
+	dib, inserted := lm.set(h, v)
+	lm.dib += int(dib)
 	if inserted {
 		lm.size++
 	}
@@ -113,11 +114,8 @@ func (lm *targetLMap) Set(h uint32, v *BuildTarget) bool {
 }
 
 func (lm *targetLMap) set(h uint32, v *BuildTarget) (uint32, bool) {
-	var dib, maxDib uint32
+	var dib, extraDib uint32
 	for i := int(h) & lm.mask; ; i = (i + 1) & lm.mask {
-		if dib > maxDib {
-			maxDib = dib
-		}
 		if e := lm.buckets[i]; e.Target == nil {
 			// This slot is available, insert here
 			lm.buckets[i] = entry{
@@ -125,7 +123,7 @@ func (lm *targetLMap) set(h uint32, v *BuildTarget) (uint32, bool) {
 				Hash:   h,
 				DIB:    dib,
 			}
-			return maxDib, true
+			return extraDib, true
 		} else if dib > e.DIB {
 			// Our current dib is worse than this one, displace it and continue.
 			newe := entry{
@@ -138,10 +136,11 @@ func (lm *targetLMap) set(h uint32, v *BuildTarget) (uint32, bool) {
 			dib = e.DIB
 			lm.buckets[i] = newe
 		} else if e.Hash == h && e.Target.Label == v.Label {
-			return maxDib, false  // duplicate target
+			return extraDib, false  // duplicate target
 		}
 		// Couldn't insert, our dib goes up and we continue.
 		dib++
+		extraDib++
 	}
 }
 
