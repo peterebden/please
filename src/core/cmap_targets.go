@@ -5,6 +5,7 @@
 package core
 
 import (
+	"math"
 	"sync"
 
 	"github.com/OneOfOne/cmap/hashers"
@@ -36,15 +37,15 @@ func newTargetMap() *targetMap {
 
 // Set is the equivalent of `map[key] = val`.
 // It returns true if the item was inserted, false if it already existed (in which case it won't be inserted)
-func (cm *targetMap) Set(key BuildLabel, val *BuildTarget) bool {
-	h := hashBuildLabel(key)
-	return cm.shards[h&shardMask].Set(key, val)
+func (cm *targetMap) Set(t *BuildTarget) bool {
+	h := hashBuildLabel(t.Label)
+	return cm.shards[h&shardMask].Set(h, t)
 }
 
 // GetOK is the equivalent of `val, ok := map[key]`.
 func (cm *targetMap) GetOK(key BuildLabel) (val *BuildTarget, ok bool) {
 	h := hashBuildLabel(key)
-	return cm.shards[h&shardMask].GetOK(key)
+	return cm.shards[h&shardMask].GetOK(h, key)
 }
 
 // Values returns a slice of all the current values in the map.
@@ -62,47 +63,117 @@ func hashBuildLabel(key BuildLabel) uint32 {
 	return hashers.Fnv32(key.Subrepo) ^ hashers.Fnv32(key.PackageName) ^ hashers.Fnv32(key.Name)
 }
 
-// targetLMap is a simple sync.RWMutex locked map.
-// Used by targetMap internally for sharding.
+// targetLMap is a threadsafe hashmap used by targetMap internally for sharding.
+// It uses an append-only implementation of Robin Hood hashing internally.
 type targetLMap struct {
-	m map[BuildLabel]*BuildTarget
+	buckets []entry
+	mask    int
+	size    int
+	maxSize int
+	maxLookups int
 	l sync.RWMutex
 }
 
 // newTargetLMapSize is the equivalent of `m := make(map[BuildLabel]*BuildTarget, cap)`
 func newTargetLMapSize(cap int) *targetLMap {
-	return &targetLMap{
-		m: make(map[BuildLabel]*BuildTarget, cap),
+	lm := &targetLMap{}
+	lm.resize(cap)
+	return lm
+}
+
+func (lm *targetLMap) resize(cap int) {
+	const maxLoadFactor = 0.8
+
+	old := lm.buckets
+	lm.buckets = make([]entry, cap)
+	lm.mask = cap - 1
+	lm.maxSize = int(float64(cap) * maxLoadFactor)
+	lm.maxLookups = int(math.Log2(float64(cap)))
+	for _, b := range old {
+		lm.set(b.Hash, b.Target)
 	}
 }
 
 // Set is the equivalent of `map[key] = val`.
 // It returns true if the item was inserted, false if it already existed (in which case it won't be inserted)
-func (lm *targetLMap) Set(key BuildLabel, v *BuildTarget) bool {
+func (lm *targetLMap) Set(h uint32, v *BuildTarget) bool {
 	lm.l.Lock()
 	defer lm.l.Unlock()
-	if _, present := lm.m[key]; present {
-		return false
+	if lm.size == lm.maxSize {
+		lm.resize(len(lm.buckets) * 2)
 	}
-	lm.m[key] = v
-	return true
+	maxDib, inserted := lm.set(h, v)
+	if int(maxDib) > lm.maxLookups {
+		lm.resize(len(lm.buckets) * 2)
+	}
+	if inserted {
+		lm.size++
+	}
+	return inserted
+}
+
+func (lm *targetLMap) set(h uint32, v *BuildTarget) (uint32, bool) {
+	var dib, maxDib uint32
+	for i := int(h) & lm.mask; ; i = (i + 1) & lm.mask {
+		if dib > maxDib {
+			maxDib = dib
+		}
+		if e := lm.buckets[i]; e.Target == nil {
+			// This slot is available, insert here
+			lm.buckets[i] = entry{
+				Target: v,
+				Hash:   h,
+				DIB:    dib,
+			}
+			return maxDib, true
+		} else if dib > e.DIB {
+			// Our current dib is worse than this one, displace it and continue.
+			newe := entry{
+				Target: v,
+				Hash:   h,
+				DIB:    dib,
+			}
+			v = e.Target
+			h = e.Hash
+			dib = e.DIB
+			lm.buckets[i] = newe
+		} else if e.Hash == h && e.Target.Label == v.Label {
+			return maxDib, false  // duplicate target
+		}
+		// Couldn't insert, our dib goes up and we continue.
+		dib++
+	}
 }
 
 // GetOK is the equivalent of `val, ok := map[key]`.
-func (lm *targetLMap) GetOK(key BuildLabel) (*BuildTarget, bool) {
+func (lm *targetLMap) GetOK(h uint32, key BuildLabel) (*BuildTarget, bool) {
 	lm.l.RLock()
 	defer lm.l.RUnlock()
-	v, ok := lm.m[key]
-	return v, ok
+	// TODO(peterebden): Is it worth checking the DIB here?
+	for i := int(h) & lm.mask; ; i = (i + 1) & lm.mask {
+		if e := lm.buckets[i]; e.Hash == h && e.Target.Label == key {
+			return e.Target, true
+		} else if e.Target == nil {
+			return nil, false
+		}
+	}
 }
 
 // Values returns a copy of all the values currently in the map.
 func (lm *targetLMap) Values() []*BuildTarget {
 	lm.l.RLock()
 	defer lm.l.RUnlock()
-	ret := make([]*BuildTarget, 0, len(lm.m))
-	for _, v := range lm.m {
-		ret = append(ret, v)
+	ret := make([]*BuildTarget, 0, lm.size)
+	for _, e := range lm.buckets {
+		if e.Target != nil {
+			ret = append(ret, e.Target)
+		}
 	}
 	return ret
+}
+
+type entry struct{
+	Target *BuildTarget
+	Hash   uint32
+	DIB    uint32
 }
