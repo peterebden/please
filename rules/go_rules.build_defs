@@ -1605,7 +1605,7 @@ def _go_library_cmds(import_path:str="", complete=True, all_srcs=False, cover=Tr
 def _go_binary_cmds(static=False, ldflags='', pkg_config='', definitions=None, gcov=False):
     """Returns the commands to run for linking a Go binary."""
 
-    _link_cmd = f'"$TOOLS_GO" tool link -importcfg importconfig -tmpdir "$TMP_DIR" -extld "$TOOLS_LD" -o "$OUT"'
+    _link_cmd = f'"$TOOLS_GO" tool link -importcfg importconfig -tmpdir "$TMP_DIR" -o "$OUT"'
 
     gen_import_cfg = _set_go_env() + ' && ' + _generate_pkg_import_cfg_cmd("goroot.importconfig", '"$GOROOT"')
     gen_import_cfg += ' && ' + _aggregate_import_cfg_cmd()
@@ -1629,6 +1629,17 @@ def _go_binary_cmds(static=False, ldflags='', pkg_config='', definitions=None, g
     else:
         flags = ''
 
+    if CONFIG.GO_EXTLD_TOOL:
+        flags += ' -extld "$TOOLS_LD"'
+        tools = {
+            'go': [CONFIG.GO_TOOL],
+            'ld': [CONFIG.GO_EXTLD_TOOL],
+        }
+    else:
+        tools = {
+            'go': [CONFIG.GO_TOOL],
+        }
+
     if len(defs) > 0:
         flags += " " + defs
 
@@ -1639,10 +1650,7 @@ def _go_binary_cmds(static=False, ldflags='', pkg_config='', definitions=None, g
     if gcov and CONFIG.CPP_COVERAGE:
         cmds['cover'] = f'{gen_import_cfg} && {_link_cmd} {flags} -extldflags="-lgcov" $SRCS'
 
-    return cmds, {
-        'go': [CONFIG.GO_TOOL],
-        'ld': [CONFIG.LD_TOOL if CONFIG.LINK_WITH_LD_TOOL else CONFIG.CC_TOOL],
-    }
+    return cmds, tools
 
 
 def _go_import_path_cmd(import_path):
