@@ -956,11 +956,24 @@ def _remove_redundant_outs(outs):
 def _go_install_module(name:str, module:str, install:list, src:str, outs:list, deps:list, binary:bool, visibility:list,
                        test_only:bool, licences:list, linker_flags:list, env:dict, build_tags:list):
     build_tags = " ".join([f"--build_tag={tag}" for tag in build_tags])
+    if CONFIG.CGO_CC_TOOL:
+        tools = {
+            'go': [CONFIG.GO_TOOL],
+            'please_go': [CONFIG.PLEASE_GO_TOOL],
+            'cc': [CONFIG.CGO_CC_TOOL],
+        }
+        cc_flag = '--cc_tool=$TOOLS_CC'
+    else:
+        tools = {
+            'go': [CONFIG.GO_TOOL],
+            'please_go': [CONFIG.PLEASE_GO_TOOL],
+        }
+        cc_flag = '--cc_tool=$TOOLS_CC'
     cmd = [
         _set_go_env(),
         _generate_pkg_import_cfg_cmd("goroot.importconfig", '"$GOROOT"'),
         _aggregate_import_cfg_cmd(),
-        f"$TOOLS_PLEASE_GO install {build_tags} --trim_path $TMP_DIR --src_root=$(location {src}) --module_name={module} --importcfg=importconfig --go_tool=$TOOLS_GO --cc_tool=$TOOLS_CC --out=pkg/{CONFIG.GOOS}_{CONFIG.GOARCH} " + " ".join(install),
+        f"$TOOLS_PLEASE_GO install {build_tags} --trim_path $TMP_DIR --src_root=$(location {src}) --module_name={module} --importcfg=importconfig --go_tool=$TOOLS_GO {cc_flag} --out=pkg/{CONFIG.GOOS}_{CONFIG.GOARCH} " + " ".join(install),
         "cat LD_FLAGS",
     ]
 
@@ -975,12 +988,7 @@ def _go_install_module(name:str, module:str, install:list, src:str, outs:list, d
         outs = outs,
         deps = deps,
         srcs = [src],
-        tools = {
-            'go': [CONFIG.GO_TOOL],
-            'please_go': [CONFIG.PLEASE_GO_TOOL],
-            # TODO(jpoole): this should be optional
-            'cc': [CONFIG.CGO_CC_TOOL],
-        },
+        tools = tools,
         visibility = visibility,
         building_description = 'Compiling...',
         cmd = ' && '.join(cmd),
@@ -1666,4 +1674,3 @@ def _get_ldflags_and_pkgconfig(name):
     ldflags = ' '.join([l[3:] for l in labels if l.startswith('ld:')])
     pkg_config = ' '.join([l[3:] for l in labels if l.startswith('pc:')])
     return (ldflags, f'`pkg-config --libs {pkg_config}`') if pkg_config else (ldflags, '')
-
