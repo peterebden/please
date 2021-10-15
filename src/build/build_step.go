@@ -415,7 +415,7 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget, runR
 }
 
 func outputHashOrNil(target *core.BuildTarget, outputs []string, hasher *fs.PathHasher, combine func() hash.Hash) []byte {
-	h, err := outputHash(target, outputs, hasher, combine)
+	h, err := core.OutputHashOfType(target, outputs, hasher, combine)
 	if err != nil {
 		// We might get an error because somebody deleted the outputs from plz-out. In this case return nil and attempt
 		// to rebuild or fetch from the cache.
@@ -836,83 +836,6 @@ func calculateAndCheckRuleHash(state *core.BuildState, target *core.BuildTarget)
 	return hash, nil
 }
 
-// A targetHasher is an implementation of the interface in core.
-type targetHasher struct {
-	State  *core.BuildState
-	hashes map[*core.BuildTarget][]byte
-	mutex  sync.RWMutex
-}
-
-// newTargetHasher returns a new TargetHasher
-func newTargetHasher(state *core.BuildState) core.TargetHasher {
-	return &targetHasher{
-		State:  state,
-		hashes: map[*core.BuildTarget][]byte{},
-	}
-}
-
-// OutputHash calculates the standard output hash of a build target.
-func (h *targetHasher) OutputHash(target *core.BuildTarget) ([]byte, error) {
-	h.mutex.RLock()
-	hash, present := h.hashes[target]
-	h.mutex.RUnlock()
-
-	if present {
-		return hash, nil
-	}
-	hash, err := h.outputHash(target)
-	if err != nil {
-		return hash, err
-	}
-	h.SetHash(target, hash)
-	return hash, nil
-}
-
-// SetHash sets a hash for a build target.
-func (h *targetHasher) SetHash(target *core.BuildTarget, hash []byte) {
-	h.mutex.Lock()
-	defer h.mutex.Unlock()
-	h.hashes[target] = hash
-}
-
-// outputHash calculates the output hash for a target, choosing an appropriate strategy.
-func (h *targetHasher) outputHash(target *core.BuildTarget) ([]byte, error) {
-	outs := target.FullOutputs()
-	if len(outs) == 1 && fs.FileExists(outs[0]) {
-		return outputHash(target, outs, h.State.PathHasher, nil)
-	}
-	return outputHash(target, outs, h.State.PathHasher, h.State.PathHasher.NewHash)
-}
-
-// outputHash is a more general form of OutputHash that allows different hashing strategies.
-// For example, one could choose to use sha256 instead of our usual sha1.
-func outputHash(target *core.BuildTarget, outputs []string, hasher *fs.PathHasher, combine func() hash.Hash) ([]byte, error) {
-	if combine == nil {
-		// Must be a single output, just hash that directly.
-		return hasher.Hash(outputs[0], true, !target.IsFilegroup, target.HashLastModified())
-	}
-	h := combine()
-	for _, filename := range outputs {
-		// NB. Always force a recalculation of the output hashes here. Memoisation is not
-		//     useful because by definition we are rebuilding a target, and can actively hurt
-		//     in cases where we compare the retrieved cache artifacts with what was there before.
-		h2, err := hasher.Hash(filename, true, !target.IsFilegroup, target.HashLastModified())
-		if err != nil {
-			return nil, err
-		}
-		h.Write(h2)
-		// Record the name of the file too, but not if the rule has hash verification
-		// (because this will change the hashes, and the cases it fixes are relatively rare
-		// and generally involve things like hash_filegroup that doesn't have hashes set).
-		// TODO(pebers): Find some more elegant way of unifying this behaviour.
-		if len(target.Hashes) == 0 {
-			h.Write([]byte(filename))
-		}
-	}
-	return h.Sum(nil), nil
-}
-
-// checkRuleHashes verifies the hash of output files for a rule match the ones set on it.
 func checkRuleHashes(state *core.BuildState, target *core.BuildTarget, hash []byte) error {
 	if len(target.Hashes) == 0 {
 		return nil // nothing to check
@@ -953,7 +876,7 @@ func checkRuleHashesOfType(target *core.BuildTarget, hashes, outputs []string, h
 		if combine {
 			combiner = hasher.NewHash
 		}
-		bhash, _ := outputHash(target, outputs, hasher, combiner)
+		bhash, _ := core.OutputHashOfType(target, outputs, hasher, combiner)
 		hashString := hex.EncodeToString(bhash)
 		validHashes[i] = fmt.Sprintf("%s: %s", hasher.AlgoName(), hashString)
 

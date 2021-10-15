@@ -25,14 +25,6 @@ import (
 // Used to ensure we only write our dummy go.mod once.
 var goModOnce sync.Once
 
-// Init initialises common resources for the build package.
-func Init(state *core.BuildState) {
-	theFilegroupBuilder = &filegroupBuilder{
-		built: map[string]bool{},
-	}
-	state.TargetHasher = newTargetHasher(state)
-}
-
 // A filegroupBuilder is a singleton that we have that builds all filegroups.
 // This works around the problem where multiple filegroups can output the same
 // file, which means that if built simultaneously they can fight with one another.
@@ -41,7 +33,9 @@ type filegroupBuilder struct {
 	built map[string]bool
 }
 
-var theFilegroupBuilder *filegroupBuilder
+var theFilegroupBuilder *filegroupBuilder = &filegroupBuilder{
+	built: map[string]bool{},
+}
 
 func isSameFileContent(state *core.BuildState, hashTimestamp bool, from, to string) (bool, error) {
 	if !fs.PathExists(to) {

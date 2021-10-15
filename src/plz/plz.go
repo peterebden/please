@@ -26,7 +26,7 @@ var log = logging.Log
 // To get detailed results as it runs, use state.Results. You should call that *before*
 // starting this (otherwise a sufficiently fast build may bypass you completely).
 func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, config *core.Configuration, arch cli.Arch) {
-	build.Init(state)
+	parse.InitParser(state)
 	if state.Config.Remote.URL != "" {
 		state.RemoteClient = remote.New(state)
 	}

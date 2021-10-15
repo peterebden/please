@@ -100,14 +100,6 @@ type RemoteClient interface {
 	Disconnect() error
 }
 
-// A TargetHasher is a thing that knows how to create hashes for targets.
-type TargetHasher interface {
-	// OutputHash calculates the output hash for a given build target.
-	OutputHash(target *BuildTarget) ([]byte, error)
-	// SetHash sets the output hash for a given build target.
-	SetHash(target *BuildTarget, hash []byte)
-}
-
 // A BuildState tracks the current state of the build & related data.
 // As well as tracking the build graph and config, it also tracks the set of current
 // tasks and maintains a queue of them, along with various related counters which are
@@ -145,7 +137,7 @@ type BuildState struct {
 	// Client to remote execution service, if configured.
 	RemoteClient RemoteClient
 	// Hasher for targets
-	TargetHasher TargetHasher
+	TargetHasher *TargetHasher
 	// Arguments to tests.
 	TestArgs []string
 	// Labels of targets that we will include / exclude
@@ -1323,6 +1315,10 @@ func NewBuildState(config *Configuration) *BuildState {
 			internalResults: make(chan *BuildResult, 1000),
 			cycleDetector:   cycleDetector{graph: graph},
 		},
+	}
+	state.TargetHasher = &TargetHasher{
+		State:  state,
+		hashes: map[*BuildTarget][]byte{},
 	}
 	state.PathHasher = state.Hasher(config.Build.HashFunction)
 	state.progress.allStates = []*BuildState{state}
