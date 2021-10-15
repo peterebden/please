@@ -1317,7 +1317,7 @@ func NewBuildState(config *Configuration) *BuildState {
 		},
 	}
 	state.TargetHasher = &TargetHasher{
-		State:  state,
+		state:  state,
 		hashes: map[*BuildTarget][]byte{},
 	}
 	state.PathHasher = state.Hasher(config.Build.HashFunction)

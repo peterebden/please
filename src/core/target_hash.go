@@ -9,7 +9,7 @@ import (
 
 // A TargetHasher handles hash calculation for a target.
 type TargetHasher struct {
-	State  *BuildState
+	state  *BuildState
 	hashes map[*BuildTarget][]byte
 	mutex  sync.RWMutex
 }
@@ -22,12 +22,17 @@ func (h *TargetHasher) OutputHash(target *BuildTarget) ([]byte, error) {
 	if present {
 		return hash, nil
 	}
-	return h.ForceOutputHash(target)
+	hash, err := h.outputHash(target, false)
+	if err != nil {
+		return nil, err
+	}
+	h.SetHash(target, hash)
+	return hash, nil
 }
 
 // ForceOutputHash is like OutputHash but always forces a recalculation (i.e. it never memoises).
 func (h *TargetHasher) ForceOutputHash(target *BuildTarget) ([]byte, error) {
-	hash, err := h.outputHash(target)
+	hash, err := h.outputHash(target, true)
 	if err != nil {
 		return nil, err
 	}
@@ -43,28 +48,29 @@ func (h *TargetHasher) SetHash(target *BuildTarget, hash []byte) {
 }
 
 // outputHash calculates the output hash for a target, choosing an appropriate strategy.
-func (h *TargetHasher) outputHash(target *BuildTarget) ([]byte, error) {
+func (h *TargetHasher) outputHash(target *BuildTarget, force bool) ([]byte, error) {
 	outs := target.FullOutputs()
-
 	if len(outs) == 0 {
-		return h.State.PathHasher.Hash(outs[0], true, false)
+		// Special case for a single output because it's easier, but also allows for the file's
+		// shasum to be the hash plz uses.
+		return h.state.PathHasher.Hash(outs[0], force, !target.IsFilegroup)
 	}
-
-	// We must combine for sha1 for backwards compatibility
-	// TODO(jpoole): remove this special case in v16
-	mustCombine := h.State.Config.Build.HashFunction == "sha1" && !h.State.Config.FeatureFlags.SingleSHA1Hash
-	combine := len(outs) != 1 || mustCombine
-
-	if !combine && fs.FileExists(outs[0]) {
-		// TODO(peterebden): The final condition here is different from the previous implementation, where
-		//                   it was based on whether the target was a filegroup or not. I can't see why
-		//                   we really need to care about that though.
-		return h.State.PathHasher.Hash(outs[0], true, false)
+	sum := h.state.PathHasher.NewHash()
+	for _, out := range outs {
+		h2, err := h.state.PathHasher.Hash(out, force, !target.IsFilegroup)
+		if err != nil {
+			return nil, err
+		}
+		sum.Write(h2)
+		// Record the name of the file too, but not if the rule has hash verification
+		// (because this will change the hashes, and the cases it fixes are relatively rare
+		// and generally involve things like hash_filegroup that doesn't have hashes set).
+		// TODO(peterebden): Find some more elegant way of unifying this behaviour.
+		if len(target.Hashes) == 0 {
+			sum.Write([]byte(out))
+		}
 	}
-	// Either there's >1 output or it's a directory;
-	h := h.State.PathHasher.NewHash
-
-	return OutputHashOfType(target, outs, h.State.PathHasher, h.State.PathHasher.NewHash)
+	return sum.Sum(nil), nil
 }
 
 // OutputHashOfType is a more general form of OutputHash that allows different hashing strategies.
