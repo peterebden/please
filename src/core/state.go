@@ -1316,11 +1316,11 @@ func NewBuildState(config *Configuration) *BuildState {
 			cycleDetector:   cycleDetector{graph: graph},
 		},
 	}
+	state.PathHasher = state.Hasher(config.Build.HashFunction)
 	state.TargetHasher = &TargetHasher{
-		state:  state,
+		hasher: state.PathHasher,
 		hashes: map[*BuildTarget][]byte{},
 	}
-	state.PathHasher = state.Hasher(config.Build.HashFunction)
 	state.progress.allStates = []*BuildState{state}
 	state.Hashes.Config = config.Hash()
 	for _, exp := range config.Parse.ExperimentalDir {

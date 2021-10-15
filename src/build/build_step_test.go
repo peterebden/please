@@ -502,7 +502,7 @@ func TestSha1SingleHash(t *testing.T) {
 
 			target.AddOutput("foo.txt")
 
-			h, err := newTargetHasher(state).OutputHash(target)
+			h, err := state.TargetHasher.OutputHash(target)
 			require.NoError(t, err)
 			assert.Equal(t, test.fooHash, hex.EncodeToString(h))
 		})
@@ -512,7 +512,7 @@ func TestSha1SingleHash(t *testing.T) {
 			target.AddOutput("foo.txt")
 			target.AddOutput("bar.txt")
 
-			h, err := newTargetHasher(state).OutputHash(target)
+			h, err := state.TargetHasher.OutputHash(target)
 			require.NoError(t, err)
 			assert.Equal(t, test.fooAndBarHash, hex.EncodeToString(h))
 		})
@@ -548,7 +548,6 @@ func newStateWithHashFunc(label, hashFunc string) (*core.BuildState, *core.Build
 	target.BuildTimeout = 100 * time.Second
 	state.Graph.AddTarget(target)
 	state.Parser = &fakeParser{}
-	Init(state)
 	return state, target
 }
 
@@ -561,7 +560,6 @@ func newState(label string) (*core.BuildState, *core.BuildTarget) {
 	target.BuildTimeout = 100 * time.Second
 	state.Graph.AddTarget(target)
 	state.Parser = &fakeParser{}
-	Init(state)
 	return state, target
 }
 
@@ -664,7 +662,6 @@ func TestMain(m *testing.M) {
 	// Move ourselves to the root of the test data tree
 	wd, _ := os.Getwd()
 	core.RepoRoot = filepath.Join(wd, "src/build/test_data")
-	Init(core.NewDefaultBuildState())
 	if err := os.Chdir(core.RepoRoot); err != nil {
 		panic(err)
 	}

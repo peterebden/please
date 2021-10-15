@@ -9,7 +9,7 @@ import (
 
 // A TargetHasher handles hash calculation for a target.
 type TargetHasher struct {
-	state  *BuildState
+	hasher *fs.PathHasher
 	hashes map[*BuildTarget][]byte
 	mutex  sync.RWMutex
 }
@@ -50,14 +50,14 @@ func (h *TargetHasher) SetHash(target *BuildTarget, hash []byte) {
 // outputHash calculates the output hash for a target, choosing an appropriate strategy.
 func (h *TargetHasher) outputHash(target *BuildTarget, force bool) ([]byte, error) {
 	outs := target.FullOutputs()
-	if len(outs) == 0 {
+	if len(outs) == 1 {
 		// Special case for a single output because it's easier, but also allows for the file's
 		// shasum to be the hash plz uses.
-		return h.state.PathHasher.Hash(outs[0], force, !target.IsFilegroup)
+		return h.hasher.Hash(outs[0], force, !target.IsFilegroup)
 	}
-	sum := h.state.PathHasher.NewHash()
+	sum := h.hasher.NewHash()
 	for _, out := range outs {
-		h2, err := h.state.PathHasher.Hash(out, force, !target.IsFilegroup)
+		h2, err := h.hasher.Hash(out, force, !target.IsFilegroup)
 		if err != nil {
 			return nil, err
 		}

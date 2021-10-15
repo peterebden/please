@@ -278,7 +278,7 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget, runR
 		}
 
 		// If we fail to hash our outputs, we get a nil hash so we'll attempt to pull the outputs from the cache
-		oldOutputHash, _ := state.PathHasher.ForceOutputHash(target)
+		oldOutputHash, _ := state.TargetHasher.ForceOutputHash(target)
 		cacheKey = mustShortTargetHash(state, target)
 
 		if state.Cache != nil && !runRemotely && !state.ShouldRebuild(target) {
