@@ -22,9 +22,14 @@ func (h *TargetHasher) OutputHash(target *BuildTarget) ([]byte, error) {
 	if present {
 		return hash, nil
 	}
+	return h.ForceOutputHash(target)
+}
+
+// ForceOutputHash is like OutputHash but always forces a recalculation (i.e. it never memoises).
+func (h *TargetHasher) ForceOutputHash(target *BuildTarget) ([]byte, error) {
 	hash, err := h.outputHash(target)
 	if err != nil {
-		return hash, err
+		return nil, err
 	}
 	h.SetHash(target, hash)
 	return hash, nil
@@ -47,7 +52,10 @@ func (h *TargetHasher) outputHash(target *BuildTarget) ([]byte, error) {
 	combine := len(outs) != 1 || mustCombine
 
 	if !combine && fs.FileExists(outs[0]) {
-		return OutputHashOfType(target, outs, h.State.PathHasher, nil)
+		// TODO(peterebden): The final condition here is different from the previous implementation, where
+		//                   it was based on whether the target was a filegroup or not. I can't see why
+		//                   we really need to care about that though.
+		return h.State.PathHasher.Hash(outs[0], true, false)
 	}
 	return OutputHashOfType(target, outs, h.State.PathHasher, h.State.PathHasher.NewHash)
 }
@@ -56,7 +64,7 @@ func (h *TargetHasher) outputHash(target *BuildTarget) ([]byte, error) {
 func OutputHashOfType(target *BuildTarget, outputs []string, hasher *fs.PathHasher, combine func() hash.Hash) ([]byte, error) {
 	if combine == nil {
 		// Must be a single output, just hash that directly.
-		return hasher.Hash(outputs[0], true, !target.IsFilegroup)
+		return hasher.Hash(outputs[0], true, target.IsFilegroup)
 	}
 	h := combine()
 	for _, filename := range outputs {

@@ -278,10 +278,7 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget, runR
 		}
 
 		// If we fail to hash our outputs, we get a nil hash so we'll attempt to pull the outputs from the cache
-		//
-		// N.B. Important we do not go through state.TargetHasher here since it memoises and
-		//      this calculation might be incorrect.
-		oldOutputHash := outputHashOrNil(target, target.FullOutputs(), state.PathHasher, state.PathHasher.NewHash)
+		oldOutputHash, _ := state.PathHasher.ForceOutputHash(target)
 		cacheKey = mustShortTargetHash(state, target)
 
 		if state.Cache != nil && !runRemotely && !state.ShouldRebuild(target) {
@@ -412,16 +409,6 @@ func buildTarget(tid int, state *core.BuildState, target *core.BuildTarget, runR
 		state.LogBuildResult(tid, target, core.TargetBuilt, "Built (unchanged)")
 	}
 	return nil
-}
-
-func outputHashOrNil(target *core.BuildTarget, outputs []string, hasher *fs.PathHasher, combine func() hash.Hash) []byte {
-	h, err := core.OutputHashOfType(target, outputs, hasher, combine)
-	if err != nil {
-		// We might get an error because somebody deleted the outputs from plz-out. In this case return nil and attempt
-		// to rebuild or fetch from the cache.
-		return nil
-	}
-	return h
 }
 
 func addOutDirOutsFromMetadata(target *core.BuildTarget, md *core.BuildMetadata) {
