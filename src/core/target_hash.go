@@ -46,6 +46,10 @@ func (h *TargetHasher) SetHash(target *BuildTarget, hash []byte) {
 func (h *TargetHasher) outputHash(target *BuildTarget) ([]byte, error) {
 	outs := target.FullOutputs()
 
+	if len(outs) == 0 {
+		return h.State.PathHasher.Hash(outs[0], true, false)
+	}
+
 	// We must combine for sha1 for backwards compatibility
 	// TODO(jpoole): remove this special case in v16
 	mustCombine := h.State.Config.Build.HashFunction == "sha1" && !h.State.Config.FeatureFlags.SingleSHA1Hash
@@ -57,6 +61,9 @@ func (h *TargetHasher) outputHash(target *BuildTarget) ([]byte, error) {
 		//                   we really need to care about that though.
 		return h.State.PathHasher.Hash(outs[0], true, false)
 	}
+	// Either there's >1 output or it's a directory;
+	h := h.State.PathHasher.NewHash
+
 	return OutputHashOfType(target, outs, h.State.PathHasher, h.State.PathHasher.NewHash)
 }
 
