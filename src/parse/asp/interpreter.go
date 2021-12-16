@@ -9,6 +9,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/OneOfOne/cmap/hashers"
+
+	"github.com/thought-machine/please/src/cmap"
 	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/fs"
 )
@@ -17,7 +20,7 @@ import (
 type interpreter struct {
 	scope       *scope
 	parser      *Parser
-	subincludes subincludeMap
+	subincludes     *cmap.Map[string, pyDict]
 
 	configs      map[*core.Configuration]*pyConfig
 	configsMutex sync.RWMutex
@@ -38,7 +41,9 @@ func newInterpreter(state *core.BuildState, p *Parser) *interpreter {
 	i := &interpreter{
 		scope:       s,
 		parser:      p,
-		subincludes: subincludeMap{m: map[string]subincludeResult{}},
+		subincludes: cmap.New[string, pyDict](4, func(key string) uint32 {
+			return hashers.Fnv32(key)
+		}),
 		configs:     map[*core.Configuration]*pyConfig{},
 		limiter:     make(semaphore, state.Config.Parse.NumThreads),
 		profiling:   state.Config.Profiling,
@@ -127,15 +132,14 @@ func (i *interpreter) interpretStatements(s *scope, statements []*Statement) (re
 
 // Subinclude returns the global values corresponding to subincluding the given file.
 func (i *interpreter) Subinclude(path string, label core.BuildLabel) pyDict {
-	globals, wait, first := i.subincludes.Get(path)
+	globals, wait, first := i.subincludes.GetOrWait(path)
 	if globals != nil {
 		return globals
 	} else if !first {
 		i.limiter.Release()
 		defer i.limiter.Acquire()
 		<-wait
-		globals, _, _ := i.subincludes.Get(path)
-		return globals
+		return i.subincludes.Get(path)
 	}
 	// If we get here, it falls to us to parse this.
 	stmts, err := i.parser.parse(path)
