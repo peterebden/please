@@ -12,10 +12,11 @@ func (config *Configuration) AttachAliasFlags(parser *flags.Parser) bool {
 	for name, alias := range config.Alias {
 		cmd := parser.Command
 		fields := strings.Fields(name)
+		positionalLabels := alias.PositionalLabels || alias.RequiredLabel != ""
 		for i, namePart := range fields {
-			cmd = addSubcommand(cmd, namePart, alias.Desc, alias.PositionalLabels && len(alias.Subcommand) == 0 && i == len(fields)-1)
+			cmd = addSubcommand(cmd, namePart, alias.Desc, positionalLabels && len(alias.Subcommand) == 0 && i == len(fields)-1, alias.RequiredLabel)
 			for _, subcommand := range alias.Subcommand {
-				addSubcommands(cmd, strings.Fields(subcommand), alias.PositionalLabels)
+				addSubcommands(cmd, strings.Fields(subcommand), positionalLabels, alias.RequiredLabel)
 			}
 			for _, flag := range alias.Flag {
 				var f struct {
@@ -39,7 +40,7 @@ func addSubcommands(cmd *flags.Command, subcommands []string, positionalLabels b
 
 // addSubcommand adds a single subcommand to the given command.
 // If one by that name already exists, it is returned.
-func addSubcommand(cmd *flags.Command, subcommand, desc string, positionalLabels bool) *flags.Command {
+func addSubcommand(cmd *flags.Command, subcommand, desc string, positionalLabels bool, requiredLabel string) *flags.Command {
 	if existing := cmd.Find(subcommand); existing != nil {
 		return existing
 	}

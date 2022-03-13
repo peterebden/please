@@ -689,6 +689,7 @@ type Alias struct {
 	Desc             string   `help:"Description of this alias"`
 	Subcommand       []string `help:"Known subcommands of this command"`
 	Flag             []string `help:"Known flags of this command"`
+	RequiredLabel    string   `help:"Targets must have these labels to be candidates for positional label completion. Implies positionallabels = true."`
 	PositionalLabels bool     `help:"Treats positional arguments after commands as build labels for the purpose of tab completion."`
 }
 
