@@ -10,3 +10,13 @@ flag = --repo
 [alias "query owners"]
 cmd = run //query:owners --
 desc = Queries owners of a thing.
+
+[alias "foo"]
+cmd = run //query:owners --
+desc = Tests setting positional labels.
+positionallabels = true
+
+[alias "bar"]
+cmd = run //query:owners --
+desc = Tests setting a required label.
+requiredlabel = go_package:github.com/thought-machine/please/src/core

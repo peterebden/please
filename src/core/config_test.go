@@ -378,25 +378,35 @@ func TestAttachAliasFlags(t *testing.T) {
 		}
 	}
 
-	_, err = p.ParseArgs([]string{"plz", "au"})
-	assert.NoError(t, err)
-	assert.EqualValues(t, []string{"auth"}, completions)
+	t.Run("auth_subcommands", func(t *testing.T) {
+		_, err = p.ParseArgs([]string{"plz", "au"})
+		assert.NoError(t, err)
+		assert.EqualValues(t, []string{"auth"}, completions)
 
-	_, err = p.ParseArgs([]string{"plz", "auth", "gc"})
-	assert.NoError(t, err)
-	assert.EqualValues(t, []string{"gcp"}, completions)
+		_, err = p.ParseArgs([]string{"plz", "auth", "gc"})
+		assert.NoError(t, err)
+		assert.EqualValues(t, []string{"gcp"}, completions)
 
-	_, err = p.ParseArgs([]string{"plz", "auth", "aws", "e"})
-	assert.NoError(t, err)
-	assert.EqualValues(t, []string{"ecr"}, completions)
+		_, err = p.ParseArgs([]string{"plz", "auth", "aws", "e"})
+		assert.NoError(t, err)
+		assert.EqualValues(t, []string{"ecr"}, completions)
 
-	_, err = p.ParseArgs([]string{"plz", "auth", "aws", "--h"})
-	assert.NoError(t, err)
-	assert.EqualValues(t, []string{"--host"}, completions)
+		_, err = p.ParseArgs([]string{"plz", "auth", "aws", "--h"})
+		assert.NoError(t, err)
+		assert.EqualValues(t, []string{"--host"}, completions)
+	})
 
-	_, err = p.ParseArgs([]string{"plz", "query", "ow"})
-	assert.NoError(t, err)
-	assert.EqualValues(t, []string{"owners"}, completions)
+	t.Run("query_subcommand", func(t *testing.T) {
+		_, err = p.ParseArgs([]string{"plz", "query", "ow"})
+		assert.NoError(t, err)
+		assert.EqualValues(t, []string{"owners"}, completions)
+	})
+
+	t.Run("positional_labels", func(t *testing.T) {
+		_, err = p.ParseArgs([]string{"plz", "foo", "//src/core:conf"})
+		assert.NoError(t, err)
+		assert.EqualValues(t, []string{"//src/core:config_test"}, completions)
+	})
 }
 
 func TestPrintAliases(t *testing.T) {
