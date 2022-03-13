@@ -1,7 +1,6 @@
 package core
 
 import (
-	"os"
 	"reflect"
 	"strings"
 
@@ -46,15 +45,29 @@ func addSubcommand(cmd *flags.Command, subcommand, desc string, positionalLabels
 	if existing := cmd.Find(subcommand); existing != nil {
 		return existing
 	}
+	var _ interface{} = new(struct {
+		AliasLabel
+	})
+
 	var data interface{} = &struct{}{}
 	if positionalLabels {
+		c := reflect.TypeOf((*flags.Completer)(nil)).Elem()
 		label := reflect.StructOf([]reflect.StructField{{
-			Name: "Label",
-			Type: reflect.TypeOf(aliasLabel{}),
-			Tag:  reflect.StructTag(`required-label:"` + requiredLabel + `"`),
+			Name:      c.Name(),
+			Type:      c,
+			Tag:       reflect.StructTag(`required-label:"` + requiredLabel + `"`),
+			Anonymous: true,
 		}})
-		if _, ok := reflect.New(label).Interface().(flags.Completer); !ok {
-			log.Fatalf("Failed to create a valid Completer")
+		label = reflect.StructOf([]reflect.StructField{{
+			Name:      "Label",
+			Type:      reflect.TypeOf(AliasLabel{}),
+			Tag:       reflect.StructTag(`required-label:"` + requiredLabel + `"`),
+			Anonymous: true,
+		}})
+		log.Errorf("here %s", c.Name())
+		i := reflect.New(label).Elem().Interface()
+		if _, ok := i.(flags.Completer); !ok {
+			log.Fatalf("Created struct is not a Completer")
 		}
 		args := reflect.StructOf([]reflect.StructField{{
 			Name: "Target",
@@ -72,14 +85,15 @@ func addSubcommand(cmd *flags.Command, subcommand, desc string, positionalLabels
 	return newCmd
 }
 
-// An aliasLabel is used for completing build labels on aliases. Some fiddling is needed
+// An AliasLabel is used for completing build labels on aliases. Some fiddling is needed
 // since completion is a property of the type, rather than of the value.
-type aliasLabel struct {
-	Label         BuildLabel
-	RequiredLabel string
+type AliasLabel struct {
+	BuildLabel
 }
 
-func (label aliasLabel) Complete(match string) []flags.Completion {
-	os.Setenv("PLZ_COMPLETE_LABEL", label.RequiredLabel)
-	return label.Label.Complete(match)
+func (label AliasLabel) Complete(match string) []flags.Completion {
+	t := reflect.TypeOf(label)
+	log.Fatalf("here %s", t.Name)
+	//os.Setenv("PLZ_COMPLETE_LABEL", label.RequiredLabel)
+	return label.BuildLabel.Complete(match)
 }
