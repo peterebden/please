@@ -9,8 +9,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/OneOfOne/cmap/hashers"
-
 	"github.com/thought-machine/please/src/cmap"
 	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/fs"
@@ -42,7 +40,7 @@ func newInterpreter(state *core.BuildState, p *Parser) *interpreter {
 		scope:       s,
 		parser:      p,
 		subincludes: cmap.NewSmallV(pyDict{}, func(key string) uint32 {
-			return hashers.Fnv32(key)
+			return cmap.Fnv32(key)
 		}),
 		configs:     map[*core.Configuration]*pyConfig{},
 		limiter:     make(semaphore, state.Config.Parse.NumThreads),

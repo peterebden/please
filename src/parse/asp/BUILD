@@ -16,7 +16,6 @@ go_library(
         "//src/cmap",
         "//src/core",
         "//src/fs",
-        "//third_party/go:cmap",
         "//third_party/go:logging",
         "//third_party/go:promptui",
         "//third_party/go:semver2",
