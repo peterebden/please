@@ -41,7 +41,7 @@ func newInterpreter(state *core.BuildState, p *Parser) *interpreter {
 	i := &interpreter{
 		scope:       s,
 		parser:      p,
-		subincludes: cmap.New[string, pyDict](4, func(key string) uint32 {
+		subincludes: cmap.NewSmallV(pyDict{}, func(key string) uint32 {
 			return hashers.Fnv32(key)
 		}),
 		configs:     map[*core.Configuration]*pyConfig{},
