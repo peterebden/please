@@ -11,8 +11,6 @@ package cmap
 import (
 	"fmt"
 	"sync"
-
-	"github.com/thought-machine/please/src/cmap/hashmap"
 )
 
 // DefaultShardCount is a reasonable default shard count for large maps.
@@ -44,7 +42,7 @@ func New[K comparable, V any, H func(key K) uint64](shardCount uint32, hasher H)
 		mask:   uint64(mask),
 	}
 	for i := range m.shards {
-		m.shards[i].m = hashmap.New[K, awaitableValue[V]](int(shardCount))
+		m.shards[i].m = newHashmap[K, awaitableValue[V]](int(shardCount))
 	}
 	return m
 }
@@ -99,7 +97,7 @@ type awaitableValue[V any] struct {
 
 // A shard is one of the individual shards of a map.
 type shard[K comparable, V any] struct {
-	m *hashmap.Map[K, awaitableValue[V]]
+	m *hashmap[K, awaitableValue[V]]
 	l sync.Mutex
 }
 
