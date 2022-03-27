@@ -1,5 +1,9 @@
 package cmap
 
+import (
+	"unsafe"
+)
+
 const prime32 = 16777619
 const initial = uint32(2166136261)
 
@@ -25,4 +29,14 @@ func Fnv32s(s ...string) uint32 {
 		}
 	}
 	return hash
+}
+
+// Borrow the runtime's builtin fast object hasher.
+//go:linkname runtimehash runtime.memhash
+//go:noescape
+func runtimehash(p unsafe.Pointer, seed, s uintptr) uintptr
+
+// Generic wrapper over the runtime version
+func hash[K any](k K, seed int64) uint64 {
+	return uint64(runtimehash(unsafe.Pointer(&k), uintptr(seed), uintptr(unsafe.Sizeof(k))))
 }

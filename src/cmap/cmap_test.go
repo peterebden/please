@@ -7,10 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func hashInts(k int) uint32 { return uint32(k) }
-
 func TestMap(t *testing.T) {
-	m := New[int, int](DefaultShardCount, hashInts)
+	m := New[int, int](DefaultShardCount)
 	assert.True(t, m.Add(5, 7))
 	assert.True(t, m.Add(7, 5))
 	assert.Equal(t, 7, m.Get(5))
@@ -22,7 +20,7 @@ func TestMap(t *testing.T) {
 }
 
 func TestWait(t *testing.T) {
-	m := New[int, int](DefaultShardCount, hashInts)
+	m := New[int, int](DefaultShardCount)
 	v, ch, first := m.GetOrWait(5)
 	assert.Equal(t, 0, v) // Should be the zero value
 	assert.True(t, first) // We're the first to request it
@@ -37,7 +35,7 @@ func TestWait(t *testing.T) {
 }
 
 func TestReAdd(t *testing.T) {
-	m := New[int, int](DefaultShardCount, hashInts)
+	m := New[int, int](DefaultShardCount)
 	assert.True(t, m.Add(5, 7))
 	assert.False(t, m.Add(5, 7))
 	v, ch, first := m.GetOrWait(5)
@@ -52,14 +50,14 @@ func TestReAdd(t *testing.T) {
 }
 
 func TestShardCount(t *testing.T) {
-	New[int, int](4, hashInts)
+	New[int, int](4)
 	assert.Panics(t, func() {
-		New[int, int](3, hashInts)
+		New[int, int](3)
 	})
 }
 
 func BenchmarkMapInserts(b *testing.B) {
-	m := New[int, int](DefaultShardCount, hashInts)
+	m := New[int, int](DefaultShardCount)
 	for i := 0; i < b.N; i++ {
 		m.Set(i, i)
 	}
