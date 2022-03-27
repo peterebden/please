@@ -18,7 +18,7 @@ import (
 type interpreter struct {
 	scope       *scope
 	parser      *Parser
-	subincludes     *cmap.Map[string, pyDict, func(string) uint32]
+	subincludes *cmap.Map[string, pyDict]
 
 	configs      map[*core.Configuration]*pyConfig
 	configsMutex sync.RWMutex
@@ -39,9 +39,7 @@ func newInterpreter(state *core.BuildState, p *Parser) *interpreter {
 	i := &interpreter{
 		scope:       s,
 		parser:      p,
-		subincludes: cmap.NewSmallV(pyDict{}, func(key string) uint32 {
-			return cmap.Fnv32(key)
-		}),
+		subincludes: cmap.New[string, pyDict](cmap.SmallShardCount),
 		configs:     map[*core.Configuration]*pyConfig{},
 		limiter:     make(semaphore, state.Config.Parse.NumThreads),
 		profiling:   state.Config.Profiling,
