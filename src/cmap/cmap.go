@@ -23,17 +23,17 @@ const SmallShardCount = 4
 
 // A Map is the top-level map type. All functions on it are threadsafe.
 // It should be constructed via New() rather than creating an instance directly.
-type Map[K comparable, V any, H func(key K) uint32] struct {
+type Map[K comparable, V any, H func(key K) uint64] struct {
 	shards []shard[K, V]
 	hasher H
-	mask   uint32
+	mask   uint64
 }
 
 // New creates a new Map using the given hasher to hash items in it.
 // The shard count must be a power of 2; it will panic if not.
 // Higher shard counts will improve concurrency but consume more memory.
 // The DefaultShardCount of 256 is reasonable for a large map.
-func New[K comparable, V any, H func(key K) uint32](shardCount uint32, hasher H) *Map[K, V, H] {
+func New[K comparable, V any, H func(key K) uint64](shardCount uint32, hasher H) *Map[K, V, H] {
 	mask := shardCount - 1
 	if (shardCount & mask) != 0 {
 		panic(fmt.Sprintf("Shard count %d is not a power of 2", shardCount))
@@ -41,7 +41,7 @@ func New[K comparable, V any, H func(key K) uint32](shardCount uint32, hasher H)
 	m := &Map[K, V, H]{
 		shards: make([]shard[K, V], shardCount),
 		hasher: hasher,
-		mask:   mask,
+		mask:   uint64(mask),
 	}
 	for i := range m.shards {
 		m.shards[i].m = hashmap.New[K, awaitableValue[V]](int(shardCount))
@@ -53,21 +53,21 @@ func New[K comparable, V any, H func(key K) uint32](shardCount uint32, hasher H)
 // It returns true if the item was inserted, false if it already existed (in which case it won't be inserted)
 func (m *Map[K, V, H]) Add(key K, val V) bool {
 	h := m.hasher(key)
-	return m.shards[h&m.mask].Set(key, val, false, uint64(h))
+	return m.shards[h&m.mask].Set(key, val, false, h)
 }
 
 // Set is the equivalent of `map[key] = val`.
 // It always overwrites any key that existed before.
 func (m *Map[K, V, H]) Set(key K, val V) {
 	h := m.hasher(key)
-	m.shards[h&m.mask].Set(key, val, true, uint64(h))
+	m.shards[h&m.mask].Set(key, val, true, h)
 }
 
 // Get returns the value corresponding to the given key, or its zero value if
 // the key doesn't exist in the map.
 func (m *Map[K, V, H]) Get(key K) V {
 	h := m.hasher(key)
-	v, _, _ := m.shards[h&m.mask].Get(key, uint64(h))
+	v, _, _ := m.shards[h&m.mask].Get(key, h)
 	return v
 }
 
@@ -78,7 +78,7 @@ func (m *Map[K, V, H]) Get(key K) V {
 // It's always false if the key exists.
 func (m *Map[K, V, H]) GetOrWait(key K) (val V, wait <-chan struct{}, first bool) {
 	h := m.hasher(key)
-	return m.shards[h&m.mask].Get(key, uint64(h))
+	return m.shards[h&m.mask].Get(key, h)
 }
 
 // Values returns a slice of all the current values in the map.

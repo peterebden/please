@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func hashInts(k int) uint32 { return uint32(k) }
+func hashInts(k int) uint64 { return uint64(k) }
 
 func TestMap(t *testing.T) {
 	m := New[int, int](DefaultShardCount, hashInts)

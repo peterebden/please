@@ -160,3 +160,27 @@ func xxHashes(s ...string) uint32 {
 	}
 	return uint32(d.Sum64())
 }
+
+// FNV-32 code which we used to use, but no longer do.
+
+const prime32 = 16777619
+const initial = uint32(2166136261)
+
+func Fnv32(s string) uint64 {
+	hash := initial
+	for i := 0; i < len(s); i++ {
+		hash *= prime32
+		hash ^= uint32(s[i])
+	}
+	return uint64(hash)
+}
+
+func Fnv32s(s ...string) uint64 {
+	for _, x := range s {
+		for i := 0; i < len(x); i++ {
+			hash *= prime32
+			hash ^= uint64(x[i])
+		}
+	}
+	return uint64(hash)
+}
