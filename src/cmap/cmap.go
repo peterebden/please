@@ -54,7 +54,7 @@ func New[K comparable, V any, H func(key K) uint32](shardCount uint32, hasher H)
 
 // NewV is like New but allows passing an unused V, which saves the caller from having to explicitly
 // define the types.
-func NewV[K comparable, V any, H func(key K) uint32](shardCount uint32, hasher H, v V) *Map[K, V, H] {
+func NewV[K comparable, V any, H func(key K) uint32](shardCount uint32, v V, hasher H) *Map[K, V, H] {
 	return New[K, V, H](shardCount, hasher)
 }
 
