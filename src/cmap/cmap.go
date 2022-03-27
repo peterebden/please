@@ -10,7 +10,6 @@ package cmap
 
 import (
 	"fmt"
-	"math/rand"
 	"sync"
 
 	"github.com/thought-machine/please/src/cmap/hashmap"
@@ -27,7 +26,6 @@ const SmallShardCount = 4
 type Map[K comparable, V any, H func(key K) uint32] struct {
 	shards []shard[K, V]
 	hasher H
-	seed   int64
 	mask   uint32
 }
 
@@ -44,7 +42,6 @@ func New[K comparable, V any, H func(key K) uint32](shardCount uint32, hasher H)
 		shards: make([]shard[K, V], shardCount),
 		hasher: hasher,
 		mask:   mask,
-		seed:   rand.Int63(),
 	}
 	for i := range m.shards {
 		m.shards[i].m = hashmap.New[K, awaitableValue[V]](int(shardCount))
