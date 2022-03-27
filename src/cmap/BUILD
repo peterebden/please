@@ -1,6 +1,9 @@
 go_library(
     name = "cmap",
     srcs = ["cmap.go", "hash.go"],
+    deps = [
+        "//src/cmap/hashmap",
+    ],
     visibility = ["PUBLIC"],
 )
 

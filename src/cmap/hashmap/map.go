@@ -86,15 +86,16 @@ func (m *Map[K, V]) Set(key K, value V, hash int) {
 }
 
 func (m *Map[K, V]) set(hash int, key K, value V) {
-	e := entry[K, V]{makeHDIB(hash, 1), value, key}
-	i := e.hash() & m.mask
+	e := entry[K, V]{makeHDIB(hash>>dibBitSize, 1), value, key}
+	hash = e.hash()
+	i := hash & m.mask
 	for {
 		if m.buckets[i].dib() == 0 {
 			m.buckets[i] = e
 			m.length++
 			return
 		}
-		if e.hash() == m.buckets[i].hash() && e.key == m.buckets[i].key {
+		if hash == m.buckets[i].hash() && e.key == m.buckets[i].key {
 			m.buckets[i].value = e.value
 			return
 		}
@@ -109,6 +110,8 @@ func (m *Map[K, V]) set(hash int, key K, value V) {
 // Get returns a value for a key.
 // Returns false when no value has been assign for key.
 func (m *Map[K, V]) Get(key K, hash int) (value V, ok bool) {
+	e := entry[K, V]{makeHDIB(hash>>dibBitSize, 1), value, key}
+	hash = e.hash()
 	i := hash & m.mask
 	for {
 		if m.buckets[i].dib() == 0 {

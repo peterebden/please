@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
+
+	"github.com/thought-machine/please/src/cmap/hashmap"
 )
 
 // DefaultShardCount is a reasonable default shard count for large maps.
@@ -43,7 +45,7 @@ func New[K comparable, V any](shardCount uint32) *Map[K, V] {
 		seed:   rand.Int63(),
 	}
 	for i := range m.shards {
-		m.shards[i].m = map[K]awaitableValue[V]{}
+		m.shards[i].m = hashmap.New[K, awaitableValue[V]](int(shardCount))
 	}
 	return m
 }
@@ -51,19 +53,22 @@ func New[K comparable, V any](shardCount uint32) *Map[K, V] {
 // Add adds the new item to the map.
 // It returns true if the item was inserted, false if it already existed (in which case it won't be inserted)
 func (m *Map[K, V]) Add(key K, val V) bool {
-	return m.shards[hash(key, m.seed)&m.mask].Set(key, val, false)
+	h := hash(key, m.seed)
+	return m.shards[h&m.mask].Set(key, val, false, h)
 }
 
 // Set is the equivalent of `map[key] = val`.
 // It always overwrites any key that existed before.
 func (m *Map[K, V]) Set(key K, val V) {
-	m.shards[hash(key, m.seed)&m.mask].Set(key, val, true)
+	h := hash(key, m.seed)
+	m.shards[h&m.mask].Set(key, val, true, h)
 }
 
 // Get returns the value corresponding to the given key, or its zero value if
 // the key doesn't exist in the map.
 func (m *Map[K, V]) Get(key K) V {
-	v, _, _ := m.shards[hash(key, m.seed)&m.mask].Get(key)
+	h := hash(key, m.seed)
+	v, _, _ := m.shards[h&m.mask].Get(key, h)
 	return v
 }
 
@@ -73,7 +78,8 @@ func (m *Map[K, V]) Get(key K) V {
 // The third return value is true if this is the first call that is awaiting this key.
 // It's always false if the key exists.
 func (m *Map[K, V]) GetOrWait(key K) (val V, wait <-chan struct{}, first bool) {
-	return m.shards[hash(key, m.seed)&m.mask].Get(key)
+	h := hash(key, m.seed)
+	return m.shards[h&m.mask].Get(key, h)
 }
 
 // Values returns a slice of all the current values in the map.
@@ -94,32 +100,32 @@ type awaitableValue[V any] struct {
 
 // A shard is one of the individual shards of a map.
 type shard[K comparable, V any] struct {
-	m map[K]awaitableValue[V]
+	m *hashmap.Map[K, awaitableValue[V]]
 	l sync.Mutex
 }
 
 // Set is the equivalent of `map[key] = val`.
 // It returns true if the item was inserted, false if it was not (because an existing one was found
 // and overwrite was false).
-func (s *shard[K, V]) Set(key K, val V, overwrite bool) bool {
+func (s *shard[K, V]) Set(key K, val V, overwrite bool, hash uint64) bool {
 	s.l.Lock()
 	defer s.l.Unlock()
-	if existing, present := s.m[key]; present {
+	if existing, present := s.m.Get(key, int(hash)); present {
 		if existing.Wait == nil {
 			if !overwrite {
 				return false // already added
 			}
 			existing.Val = val
-			s.m[key] = awaitableValue[V]{Val: val}
+			s.m.Set(key, awaitableValue[V]{Val: val}, int(hash))
 			return true
 		}
 		// Hasn't been added, but something is waiting for it to be.
-		s.m[key] = awaitableValue[V]{Val: val}
+		s.m.Set(key, awaitableValue[V]{Val: val}, int(hash))
 		close(existing.Wait)
 		existing.Wait = nil
 		return true
 	}
-	s.m[key] = awaitableValue[V]{Val: val}
+	s.m.Set(key, awaitableValue[V]{Val: val}, int(hash))
 	return true
 }
 
@@ -127,14 +133,14 @@ func (s *shard[K, V]) Set(key K, val V, overwrite bool) bool {
 // on for.
 // Exactly one of the target or channel will be returned.
 // The third value is true if it is the first call that is waiting on this value.
-func (s *shard[K, V]) Get(key K) (val V, wait <-chan struct{}, first bool) {
+func (s *shard[K, V]) Get(key K, hash uint64) (val V, wait <-chan struct{}, first bool) {
 	s.l.Lock()
 	defer s.l.Unlock()
-	if v, ok := s.m[key]; ok {
+	if v, ok := s.m.Get(key, int(hash)); ok {
 		return v.Val, v.Wait, false
 	}
 	ch := make(chan struct{})
-	s.m[key] = awaitableValue[V]{Wait: ch}
+	s.m.Set(key, awaitableValue[V]{Wait: ch}, int(hash))
 	wait = ch
 	first = true
 	return
@@ -144,8 +150,9 @@ func (s *shard[K, V]) Get(key K) (val V, wait <-chan struct{}, first bool) {
 func (s *shard[K, V]) Values() []V {
 	s.l.Lock()
 	defer s.l.Unlock()
-	ret := make([]V, 0, len(s.m))
-	for _, v := range s.m {
+	vals := s.m.Values()
+	ret := make([]V, 0, len(vals))
+	for _, v := range vals {
 		if v.Wait == nil {
 			ret = append(ret, v.Val)
 		}
