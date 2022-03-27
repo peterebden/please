@@ -52,12 +52,6 @@ func New[K comparable, V any, H func(key K) uint32](shardCount uint32, hasher H)
 	return m
 }
 
-// NewV is like New but allows passing an unused V, which saves the caller from having to explicitly
-// define the types.
-func NewV[K comparable, V any, H func(key K) uint32](shardCount uint32, v V, hasher H) *Map[K, V, H] {
-	return New[K, V, H](shardCount, hasher)
-}
-
 // Add adds the new item to the map.
 // It returns true if the item was inserted, false if it already existed (in which case it won't be inserted)
 func (m *Map[K, V, H]) Add(key K, val V) bool {

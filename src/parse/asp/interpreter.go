@@ -39,7 +39,7 @@ func newInterpreter(state *core.BuildState, p *Parser) *interpreter {
 	i := &interpreter{
 		scope:       s,
 		parser:      p,
-		subincludes: cmap.NewV(cmap.SmallShardCount, pyDict{}, cmap.XXHash),
+		subincludes: cmap.New[string, pyDict](cmap.SmallShardCount, cmap.XXHash),
 		configs:     map[*core.Configuration]*pyConfig{},
 		limiter:     make(semaphore, state.Config.Parse.NumThreads),
 		profiling:   state.Config.Profiling,

@@ -148,13 +148,13 @@ func (graph *BuildGraph) PackageMap() map[string]*Package {
 // NewGraph constructs and returns a new BuildGraph.
 func NewGraph() *BuildGraph {
 	g := &BuildGraph{
-		targets: cmap.NewV(cmap.DefaultShardCount, &BuildTarget{}, func(key BuildLabel) uint32 {
+		targets: cmap.New[BuildLabel, *BuildTarget](cmap.DefaultShardCount, func(key BuildLabel) uint32 {
 			return cmap.XXHashes(key.Subrepo, key.PackageName, key.Name)
 		}),
-		packages: cmap.NewV(cmap.DefaultShardCount, &Package{}, func(key packageKey) uint32 {
+		packages: cmap.New[packageKey, *Package](cmap.DefaultShardCount, func(key packageKey) uint32 {
 			return cmap.XXHashes(key.Subrepo, key.Name)
 		}),
-		subrepos: cmap.NewV(cmap.SmallShardCount, &Subrepo{}, cmap.XXHash),
+		subrepos: cmap.New[string, *Subrepo](cmap.SmallShardCount, cmap.XXHash),
 	}
 	return g
 }
