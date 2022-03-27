@@ -3,6 +3,7 @@ go_library(
     srcs = ["cmap.go", "hash.go"],
     deps = [
         "//src/cmap/hashmap",
+        "//third_party/go:xxhash",
     ],
     visibility = ["PUBLIC"],
 )
@@ -30,6 +31,7 @@ go_benchmark(
     srcs = ["hash_test.go"],
     deps = [
         ":cmap",
+        "//third_party/go:xxhash",
         "//third_party/go:testify",
     ],
 )

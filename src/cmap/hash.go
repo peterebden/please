@@ -1,7 +1,7 @@
 package cmap
 
 import (
-	"unsafe"
+	"github.com/cespare/xxhash/v2"
 )
 
 const prime32 = 16777619
@@ -31,12 +31,16 @@ func Fnv32s(s ...string) uint32 {
 	return hash
 }
 
-// Borrow the runtime's builtin fast object hasher.
-//go:linkname runtimehash runtime.memhash
-//go:noescape
-func runtimehash(p unsafe.Pointer, seed, s uintptr) uintptr
+// XXHash calculates xxHash for a string, which is a fast high-quality hash function for a Map.
+func XXHash(s string) uint32 {
+	return uint32(xxhash.Sum64String(s))
+}
 
-// Generic wrapper over the runtime version
-func hash[K any](k K, seed int64) uint64 {
-	return uint64(runtimehash(unsafe.Pointer(&k), uintptr(seed), uintptr(unsafe.Sizeof(k))))
+// XXHashes calculates the xxHash for a series of strings.
+func XXHashes(s ...string) uint32 {
+	var result uint32
+	for _, x := range s {
+		result ^= uint32(xxhash.Sum64String(x))
+	}
+	return result
 }
