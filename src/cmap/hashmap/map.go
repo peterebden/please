@@ -68,7 +68,7 @@ func (m *Map[K, V]) resize(newCap int) {
 	nmap := New[K, V](newCap)
 	for i := 0; i < len(m.buckets); i++ {
 		if m.buckets[i].dib() > 0 {
-			nmap.set(m.buckets[i].hash(), m.buckets[i].key, m.buckets[i].value)
+			nmap.set(m.buckets[i].hash()<<dibBitSize, m.buckets[i].key, m.buckets[i].value)
 		}
 	}
 	cap := m.cap
