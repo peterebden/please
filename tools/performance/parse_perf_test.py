@@ -18,6 +18,7 @@ log.addHandler(handler)
 log.propagate = False  # Needed to stop double logging?
 
 flags.DEFINE_string('plz', 'plz', 'Binary to run to invoke plz')
+flags.DEFINE_boolean('build', False, 'Builds the latest version of plz to run.')
 flags.DEFINE_integer('num_threads', 10, 'Number of parallel threads to give plz')
 flags.DEFINE_string('output', 'results.json', 'File to write results to')
 flags.DEFINE_string('revision', 'unknown', 'Git revision')
@@ -63,6 +64,10 @@ def read_cpu_info():
 
 
 def main(argv):
+    if FLAGS.build:
+        subprocess.check_call([FLAGS.plz, 'build', '//src:please'])
+        FLAGS.plz = 'plz-out/bin/src/please'
+
     FLAGS.root = os.path.abspath(FLAGS.root)
     results = [run(i) for i in range(FLAGS.number)]
 
