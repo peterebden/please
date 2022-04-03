@@ -8,7 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func hashInts(k int) uint64 { return uint64(k) }
+func hashInts(k int) uint64 {
+	return XXHash(strconv.Itoa(k))
+}
 
 func TestMap(t *testing.T) {
 	m := New[int, int](DefaultShardCount, hashInts)
@@ -75,7 +77,7 @@ func TestResize(t *testing.T) {
 			}
 			for i := 0; i < n; i++ {
 				v, ch, first := m.GetOrWait(i)
-				assert.Equal(t, i, v)
+				assert.Equal(t, i, v, "Key %d appears to be not set or set incorrectly", i)
 				assert.Nil(t, ch)
 				assert.False(t, first)
 			}
