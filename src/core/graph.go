@@ -24,7 +24,7 @@ type BuildGraph struct {
 
 // AddTarget adds a new target to the graph.
 func (graph *BuildGraph) AddTarget(target *BuildTarget) *BuildTarget {
-	if !graph.targets.Add(target.Label, target) {
+	if _, added := graph.targets.Add(target.Label, target); !added {
 		panic("Attempted to re-add existing target to build graph: " + target.Label.String())
 	}
 	return target
@@ -33,7 +33,7 @@ func (graph *BuildGraph) AddTarget(target *BuildTarget) *BuildTarget {
 // AddPackage adds a new package to the graph with given name.
 func (graph *BuildGraph) AddPackage(pkg *Package) {
 	key := packageKey{Name: pkg.Name, Subrepo: pkg.SubrepoName}
-	if !graph.packages.Add(key, pkg) {
+	if _, added := graph.packages.Add(key, pkg); !added {
 		panic("Attempt to re-add existing package: " + key.String())
 	}
 }
@@ -96,15 +96,14 @@ func (graph *BuildGraph) PackageOrDie(label BuildLabel) *Package {
 
 // AddSubrepo adds a new subrepo to the graph. It dies if one is already registered by this name.
 func (graph *BuildGraph) AddSubrepo(subrepo *Subrepo) {
-	if !graph.subrepos.Add(subrepo.Name, subrepo) {
+	if _, added := graph.subrepos.Add(subrepo.Name, subrepo); !added {
 		log.Fatalf("Subrepo %s is already registered", subrepo.Name)
 	}
 }
 
 // MaybeAddSubrepo adds the given subrepo to the graph, or returns the existing one if one is already registered.
 func (graph *BuildGraph) MaybeAddSubrepo(subrepo *Subrepo) *Subrepo {
-	if !graph.subrepos.Add(subrepo.Name, subrepo) {
-		old := graph.subrepos.Get(subrepo.Name)
+	if old, added := graph.subrepos.Add(subrepo.Name, subrepo); !added {
 		if !reflect.DeepEqual(old, subrepo) {
 			log.Fatalf("Found multiple definitions for subrepo '%s' (%+v s %+v)", old.Name, old, subrepo)
 		}

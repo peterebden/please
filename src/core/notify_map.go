@@ -42,9 +42,7 @@ func (m notifyMap[K]) Wait(key K) bool {
 // It returns true if it was newly added and false if not.
 // If it's not added then this call blocks until something else does add it.
 func (m notifyMap[K]) AddOrWait(key K) bool {
-	// TODO(peterebden): Push this functionality down into cmap so we don't need to make two calls here.
-	if !m.m.Add(key, make(chan struct{})) {
-		ch := m.m.Get(key)
+	if ch, added := m.m.Add(key, make(chan struct{})); !added {
 		<-ch
 		return false
 	}
