@@ -59,7 +59,7 @@ func (m *Map[K, V]) Set(key K, val V) {
 	m.shards[m.hasher(key)&m.mask].Set(key, val, true)
 }
 
-// Get returns the value https://github.com/peterebden/please/pull/new/generic-cmap-4corresponding to the given key, or its zero value if
+// Get returns the value corresponding to the given key, or its zero value if
 // the key doesn't exist in the map.
 func (m *Map[K, V]) Get(key K) V {
 	return m.shards[m.hasher(key)&m.mask].Get(key)
@@ -119,6 +119,17 @@ func (s *shard[K, V]) Set(key K, val V, overwrite bool) bool {
 	}
 	s.m[key] = awaitableValue[V]{Val: val}
 	return true
+}
+
+// Signal closes any channels that anyone is waiting upon for this key.
+// If there are none, nothing is inserted.
+func (s *shard[K, V]) Signal(key K) {
+	s.l.Lock()
+	defer s.l.Unlock()
+	if existing, present := s.m[key]; present && existing.Wait != nil {
+		close(existing.Wait)
+		existing.Wait = nil
+	}
 }
 
 // Get returns the value for a key. No channel is created if the caller isn't awaiting.
