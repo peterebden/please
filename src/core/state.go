@@ -248,11 +248,11 @@ type stateProgress struct {
 	closeOnce  sync.Once
 	resultOnce sync.Once
 	// Used to track subinclude() calls that block until targets are built.
-	pendingTargets cmap.Map[BuildLabel, struct{}, func(BuildLabel) uint64]
+	pendingTargets *cmap.Map[BuildLabel, chan struct{}]
 	// Used to track general package parsing requests. Keyed by a packageKey struct.
-	pendingPackages cmap.Map[packageKey, struct{}, func(packageKey) uint64]
+	pendingPackages *cmap.Map[packageKey, chan struct{}]
 	// similar to pendingPackages but consumers haven't committed to parsing the package
-	packageWaits cmap.Map[packageKey, struct{}, func(packageKey) uint64]
+	packageWaits *cmap.Map[packageKey, chan struct{}]
 	// The set of known states
 	allStates []*BuildState
 	// Targets that we were originally requested to build
@@ -477,11 +477,12 @@ func (state *BuildState) OutputHashCheckers() []*fs.PathHasher {
 func (state *BuildState) LogParseResult(tid int, label BuildLabel, status BuildResultStatus, description string) {
 	if status == PackageParsed {
 		// We may have parse tasks waiting for this package to exist, check for them.
-		if ch, present := state.progress.pendingPackages.GetOK(packageKey{Name: label.PackageName, Subrepo: label.Subrepo}); present {
-			close(ch.(chan struct{})) // This signals to anyone waiting that it's done.
+		key := label.packageKey()
+		if ch := state.progress.pendingPackages.Get(key); ch != nil {
+			close(ch) // This signals to anyone waiting that it's done.
 		}
-		if ch, present := state.progress.packageWaits.GetOK(packageKey{Name: label.PackageName, Subrepo: label.Subrepo}); present {
-			close(ch.(chan struct{})) // This signals to anyone waiting that it's done.
+		if ch := state.progress.packageWaits.Get(key); ch != nil {
+			close(ch) // This signals to anyone waiting that it's done.
 		}
 		return // We don't notify anything else on these.
 	}
@@ -506,8 +507,8 @@ func (state *BuildState) LogBuildResult(tid int, target *BuildTarget, status Bui
 	})
 	if status == TargetBuilt || status == TargetCached {
 		// We may have parse tasks waiting for this guy to build, check for them.
-		if ch, present := state.progress.pendingTargets.GetOK(target.Label); present {
-			close(ch.(chan struct{})) // This signals to anyone waiting that it's done.
+		if ch := state.progress.pendingTargets.Get(target.Label); ch != nil {
+			close(ch) // This signals to anyone waiting that it's done.
 		}
 	}
 }
@@ -515,8 +516,8 @@ func (state *BuildState) LogBuildResult(tid int, target *BuildTarget, status Bui
 // ArchSubrepoInitialised closes the pending target channel for the non-existent arch subrepo psudo-target
 func (state *BuildState) ArchSubrepoInitialised(subrepoLabel BuildLabel) {
 	// We may have parse tasks waiting for this guy to build, check for them.
-	if ch, present := state.progress.pendingTargets.GetOK(subrepoLabel); present {
-		close(ch.(chan struct{})) // This signals to anyone waiting that it's done.
+	if ch := state.progress.pendingTargets.Get(subrepoLabel); ch != nil {
+		close(ch) // This signals to anyone waiting that it's done.
 	}
 }
 
@@ -760,15 +761,9 @@ func (state *BuildState) SyncParsePackage(label BuildLabel) *Package {
 	if p := state.Graph.PackageByLabel(label); p != nil {
 		return p
 	}
-	var ch chan struct{}
-	state.progress.pendingPackages.Update(label.packageKey(), func(old interface{}) interface{} {
-		if old != nil {
-			ch = old.(chan struct{})
-			return old
-		}
-		return make(chan struct{})
-	})
-	if ch != nil {
+	key := label.packageKey()
+	if !state.progress.pendingPackages.Add(key, make(chan struct{})) {
+		ch := state.progress.pendingPackages.Get(key)
 		<-ch
 	}
 	return state.Graph.PackageByLabel(label) // Important to check again; it's possible to race against this whole lot.
@@ -782,14 +777,14 @@ func (state *BuildState) WaitForPackage(l, dependent BuildLabel) *Package {
 	key := packageKey{Name: l.PackageName, Subrepo: l.Subrepo}
 
 	// If something has promised to parse it, wait for them to do so
-	if ch, present := state.progress.pendingPackages.GetOK(key); present {
-		<-ch.(chan struct{})
+	if ch := state.progress.pendingPackages.Get(key); ch != nil {
+		<-ch
 		return state.Graph.PackageByLabel(l)
 	}
 
 	// If something has already queued the package to be parsed, wait for them
-	if ch, present := state.progress.packageWaits.GetOK(key); present {
-		<-ch.(chan struct{})
+	if ch := state.progress.packageWaits.Get(key); ch != nil {
+		<-ch
 		return state.Graph.PackageByLabel(l)
 	}
 
@@ -809,16 +804,9 @@ func (state *BuildState) WaitForBuiltTarget(l, dependent BuildLabel) *BuildTarge
 	}
 	dependent.Name = "all" // Every target in this package depends on this one.
 	// okay, we need to register and wait for this guy.
-	var ch chan struct{}
-	state.progress.pendingTargets.Update(l, func(old interface{}) interface{} {
-		if old != nil {
-			ch = old.(chan struct{})
-			return old
-		}
-		return make(chan struct{})
-	})
-	if ch != nil {
+	if !state.progress.pendingTargets.Add(l, make(chan struct{})) {
 		// Something's already registered for this, get on the train
+		ch := state.progress.pendingTargets.Get(l)
 		<-ch
 		return state.Graph.Target(l)
 	}
@@ -1216,9 +1204,9 @@ func NewBuildState(config *Configuration) *BuildState {
 		progress: &stateProgress{
 			numActive:       1, // One for the initial target adding on the main thread.
 			numPending:      1,
-			pendingPackages: cmap.New[packageKey, struct{}](cmap.DefaultShardCount, xxHashPackageKey),
-			pendingTargets:  cmap.New[BuildLabel, struct{}](cmap.DefaultShardCount, xxHashBuildLabel),
-			pcakgeWaits:     cmap.New[packageKey, struct{}](cmap.DefaultShardCount, xxHashPackageKey),
+			pendingPackages: cmap.New[packageKey, chan struct{}](cmap.DefaultShardCount, xxHashPackageKey),
+			pendingTargets:  cmap.New[BuildLabel, chan struct{}](cmap.DefaultShardCount, xxHashBuildLabel),
+			packageWaits:    cmap.New[packageKey, chan struct{}](cmap.DefaultShardCount, xxHashPackageKey),
 			success:         true,
 			internalResults: make(chan *BuildResult, 1000),
 			cycleDetector:   cycleDetector{graph: graph},
