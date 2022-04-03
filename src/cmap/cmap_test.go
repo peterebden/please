@@ -64,3 +64,19 @@ func BenchmarkMapInserts(b *testing.B) {
 		m.Set(i, i)
 	}
 }
+
+func TestResize(t *testing.T) {
+	// This is just big enough to trigger a resize of the underlying hash map.
+	const n = 10
+
+	m := New[int, int](1, hashInts)
+	for i := 0; i < n; i++ {
+		m.Set(i, i)
+	}
+	for i := 0; i < n; i++ {
+		v, ch, first := m.GetOrWait(i)
+		assert.Equal(t, i, v)
+		assert.Nil(t, ch)
+		assert.False(t, first)
+	}
+}
