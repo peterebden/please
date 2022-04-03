@@ -28,9 +28,8 @@ func (e *entry[K, V]) hash() uint64 {
 	return e.hdib >> dibBitSize
 }
 
-func (e *entry[K, V]) setDIB(dib uint64) uint64 {
+func (e *entry[K, V]) setDIB(dib uint64) {
 	e.hdib = e.hdib>>dibBitSize<<dibBitSize | uint64(dib)&maxDIB
-	return e.hdib
 }
 
 func (e *entry[K, V]) setHash(hash uint64) {
@@ -128,7 +127,8 @@ func (m *hashmap[K, V]) get(e entry[K, V]) (value *V, inserted bool) {
 			}
 		}
 		i = (i + 1) & m.mask
-		edib = e.setDIB(e.dib() + 1)
+		e.setDIB(e.dib() + 1)
+		edib = e.dib()
 	}
 }
 
