@@ -132,11 +132,6 @@ func (m *hashmap[K, V]) get(e entry[K, V]) (value *V, inserted bool) {
 	}
 }
 
-// Len returns the number of values in map.
-func (m *hashmap[K, V]) Len() int {
-	return m.length
-}
-
 // Values returns all values as a slice
 func (m *hashmap[K, V]) Values() []V {
 	values := make([]V, 0, m.length)
