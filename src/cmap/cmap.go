@@ -42,7 +42,7 @@ func New[K comparable, V any](shardCount uint64, hasher func(K) uint64) *Map[K, 
 		hasher: hasher,
 	}
 	for i := range m.shards {
-		m.shards[i].m = map[K]awaitableValue[V]{}
+		m.shards[i].m = make(map[K]awaitableValue[V], shardCount)
 	}
 	return m
 }
