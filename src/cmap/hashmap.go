@@ -66,8 +66,10 @@ func newHashmap[K comparable, V any](cap int) *hashmap[K, V] {
 
 func (m *hashmap[K, V]) resize(newCap int) {
 	nmap := newHashmap[K, V](newCap)
+	nmap.length = 0
 	for i := 0; i < len(m.buckets); i++ {
 		if m.buckets[i].dib() > 0 {
+			nmap.length++
 			v, _ := nmap.get(m.buckets[i])
 			*v = m.buckets[i].value
 		}
@@ -84,10 +86,14 @@ func (m *hashmap[K, V]) Get(key K, hash uint64) (value *V, inserted bool) {
 	if m.length >= m.growAt {
 		m.resize(len(m.buckets) * 2)
 	}
-	return m.get(entry[K, V]{
+	v, inserted := m.get(entry[K, V]{
 		hdib: makeHDIB(hash>>dibBitSize, 1),
 		key:  key,
 	})
+	if inserted {
+		m.length++
+	}
+	return v, inserted
 }
 
 func (m *hashmap[K, V]) get(e entry[K, V]) (value *V, inserted bool) {
@@ -101,7 +107,6 @@ func (m *hashmap[K, V]) get(e entry[K, V]) (value *V, inserted bool) {
 		if bdib == 0 {
 			m.buckets[i] = e
 			if value == nil {
-				m.length++
 				value = &m.buckets[i].value
 			}
 			return
