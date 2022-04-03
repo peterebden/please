@@ -248,11 +248,11 @@ type stateProgress struct {
 	closeOnce  sync.Once
 	resultOnce sync.Once
 	// Used to track subinclude() calls that block until targets are built.
-	pendingTargets notifyMap[BuildLabel]
+	pendingTargets cmap.NotifySet[BuildLabel]
 	// Used to track general package parsing requests. Keyed by a packageKey struct.
-	pendingPackages notifyMap[packageKey]
+	pendingPackages cmap.NotifySet[packageKey]
 	// similar to pendingPackages but consumers haven't committed to parsing the package
-	packageWaits notifyMap[packageKey]
+	packageWaits cmap.NotifySet[packageKey]
 	// The set of known states
 	allStates []*BuildState
 	// Targets that we were originally requested to build
@@ -1187,9 +1187,9 @@ func NewBuildState(config *Configuration) *BuildState {
 		progress: &stateProgress{
 			numActive:       1, // One for the initial target adding on the main thread.
 			numPending:      1,
-			pendingPackages: newNotifyMap[packageKey](cmap.DefaultShardCount, xxHashPackageKey),
-			pendingTargets:  newNotifyMap[BuildLabel](cmap.DefaultShardCount, xxHashBuildLabel),
-			packageWaits:    newNotifyMap[packageKey](cmap.DefaultShardCount, xxHashPackageKey),
+			pendingPackages: cmap.NewNotifySet[packageKey](cmap.DefaultShardCount, xxHashPackageKey),
+			pendingTargets:  cmap.NewNotifySet[BuildLabel](cmap.DefaultShardCount, xxHashBuildLabel),
+			packageWaits:    cmap.NewNotifySet[packageKey](cmap.DefaultShardCount, xxHashPackageKey),
 			success:         true,
 			internalResults: make(chan *BuildResult, 1000),
 			cycleDetector:   cycleDetector{graph: graph},
