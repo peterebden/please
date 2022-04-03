@@ -1,10 +1,8 @@
 // The code in this file is originally taken from https://github.com/tidwall/hashmap and
 // used under the ISC-style licence found there.
 //
-// The primary modifications are to allow the hash to be passed in from outside, so we
-// only calculate it once. This obviously isn't possible to implement without intrusive API
-// changes, hence we need to copy this.
-// Some other general simplification has gone on since we don't require all use cases of the original.
+// At this point it's been fairly heavily modified from the original to suit our use case,
+// but parts of that original (and general inspiration) still exist.
 
 package cmap
 
@@ -66,43 +64,13 @@ func (m *hashmap[K, V]) resize(newCap int) {
 	nmap := newHashmap[K, V](newCap)
 	for i := 0; i < len(m.buckets); i++ {
 		if m.buckets[i].dib() > 0 {
-			nmap.set(m.buckets[i].hash()<<dibBitSize, m.buckets[i].key, m.buckets[i].value)
+			v, _ := nmap.Get(m.buckets[i].key, m.buckets[i].hash()<<dibBitSize)
+			*v = m.buckets[i].value
 		}
 	}
 	cap := m.cap
 	*m = *nmap
 	m.cap = cap
-}
-
-// Set assigns a value to a key.
-// Returns the previous value, or false when no value was assigned.
-func (m *hashmap[K, V]) Set(key K, value V, hash int) {
-	if m.length >= m.growAt {
-		m.resize(len(m.buckets) * 2)
-	}
-	m.set(hash, key, value)
-}
-
-func (m *hashmap[K, V]) set(hash int, key K, value V) {
-	e := entry[K, V]{makeHDIB(hash>>dibBitSize, 1), value, key}
-	hash = e.hash()
-	i := hash & m.mask
-	for {
-		if m.buckets[i].dib() == 0 {
-			m.buckets[i] = e
-			m.length++
-			return
-		}
-		if hash == m.buckets[i].hash() && e.key == m.buckets[i].key {
-			m.buckets[i].value = e.value
-			return
-		}
-		if m.buckets[i].dib() < e.dib() {
-			e, m.buckets[i] = m.buckets[i], e
-		}
-		i = (i + 1) & m.mask
-		e.setDIB(e.dib() + 1)
-	}
 }
 
 // Get returns a pointer to a value.

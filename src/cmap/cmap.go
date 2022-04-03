@@ -109,10 +109,11 @@ func (s *shard[K, V]) Set(key K, val V, overwrite bool, hash uint64) bool {
 	defer s.l.Unlock()
 	v, inserted := s.m.Get(key, int(hash))
 	if inserted {
+		// Completely new addition to the map
 		v.Val = val
 		return true
-	}
-	if v.Wait == nil {
+	} else if v.Wait == nil {
+		// Exists in the map already
 		if overwrite {
 			v.Val = val
 		}
