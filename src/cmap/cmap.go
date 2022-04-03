@@ -62,8 +62,7 @@ func (m *Map[K, V]) Set(key K, val V) {
 // Get returns the value https://github.com/peterebden/please/pull/new/generic-cmap-4corresponding to the given key, or its zero value if
 // the key doesn't exist in the map.
 func (m *Map[K, V]) Get(key K) V {
-	v, _, _ := m.shards[m.hasher(key)&m.mask].Get(key)
-	return v
+	return m.shards[m.hasher(key)&m.mask].Get(key)
 }
 
 // GetOrWait returns the value or, if the key isn't present, a channel that it can be waited
@@ -72,7 +71,7 @@ func (m *Map[K, V]) Get(key K) V {
 // The third return value is true if this is the first call that is awaiting this key.
 // It's always false if the key exists.
 func (m *Map[K, V]) GetOrWait(key K) (val V, wait <-chan struct{}, first bool) {
-	return m.shards[m.hasher(key)&m.mask].Get(key)
+	return m.shards[m.hasher(key)&m.mask].GetOrWait(key)
 }
 
 // Values returns a slice of all the current values in the map.
@@ -122,11 +121,21 @@ func (s *shard[K, V]) Set(key K, val V, overwrite bool) bool {
 	return true
 }
 
-// Get returns the value for a key or, if not present, a channel that it can be waited
+// Get returns the value for a key. No channel is created if the caller isn't awaiting.
+func (s *shard[K, V]) Get(key K) (val V) {
+	s.l.Lock()
+	defer s.l.Unlock()
+	if v, ok := s.m[key]; ok {
+		return v.Val
+	}
+	return
+}
+
+// GetOrWait returns the value for a key or, if not present, a channel that it can be waited
 // on for.
 // Exactly one of the target or channel will be returned.
 // The third value is true if it is the first call that is waiting on this value.
-func (s *shard[K, V]) Get(key K) (val V, wait <-chan struct{}, first bool) {
+func (s *shard[K, V]) GetOrWait(key K) (val V, wait <-chan struct{}, first bool) {
 	s.l.Lock()
 	defer s.l.Unlock()
 	if v, ok := s.m[key]; ok {
