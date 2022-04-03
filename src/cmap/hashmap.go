@@ -64,7 +64,7 @@ func (m *hashmap[K, V]) resize(newCap int) {
 	nmap := newHashmap[K, V](newCap)
 	for i := 0; i < len(m.buckets); i++ {
 		if m.buckets[i].dib() > 0 {
-			v, _ := nmap.Get(m.buckets[i].key, m.buckets[i].hash()<<dibBitSize)
+			v, _ := nmap.get(m.buckets[i])
 			*v = m.buckets[i].value
 		}
 	}
@@ -77,11 +77,17 @@ func (m *hashmap[K, V]) resize(newCap int) {
 // The pointer is not stable and shouldn't be used after any further calls to the map.
 // The second return value is true if the value was newly inserted.
 func (m *hashmap[K, V]) Get(key K, hash int) (value *V, inserted bool) {
-	e := entry[K, V]{
+	if m.length >= m.growAt {
+		m.resize(len(m.buckets) * 2)
+	}
+	return m.get(entry[K, V]{
 		hdib: makeHDIB(hash>>dibBitSize, 1),
 		key:  key,
-	}
-	hash = e.hash()
+	})
+}
+
+func (m *hashmap[K, V]) get(e entry[K, V]) (value *V, inserted bool) {
+	hash := e.hash()
 	edib := e.dib()
 	i := hash & m.mask
 	inserted = true // Assume this is true unless we find it below
@@ -97,7 +103,7 @@ func (m *hashmap[K, V]) Get(key K, hash int) (value *V, inserted bool) {
 			return
 		}
 		// If hash matches and key matches then we've found it
-		if m.buckets[i].hash() == hash && m.buckets[i].key == key {
+		if m.buckets[i].hash() == hash && m.buckets[i].key == e.key {
 			if value == nil {
 				value = &m.buckets[i].value
 				inserted = false
@@ -107,6 +113,7 @@ func (m *hashmap[K, V]) Get(key K, hash int) (value *V, inserted bool) {
 		// If the bucket's dib is less than our dib, then we're inserting here and displacing this entry.
 		if bdib < edib {
 			e, m.buckets[i] = m.buckets[i], e
+			hash = e.hash()
 			if value == nil {
 				value = &m.buckets[i].value
 			}
