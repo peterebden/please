@@ -14,11 +14,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/OneOfOne/cmap"
 	"github.com/cespare/xxhash/v2"
 	"lukechampine.com/blake3"
 
 	"github.com/thought-machine/please/src/cli"
+	"github.com/thought-machine/please/src/cmap"
 	"github.com/thought-machine/please/src/fs"
 	"github.com/thought-machine/please/src/process"
 )
@@ -247,12 +247,12 @@ type stateProgress struct {
 	mutex      sync.Mutex
 	closeOnce  sync.Once
 	resultOnce sync.Once
-	// Used to track subinclude() calls that block until targets are built. Keyed by their label.
-	pendingTargets *cmap.CMap
+	// Used to track subinclude() calls that block until targets are built.
+	pendingTargets cmap.Map[BuildLabel, struct{}, func(BuildLabel) uint64]
 	// Used to track general package parsing requests. Keyed by a packageKey struct.
-	pendingPackages *cmap.CMap
+	pendingPackages cmap.Map[packageKey, struct{}, func(packageKey) uint64]
 	// similar to pendingPackages but consumers haven't committed to parsing the package
-	packageWaits *cmap.CMap
+	packageWaits cmap.Map[packageKey, struct{}, func(packageKey) uint64]
 	// The set of known states
 	allStates []*BuildState
 	// Targets that we were originally requested to build
@@ -1216,9 +1216,9 @@ func NewBuildState(config *Configuration) *BuildState {
 		progress: &stateProgress{
 			numActive:       1, // One for the initial target adding on the main thread.
 			numPending:      1,
-			pendingPackages: cmap.New(),
-			pendingTargets:  cmap.New(),
-			packageWaits:    cmap.New(),
+			pendingPackages: cmap.New[packageKey, struct{}](cmap.DefaultShardCount, xxHashPackageKey),
+			pendingTargets:  cmap.New[BuildLabel, struct{}](cmap.DefaultShardCount, xxHashBuildLabel),
+			pcakgeWaits:     cmap.New[packageKey, struct{}](cmap.DefaultShardCount, xxHashPackageKey),
 			success:         true,
 			internalResults: make(chan *BuildResult, 1000),
 			cycleDetector:   cycleDetector{graph: graph},

@@ -148,12 +148,8 @@ func (graph *BuildGraph) PackageMap() map[string]*Package {
 // NewGraph constructs and returns a new BuildGraph.
 func NewGraph() *BuildGraph {
 	g := &BuildGraph{
-		targets: cmap.New[BuildLabel, *BuildTarget](cmap.DefaultShardCount, func(key BuildLabel) uint64 {
-			return cmap.XXHashes(key.Subrepo, key.PackageName, key.Name)
-		}),
-		packages: cmap.New[packageKey, *Package](cmap.DefaultShardCount, func(key packageKey) uint64 {
-			return cmap.XXHashes(key.Subrepo, key.Name)
-		}),
+		targets:  cmap.New[BuildLabel, *BuildTarget](cmap.DefaultShardCount, xxHashBuildLabel),
+		packages: cmap.New[packageKey, *Package](cmap.DefaultShardCount, xxHashPackageKey),
 		subrepos: cmap.New[string, *Subrepo](cmap.SmallShardCount, cmap.XXHash),
 	}
 	return g
@@ -167,4 +163,14 @@ func (graph *BuildGraph) DependentTargets(from, to BuildLabel) []BuildLabel {
 		return toTarget.ProvideFor(fromTarget)
 	}
 	return []BuildLabel{to}
+}
+
+// xxHashBuildLabel calculates a hash of a BuildLabel.
+func xxHashBuildLabel(key BuildLabel) uint64 {
+	return cmap.XXHashes(key.Subrepo, key.PackageName, key.Name)
+}
+
+// xxHashPackageKey calculates a hash of a packageKey.
+func xxHashPackageKey(key packageKey) uint64 {
+	return cmap.XXHashes(key.Subrepo, key.Name)
 }
