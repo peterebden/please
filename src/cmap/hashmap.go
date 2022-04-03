@@ -28,8 +28,9 @@ func (e *entry[K, V]) dib() int {
 func (e *entry[K, V]) hash() int {
 	return int(e.hdib >> dibBitSize)
 }
-func (e *entry[K, V]) setDIB(dib int) {
+func (e *entry[K, V]) setDIB(dib int) int {
 	e.hdib = e.hdib>>dibBitSize<<dibBitSize | uint64(dib)&maxDIB
+	return int(e.hdib)
 }
 func (e *entry[K, V]) setHash(hash int) {
 	e.hdib = uint64(hash)<<dibBitSize | e.hdib&maxDIB
@@ -104,20 +105,46 @@ func (m *hashmap[K, V]) set(hash int, key K, value V) {
 	}
 }
 
-// Get returns a value for a key.
-// Returns false when no value has been assign for key.
-func (m *hashmap[K, V]) Get(key K, hash int) (value V, ok bool) {
-	e := entry[K, V]{makeHDIB(hash>>dibBitSize, 1), value, key}
+// Get returns a pointer to a value.
+// The pointer is not stable and shouldn't be used after any further calls to the map.
+// The second return value is true if the value was newly inserted.
+func (m *hashmap[K, V]) Get(key K, hash int) (value *V, inserted bool) {
+	e := entry[K, V]{
+		hdib: makeHDIB(hash>>dibBitSize, 1),
+		key:  key,
+	}
 	hash = e.hash()
+	edib := e.dib()
 	i := hash & m.mask
+	inserted = true // Assume this is true unless we find it below
 	for {
-		if m.buckets[i].dib() == 0 {
-			return value, false
+		bdib := m.buckets[i].dib()
+		// If bucket dib is zero, that means it's empty and we insert here.
+		if bdib == 0 {
+			m.buckets[i] = e
+			if value == nil {
+				m.length++
+				value = &m.buckets[i].value
+			}
+			return
 		}
+		// If hash matches and key matches then we've found it
 		if m.buckets[i].hash() == hash && m.buckets[i].key == key {
-			return m.buckets[i].value, true
+			if value == nil {
+				value = &m.buckets[i].value
+				inserted = false
+			}
+			return
+		}
+		// If the bucket's dib is less than our dib, then we're inserting here and displacing this entry.
+		if bdib < edib {
+			e, m.buckets[i] = m.buckets[i], e
+			if value == nil {
+				value = &m.buckets[i].value
+			}
 		}
 		i = (i + 1) & m.mask
+		edib = e.setDIB(e.dib() + 1)
 	}
 }
 

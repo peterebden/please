@@ -107,22 +107,21 @@ type shard[K comparable, V any] struct {
 func (s *shard[K, V]) Set(key K, val V, overwrite bool, hash uint64) bool {
 	s.l.Lock()
 	defer s.l.Unlock()
-	if existing, present := s.m.Get(key, int(hash)); present {
-		if existing.Wait == nil {
-			if !overwrite {
-				return false // already added
-			}
-			existing.Val = val
-			s.m.Set(key, awaitableValue[V]{Val: val}, int(hash))
-			return true
-		}
-		// Hasn't been added, but something is waiting for it to be.
-		s.m.Set(key, awaitableValue[V]{Val: val}, int(hash))
-		close(existing.Wait)
-		existing.Wait = nil
+	v, inserted := s.m.Get(key, int(hash))
+	if inserted {
+		v.Val = val
 		return true
 	}
-	s.m.Set(key, awaitableValue[V]{Val: val}, int(hash))
+	if v.Wait == nil {
+		if overwrite {
+			v.Val = val
+		}
+		return false
+	}
+	// Hasn't been added, but something is waiting for it to be.
+	v.Val = val
+	close(v.Wait)
+	v.Wait = nil
 	return true
 }
 
@@ -133,14 +132,12 @@ func (s *shard[K, V]) Set(key K, val V, overwrite bool, hash uint64) bool {
 func (s *shard[K, V]) Get(key K, hash uint64) (val V, wait <-chan struct{}, first bool) {
 	s.l.Lock()
 	defer s.l.Unlock()
-	if v, ok := s.m.Get(key, int(hash)); ok {
+	v, inserted := s.m.Get(key, int(hash))
+	if !inserted {
 		return v.Val, v.Wait, false
 	}
-	ch := make(chan struct{})
-	s.m.Set(key, awaitableValue[V]{Wait: ch}, int(hash))
-	wait = ch
-	first = true
-	return
+	v.Wait = make(chan struct{})
+	return v.Val, v.Wait, true
 }
 
 // Values returns a copy of all the targets currently in the map.
