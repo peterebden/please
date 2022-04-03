@@ -107,7 +107,7 @@ type shard[K comparable, V any] struct {
 func (s *shard[K, V]) Set(key K, val V, overwrite bool, hash uint64) bool {
 	s.l.Lock()
 	defer s.l.Unlock()
-	v, inserted := s.m.Get(key, int(hash))
+	v, inserted := s.m.Get(key, hash)
 	if inserted {
 		// Completely new addition to the map
 		v.Val = val
@@ -133,7 +133,7 @@ func (s *shard[K, V]) Set(key K, val V, overwrite bool, hash uint64) bool {
 func (s *shard[K, V]) Get(key K, hash uint64) (val V, wait <-chan struct{}, first bool) {
 	s.l.Lock()
 	defer s.l.Unlock()
-	v, inserted := s.m.Get(key, int(hash))
+	v, inserted := s.m.Get(key, hash)
 	if !inserted {
 		return v.Val, v.Wait, false
 	}

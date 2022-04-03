@@ -20,28 +20,32 @@ type entry[K comparable, V any] struct {
 	key   K      // user key
 }
 
-func (e *entry[K, V]) dib() int {
-	return int(e.hdib & maxDIB)
+func (e *entry[K, V]) dib() uint64 {
+	return e.hdib & maxDIB
 }
-func (e *entry[K, V]) hash() int {
-	return int(e.hdib >> dibBitSize)
+
+func (e *entry[K, V]) hash() uint64 {
+	return e.hdib >> dibBitSize
 }
-func (e *entry[K, V]) setDIB(dib int) int {
+
+func (e *entry[K, V]) setDIB(dib uint64) uint64 {
 	e.hdib = e.hdib>>dibBitSize<<dibBitSize | uint64(dib)&maxDIB
-	return int(e.hdib)
+	return e.hdib
 }
-func (e *entry[K, V]) setHash(hash int) {
-	e.hdib = uint64(hash)<<dibBitSize | e.hdib&maxDIB
+
+func (e *entry[K, V]) setHash(hash uint64) {
+	e.hdib = hash<<dibBitSize | e.hdib&maxDIB
 }
-func makeHDIB(hash, dib int) uint64 {
-	return uint64(hash)<<dibBitSize | uint64(dib)&maxDIB
+
+func makeHDIB(hash, dib uint64) uint64 {
+	return hash<<dibBitSize | dib&maxDIB
 }
 
 // hashmap is a hashmap. Like map[string]interface{}
 type hashmap[K comparable, V any] struct {
 	cap     int
 	length  int
-	mask    int
+	mask    uint64
 	growAt  int
 	buckets []entry[K, V]
 }
@@ -55,7 +59,7 @@ func newHashmap[K comparable, V any](cap int) *hashmap[K, V] {
 	return &hashmap[K, V]{
 		cap:     cap,
 		buckets: make([]entry[K, V], sz),
-		mask:    sz - 1,
+		mask:    uint64(sz - 1),
 		growAt:  int(float64(sz) * loadFactor),
 	}
 }
@@ -76,7 +80,7 @@ func (m *hashmap[K, V]) resize(newCap int) {
 // Get returns a pointer to a value.
 // The pointer is not stable and shouldn't be used after any further calls to the map.
 // The second return value is true if the value was newly inserted.
-func (m *hashmap[K, V]) Get(key K, hash int) (value *V, inserted bool) {
+func (m *hashmap[K, V]) Get(key K, hash uint64) (value *V, inserted bool) {
 	if m.length >= m.growAt {
 		m.resize(len(m.buckets) * 2)
 	}
