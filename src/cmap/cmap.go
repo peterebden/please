@@ -50,19 +50,19 @@ func New[K comparable, V any](shardCount uint64, hasher func(K) uint64) *Map[K, 
 // Add adds the new item to the map.
 // It returns true if the item was inserted, false if it already existed (in which case it won't be inserted)
 func (m *Map[K, V]) Add(key K, val V) (old V, inserted bool) {
-	return m.shards[m.hasher(key)&m.mask].Set(key, val, false)
+	return m.shard(key).Set(key, val, false)
 }
 
 // Set is the equivalent of `map[key] = val`.
 // It always overwrites any key that existed before.
 func (m *Map[K, V]) Set(key K, val V) {
-	m.shards[m.hasher(key)&m.mask].Set(key, val, true)
+	m.shard(key).Set(key, val, true)
 }
 
 // Get returns the value corresponding to the given key, or its zero value if
 // the key doesn't exist in the map.
 func (m *Map[K, V]) Get(key K) V {
-	return m.shards[m.hasher(key)&m.mask].Get(key)
+	return m.shard(key).Get(key)
 }
 
 // GetOrWait returns the value or, if the key isn't present, a channel that it can be waited
@@ -71,7 +71,12 @@ func (m *Map[K, V]) Get(key K) V {
 // The third return value is true if this is the first call that is awaiting this key.
 // It's always false if the key exists.
 func (m *Map[K, V]) GetOrWait(key K) (val V, wait <-chan struct{}, first bool) {
-	return m.shards[m.hasher(key)&m.mask].GetOrWait(key)
+	return m.shard(key).GetOrWait(key)
+}
+
+// shard returns the shard of this map which holds the given key.
+func (m *Map[K, V]) shard(key K) *shard[K, V] {
+	return &m.shards[m.hasher(key)&m.mask]
 }
 
 // Values returns a slice of all the current values in the map.
