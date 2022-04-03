@@ -18,7 +18,7 @@ import (
 type interpreter struct {
 	scope       *scope
 	parser      *Parser
-	subincludes *cmap.Map[string, pyDict, func(string) uint64]
+	subincludes *cmap.Map[string, pyDict]
 
 	configs      map[*core.Configuration]*pyConfig
 	configsMutex sync.RWMutex
