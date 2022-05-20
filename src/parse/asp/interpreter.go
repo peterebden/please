@@ -35,7 +35,8 @@ func newInterpreter(state *core.BuildState, p *Parser) *interpreter {
 	s := &scope{
 		ctx:    context.Background(),
 		state:  state,
-		locals: map[string]pyObject{},
+		locals: make(map[string]pyObject, 100),
+		size:   100,
 	}
 	// If we're creating an interpreter for a subrepo, we should share the subinclude cache.
 	var subincludes *cmap.Map[string, pyDict]
@@ -59,7 +60,7 @@ func newInterpreter(state *core.BuildState, p *Parser) *interpreter {
 
 // LoadBuiltins loads a set of builtins from a file, optionally with its contents.
 func (i *interpreter) LoadBuiltins(filename string, contents []byte, statements []*Statement) error {
-	s := i.scope.NewScope()
+	s := i.scope.NewScope(i.NumLocals(statements))
 	// Gentle hack - attach the native code once we have loaded the correct file.
 	// Needs to be after this file is loaded but before any of the others that will
 	// use functions from it.
@@ -82,6 +83,7 @@ func (i *interpreter) LoadBuiltins(filename string, contents []byte, statements 
 				stmt.FuncDef.IsBuiltin = true
 			}
 		}
+		s.size = i.NumLocals(stmts)
 		return i.loadBuiltinStatements(s, stmts, err)
 	}
 	stmts, err := i.parser.parse(filename)
@@ -101,7 +103,7 @@ func (i *interpreter) loadBuiltinStatements(s *scope, statements []*Statement, e
 // interpretAll runs a series of statements in the context of the given package.
 // The first return value is for testing only.
 func (i *interpreter) interpretAll(pkg *core.Package, statements []*Statement) (s *scope, err error) {
-	s = i.scope.NewPackagedScope(pkg, 1)
+	s = i.scope.NewPackagedScope(pkg, i.NumLocals(statements))
 	// Config needs a little separate tweaking.
 	// Annoyingly we'd like to not have to do this at all, but it's very hard to handle
 	// mutating operations like .setdefault() otherwise.
@@ -151,7 +153,7 @@ func (i *interpreter) Subinclude(path string, label core.BuildLabel) pyDict {
 		panic(err) // We're already inside another interpreter, which will handle this for us.
 	}
 	stmts = i.parser.optimise(stmts)
-	s := i.scope.NewScope()
+	s := i.scope.NewScope(i.NumLocals(stmts))
 	// Scope needs a local version of CONFIG
 	s.config = i.scope.config.Copy()
 	s.subincludeLabel = &label
@@ -194,10 +196,13 @@ func (i *interpreter) NumLocals(stmts []*Statement) int {
 	WalkAST(stmts, func(ident *IdentStatement) bool {
 		names[ident.Name] = struct{}{}
 		if ident.Unpack != nil {
-			for _, name := range ident.Unpack {
+			for _, name := range ident.Unpack.Names {
 				names[name] = struct{}{}
 			}
 		}
+		return false
+	}, func(def *FuncDef) bool {
+		names[def.Name] = struct{}{}
 		return false
 	})
 	return len(names)
@@ -216,6 +221,7 @@ type scope struct {
 	globber         *fs.Globber
 	// True if this scope is for a pre- or post-build callback.
 	Callback bool
+	size     int
 }
 
 // parseLabelContext parsed a build label in the context of this scope. See contextPackage for more information.
@@ -254,13 +260,14 @@ func (s *scope) subincludePackage() *core.Package {
 }
 
 // NewScope creates a new child scope of this one.
-func (s *scope) NewScope() *scope {
-	return s.NewPackagedScope(s.pkg, 0)
+func (s *scope) NewScope(size int) *scope {
+	return s.NewPackagedScope(s.pkg, size)
 }
 
 // NewPackagedScope creates a new child scope of this one pointing to the given package.
 // hint is a size hint for the new set of locals.
 func (s *scope) NewPackagedScope(pkg *core.Package, hint int) *scope {
+	hint += 1 // Allow extra for the config object
 	s2 := &scope{
 		ctx:         s.ctx,
 		interpreter: s.interpreter,
@@ -270,6 +277,7 @@ func (s *scope) NewPackagedScope(pkg *core.Package, hint int) *scope {
 		locals:      make(pyDict, hint),
 		config:      s.config,
 		Callback:    s.Callback,
+		size:        hint,
 	}
 	if pkg != nil && pkg.Subrepo != nil && pkg.Subrepo.State != nil {
 		s2.state = pkg.Subrepo.State
@@ -319,6 +327,7 @@ func (s *scope) LocalLookup(name string) pyObject {
 // Set sets the given variable in this scope.
 func (s *scope) Set(name string, value pyObject) {
 	s.locals[name] = value
+	s.Assert(len(s.locals) <= s.size, "Exceeded scope size: %s", s.locals)
 }
 
 // SetAll sets all contents of the given dict in this scope.
@@ -686,7 +695,7 @@ func (s *scope) interpretList(expr *List) pyList {
 	if expr.Comprehension == nil {
 		return pyList(s.evaluateExpressions(expr.Values))
 	}
-	cs := s.NewScope()
+	cs := s.NewScope(5)
 	l := s.iterate(expr.Comprehension.Expr)
 	ret := make(pyList, 0, len(l))
 	cs.evaluateComprehension(l, expr.Comprehension, func(li pyObject) {
@@ -707,7 +716,7 @@ func (s *scope) interpretDict(expr *Dict) pyObject {
 		}
 		return d
 	}
-	cs := s.NewScope()
+	cs := s.NewScope(5)
 	l := cs.iterate(expr.Comprehension.Expr)
 	ret := make(pyDict, len(l))
 	cs.evaluateComprehension(l, expr.Comprehension, func(li pyObject) {

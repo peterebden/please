@@ -637,7 +637,7 @@ func (f *pyFunc) String() string {
 func (f *pyFunc) Call(ctx context.Context, s *scope, c *Call) pyObject {
 	if f.nativeCode != nil {
 		if f.kwargs {
-			return f.callNative(s.NewScope(), c)
+			return f.callNative(s.NewScope(len(c.Arguments)), c)
 		}
 		return f.callNative(s, c)
 	}

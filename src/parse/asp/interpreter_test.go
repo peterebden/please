@@ -418,7 +418,8 @@ func TestJSON(t *testing.T) {
 	statements = parser.optimise(statements)
 	parser.interpreter.optimiseExpressions(statements)
 
-	s := parser.interpreter.scope.NewScope()
+	s := parser.interpreter.scope.NewScope(parser.interpreter.NumLocals(statements))
+	s.size += 6
 
 	list := pyList{pyString("foo"), pyInt(5)}
 	dict := pyDict{"foo": pyString("bar")}
