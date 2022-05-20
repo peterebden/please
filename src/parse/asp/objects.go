@@ -568,6 +568,8 @@ type pyFunc struct {
 	kwargsonly bool
 	// return type of the function
 	returnType string
+	// Number of local variables within this function's scope
+	numLocals int
 }
 
 func newPyFunc(parentScope *scope, def *FuncDef) pyObject {
@@ -581,6 +583,7 @@ func newPyFunc(parentScope *scope, def *FuncDef) pyObject {
 		code:       def.Statements,
 		kwargsonly: def.KeywordsOnly,
 		returnType: def.Return,
+		numLocals:  parentScope.interpreter.NumLocals(def.Statements),
 	}
 	if def.Docstring != "" {
 		f.docstring = stringLiteral(def.Docstring)
@@ -638,7 +641,7 @@ func (f *pyFunc) Call(ctx context.Context, s *scope, c *Call) pyObject {
 		}
 		return f.callNative(s, c)
 	}
-	s2 := f.scope.NewPackagedScope(s.pkg, len(f.args)+1)
+	s2 := f.scope.NewPackagedScope(s.pkg, len(f.args)+1+f.numLocals)
 	s2.ctx = ctx
 	s2.config = s.config
 	s2.Set("CONFIG", s.config) // This needs to be copied across too :(

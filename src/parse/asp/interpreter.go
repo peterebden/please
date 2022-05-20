@@ -188,6 +188,21 @@ func (i *interpreter) optimiseExpressions(stmts []*Statement) {
 	})
 }
 
+// NumLocals returns the number of local variable names defined in a scope.
+func (i *interpreter) NumLocals(stmts []*Statement) int {
+	names := map[string]struct{}{}
+	WalkAST(stmts, func(ident *IdentStatement) bool {
+		names[ident.Name] = struct{}{}
+		if ident.Unpack != nil {
+			for _, name := range ident.Unpack {
+				names[name] = struct{}{}
+			}
+		}
+		return false
+	})
+	return len(names)
+}
+
 // A scope contains all the information about a lexical scope.
 type scope struct {
 	ctx             context.Context
