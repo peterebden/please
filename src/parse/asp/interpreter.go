@@ -204,6 +204,11 @@ func (i *interpreter) NumLocals(stmts []*Statement) int {
 	}, func(def *FuncDef) bool {
 		names[def.Name] = struct{}{}
 		return false
+	}, func(f *ForStatement) bool {
+		for _, name := range f.Names {
+			names[name] = struct{}{}
+		}
+		return true
 	})
 	return len(names)
 }
