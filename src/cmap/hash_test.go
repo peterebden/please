@@ -129,6 +129,34 @@ func BenchmarkXXHash_20Sx(b *testing.B) {
 	}
 }
 
+func BenchmarkMapHash_1k(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		Hash(input1k)
+	}
+}
+
+func BenchmarkMapHash_20(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		Hash(input20)
+	}
+}
+
+func BenchmarkMapHash_1kS(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		Hashes(input1k, input1k, input1k)
+	}
+}
+
+func BenchmarkMapHash_20S(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		Hashes(input20, input20, input20)
+	}
+}
+
 // ref is our reference implementation, from OneOfOne/cmap/hashers
 // N.B. As of Go 1.18 the workaround is no longer needed (hence why we have our own), this
 //      is reproduced verbatim as a reference implementation.

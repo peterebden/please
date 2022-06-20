@@ -1,6 +1,8 @@
 package cmap
 
 import (
+	"hash/maphash"
+
 	"github.com/cespare/xxhash/v2"
 )
 
@@ -16,4 +18,19 @@ func XXHashes(s ...string) uint64 {
 		result ^= xxhash.Sum64String(x)
 	}
 	return result
+}
+
+var seed = maphash.MakeSeed()
+
+func Hash(s string) uint64 {
+	return maphash.String(seed, s)
+}
+
+func Hashes(s ...string) uint64 {
+	var h maphash.Hash
+	h.SetSeed(seed)
+	for _, x := range s {
+		h.WriteString(x)
+	}
+	return h.Sum64()
 }
