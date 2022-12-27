@@ -3,7 +3,6 @@
 package core
 
 import (
-	"encoding/base64"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,11 +14,10 @@ import (
 var wd string
 var state *BuildState
 
-const testHash = "gB4sUwsLkB1ODYKUxYrKGlpdYUI"
+const testHash = "c88MxvZYr-smywfCNrvvNsamOwHyXb-TQcPuLIZph7M"
 
 func init() {
 	state = NewDefaultBuildState()
-	state.TargetHasher = &testHasher{}
 	wd, _ = os.Getwd()
 }
 
@@ -307,13 +305,4 @@ func makeTarget2(name string, command string, dep *BuildTarget) *BuildTarget {
 func replaceSequences(state *BuildState, target *BuildTarget) string {
 	cmd, _ := ReplaceSequences(state, target, target.GetCommand(state))
 	return cmd
-}
-
-type testHasher struct{}
-
-func (h *testHasher) OutputHash(target *BuildTarget) ([]byte, error) {
-	return base64.RawStdEncoding.DecodeString(testHash)
-}
-
-func (h *testHasher) SetHash(target *BuildTarget, hash []byte) {
 }

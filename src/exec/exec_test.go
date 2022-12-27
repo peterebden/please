@@ -30,7 +30,6 @@ func TestPrepareRuntimeDir(t *testing.T) {
 	target.AddOutput("file1")
 	state.Graph.AddTarget(target)
 
-	build.Init(state)
 	if err := build.StoreTargetMetadata(target, &core.BuildMetadata{}); err != nil {
 		panic(err)
 	}

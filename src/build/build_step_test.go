@@ -534,7 +534,6 @@ func newStateWithHashCheckers(label, hashFunction string, hashCheckers ...string
 	target.BuildTimeout = 100 * time.Second
 	state.Graph.AddTarget(target)
 	state.Parser = &fakeParser{}
-	Init(state)
 	return state, target
 }
 
