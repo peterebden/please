@@ -850,9 +850,7 @@ func checkRuleHashes(state *core.BuildState, target *core.BuildTarget, hash []by
 		target.Label, strings.Join(target.Hashes, "\n\t"), strings.Join(validHashes, "\n\t"))
 }
 
-// checkRuleHashesOfType checks any hashes on this rule of a single type.
-// Currently we support SHA-1 and SHA-256, and also have specialisations for the case
-// where a target has a single output so as not to double-hash it.
+// checkRuleHashesOfType checks any hashes on this rule.
 // It is a bit fiddly, but is organised this way to avoid calculating hashes of
 // unused types unnecessarily since that could get quite expensive.
 func checkRuleHashesOfType(target *core.BuildTarget, hashes, outputs []string, hashers []*fs.PathHasher) ([]string, bool) {

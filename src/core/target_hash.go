@@ -48,11 +48,11 @@ func (h *TargetHasher) SetHash(target *BuildTarget, hash []byte) {
 
 // outputHash calculates the output hash for a target, choosing an appropriate strategy.
 func (h *TargetHasher) outputHash(target *BuildTarget, force bool) ([]byte, error) {
-	return OutputHashOfType(target, target.FullOutputs(), force, h.hasher)
+	return OutputHash(target, target.FullOutputs(), force, h.hasher)
 }
 
-// OutputHashOfType is a more general form of OutputHash that allows different hashing strategies.
-func OutputHashOfType(target *BuildTarget, outputs []string, force bool, hasher *fs.PathHasher) ([]byte, error) {
+// OutputHash calculates the output hash for a build target.
+func OutputHash(target *BuildTarget, outputs []string, force bool, hasher *fs.PathHasher) ([]byte, error) {
 	timestamp := target.HashLastModified()
 	if len(outputs) == 1 {
 		// Single output, just hash that directly.
