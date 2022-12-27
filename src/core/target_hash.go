@@ -1,7 +1,6 @@
 package core
 
 import (
-	"hash"
 	"sync"
 
 	"github.com/thought-machine/please/src/fs"
@@ -49,27 +48,21 @@ func (h *TargetHasher) SetHash(target *BuildTarget, hash []byte) {
 
 // outputHash calculates the output hash for a target, choosing an appropriate strategy.
 func (h *TargetHasher) outputHash(target *BuildTarget, force bool) ([]byte, error) {
-	outs := target.FullOutputs()
-	if len(outs) == 1 {
-		// Special case for a single output because it's easier, but also allows for the file's
-		// shasum to be the hash plz uses.
-		return h.hasher.Hash(outs[0], force, !target.IsFilegroup, target.HashLastModified())
-	}
-	return OutputHashOfType(target, outs, force, h.hasher, h.hasher.NewHash)
+	return OutputHashOfType(target, target.FullOutputs(), force, h.hasher)
 }
 
 // OutputHashOfType is a more general form of OutputHash that allows different hashing strategies.
-func OutputHashOfType(target *BuildTarget, outputs []string, force bool, hasher *fs.PathHasher, combine func() hash.Hash) ([]byte, error) {
-	if combine == nil {
-		// Must be a single output, just hash that directly.
-		return hasher.Hash(outputs[0], true, target.IsFilegroup, target.HashLastModified())
+func OutputHashOfType(target *BuildTarget, outputs []string, force bool, hasher *fs.PathHasher) ([]byte, error) {
+	if len(outputs) == 1 {
+		// Single output, just hash that directly.
+		return hasher.Hash(outputs[0], force, !target.IsFilegroup, target.HashLastModified())
 	}
-	h := combine()
+	h := hasher.NewHash()
 	for _, filename := range outputs {
 		// NB. Always force a recalculation of the output hashes here. Memoisation is not
 		//     useful because by definition we are rebuilding a target, and can actively hurt
 		//     in cases where we compare the retrieved cache artifacts with what was there before.
-		h2, err := hasher.Hash(filename, true, !target.IsFilegroup, target.HashLastModified())
+		h2, err := hasher.Hash(filename, force, !target.IsFilegroup, target.HashLastModified())
 		if err != nil {
 			return nil, err
 		}

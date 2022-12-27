@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"hash"
 	"io"
 	"net/http"
 	"os"
@@ -839,8 +838,7 @@ func checkRuleHashes(state *core.BuildState, target *core.BuildTarget, hash []by
 			return nil
 		}
 	}
-	combine := len(outputs) != 1
-	validHashes, valid := checkRuleHashesOfType(target, hashes, outputs, state.OutputHashCheckers(), combine)
+	validHashes, valid := checkRuleHashesOfType(target, hashes, outputs, state.OutputHashCheckers())
 	if valid {
 		return nil
 	}
@@ -857,15 +855,11 @@ func checkRuleHashes(state *core.BuildState, target *core.BuildTarget, hash []by
 // where a target has a single output so as not to double-hash it.
 // It is a bit fiddly, but is organised this way to avoid calculating hashes of
 // unused types unnecessarily since that could get quite expensive.
-func checkRuleHashesOfType(target *core.BuildTarget, hashes, outputs []string, hashers []*fs.PathHasher, combine bool) ([]string, bool) {
+func checkRuleHashesOfType(target *core.BuildTarget, hashes, outputs []string, hashers []*fs.PathHasher) ([]string, bool) {
 	validHashes := make([]string, len(hashers))
 
 	for i, hasher := range hashers {
-		var combiner func() hash.Hash
-		if combine {
-			combiner = hasher.NewHash
-		}
-		bhash, _ := core.OutputHashOfType(target, outputs, true, hasher, combiner)
+		bhash, _ := core.OutputHashOfType(target, outputs, true, hasher)
 		hashString := hex.EncodeToString(bhash)
 		validHashes[i] = fmt.Sprintf("%s: %s", hasher.AlgoName(), hashString)
 
