@@ -33,7 +33,7 @@ type filegroupBuilder struct {
 	built map[string]bool
 }
 
-var theFilegroupBuilder *filegroupBuilder = &filegroupBuilder{
+var theFilegroupBuilder = &filegroupBuilder{
 	built: map[string]bool{},
 }
 
