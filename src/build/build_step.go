@@ -857,7 +857,7 @@ func checkRuleHashesOfType(target *core.BuildTarget, hashes, outputs []string, h
 	validHashes := make([]string, len(hashers))
 
 	for i, hasher := range hashers {
-		bhash, _ := core.OutputHashOfType(target, outputs, true, hasher)
+		bhash, _ := core.OutputHash(target, outputs, true, hasher)
 		hashString := hex.EncodeToString(bhash)
 		validHashes[i] = fmt.Sprintf("%s: %s", hasher.AlgoName(), hashString)
 
