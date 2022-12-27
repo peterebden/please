@@ -865,7 +865,7 @@ func checkRuleHashesOfType(target *core.BuildTarget, hashes, outputs []string, h
 		if combine {
 			combiner = hasher.NewHash
 		}
-		bhash, _ := core.OutputHashOfType(target, outputs, hasher, combiner)
+		bhash, _ := core.OutputHashOfType(target, outputs, true, hasher, combiner)
 		hashString := hex.EncodeToString(bhash)
 		validHashes[i] = fmt.Sprintf("%s: %s", hasher.AlgoName(), hashString)
 

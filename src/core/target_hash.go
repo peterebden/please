@@ -55,26 +55,11 @@ func (h *TargetHasher) outputHash(target *BuildTarget, force bool) ([]byte, erro
 		// shasum to be the hash plz uses.
 		return h.hasher.Hash(outs[0], force, !target.IsFilegroup, target.HashLastModified())
 	}
-	sum := h.hasher.NewHash()
-	for _, out := range outs {
-		h2, err := h.hasher.Hash(out, force, !target.IsFilegroup, target.HashLastModified())
-		if err != nil {
-			return nil, err
-		}
-		sum.Write(h2)
-		// Record the name of the file too, but not if the rule has hash verification
-		// (because this will change the hashes, and the cases it fixes are relatively rare
-		// and generally involve things like hash_filegroup that doesn't have hashes set).
-		// TODO(peterebden): Find some more elegant way of unifying this behaviour.
-		if len(target.Hashes) == 0 {
-			sum.Write([]byte(out))
-		}
-	}
-	return sum.Sum(nil), nil
+	return OutputHashOfType(target, outs, force, h.hasher, h.hasher.NewHash)
 }
 
 // OutputHashOfType is a more general form of OutputHash that allows different hashing strategies.
-func OutputHashOfType(target *BuildTarget, outputs []string, hasher *fs.PathHasher, combine func() hash.Hash) ([]byte, error) {
+func OutputHashOfType(target *BuildTarget, outputs []string, force bool, hasher *fs.PathHasher, combine func() hash.Hash) ([]byte, error) {
 	if combine == nil {
 		// Must be a single output, just hash that directly.
 		return hasher.Hash(outputs[0], true, target.IsFilegroup, target.HashLastModified())
