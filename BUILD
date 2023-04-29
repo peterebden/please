@@ -44,3 +44,9 @@ github_repo(
     repo = "thought-machine/pleasings",
     revision = "v1.1.0",
 )
+
+subrepo(
+    name = "plugins",
+    path = ".",
+    config = ".plzconfig.plugins",
+)
