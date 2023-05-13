@@ -2,7 +2,10 @@ go_library(
     name = "plugin",
     srcs = ["plugin.go"],
     resources = [":plugins"],
-    visibility = ["//src/plz/..."],
+    visibility = [
+        "//src/plz/...",
+        "//src/update/...",
+    ],
     deps = [
         "//src/cli/logging",
         "//src/core",
@@ -15,5 +18,6 @@ filegroup(
     srcs = [
         "///plugins//src/plugin/prometheus",
         "///plugins//src/plugin/remote",
+        "///plugins//src/plugin/verify",
     ],
 )

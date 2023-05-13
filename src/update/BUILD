@@ -12,13 +12,12 @@ go_library(
     deps = [
         "///third_party/go/github.com_coreos_go-semver//semver",
         "///third_party/go/github.com_hashicorp_go-retryablehttp//:go-retryablehttp",
-        "///third_party/go/github.com_sigstore_sigstore//pkg/cryptoutils",
-        "///third_party/go/github.com_sigstore_sigstore//pkg/signature",
         "///third_party/go/github.com_ulikunitz_xz//:xz",
         "//src/cli",
         "//src/cli/logging",
         "//src/core",
         "//src/fs",
+        "//src/plugin",
         "//src/process",
     ],
 )

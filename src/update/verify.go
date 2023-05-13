@@ -3,7 +3,6 @@ package update
 import (
 	"bufio"
 	"bytes"
-	"crypto"
 	"crypto/sha256"
 	_ "embed" // needed for //go:embed
 	"encoding/hex"
@@ -11,36 +10,14 @@ import (
 	"io"
 	"strings"
 
-	"github.com/sigstore/sigstore/pkg/cryptoutils"
-	"github.com/sigstore/sigstore/pkg/signature"
-
 	"github.com/thought-machine/please/src/cli"
+	"github.com/thought-machine/please/src/plugin"
 )
 
 // pubkey is the public key we verify Please releases with.
 //
 //go:embed key.pub
 var key []byte
-
-// verifySignature verifies an OpenPGP detached signature of a file.
-// It returns true if the signature is correct according to our key.
-func verifySignature(signed, sig io.Reader) bool {
-	return verifySignatureWithKey(signed, sig, key)
-}
-
-func verifySignatureWithKey(signed, sig io.Reader, key []byte) bool {
-	pub, err := cryptoutils.UnmarshalPEMToPublicKey(key)
-	if err != nil {
-		log.Fatalf("err: %v", err)
-	}
-
-	verifier, err := signature.LoadVerifier(pub, crypto.SHA256)
-	if err != nil {
-		log.Fatalf("err: %v", err)
-	}
-
-	return verifier.VerifySignature(sig, signed) == nil
-}
 
 // verifyDownload fetches a detached signature for a download and verifies it's OK.
 // It returns a reader to the verified content.
@@ -61,7 +38,11 @@ func mustVerifySignature(message, signature io.Reader, progress bool) io.Reader 
 		panic(err)
 	}
 	log.Notice("Verifying signature of downloaded tarball...")
-	if !verifySignature(bytes.NewReader(b), signature) {
+	verify, err := plugin.LoadSymbol[func(io.Reader, io.Reader, []byte) bool]("verify", "VerifySignature")
+	if err != nil {
+		panic("failed to load verification plugin: " + err.Error())
+	}
+	if !verify(bytes.NewReader(b), signature, key) {
 		panic("Invalid signature on downloaded file, possible tampering; will not continue.")
 	}
 	if progress {

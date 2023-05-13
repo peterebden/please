@@ -30,6 +30,12 @@ var promPlugin []byte
 //go:embed prometheus.so.gz.sha256
 var promPluginHash string
 
+//go:embed verify.so.gz
+var verifyPlugin []byte
+
+//go:embed verify.so.gz.sha256
+var verifyPluginHash string
+
 // LoadPlugins loads the relevant plugins for the current config
 func LoadPlugins(state *core.BuildState) error {
 	if state.Config.Remote.URL != "" {
@@ -49,6 +55,20 @@ func LoadPlugins(state *core.BuildState) error {
 		f()
 	}
 	return nil
+}
+
+// LoadSymbol loads a symbol for a known plugin.
+func LoadSymbol[T any](plugin, symbol string) (T, error) {
+	if plugin != "verify" {
+		// You can't load the other two plugins this way.
+		panic("unknown plugin " + plugin)
+	}
+	sym, err := loadPlugin(verifyPlugin, verifyPluginHash, "verify", "VerifySignature")
+	if err != nil {
+		var t T
+		return t, err
+	}
+	return sym.(T), nil
 }
 
 func loadPlugin(data []byte, hash, name, sym string) (plugin.Symbol, error) {
