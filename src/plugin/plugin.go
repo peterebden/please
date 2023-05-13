@@ -72,8 +72,8 @@ func loadSymbol(data []byte, hash, name, sym string) (plugin.Symbol, error) {
 		return nil, err
 	}
 	dir = filepath.Join(dir, "please")
-	basename := name + hash[:12] + ".so"
-	filename := filepath.Join(dir)
+	basename := name + "_" + hash[:12] + ".so"
+	filename := filepath.Join(dir, basename)
 	if !fs.PathExists(filename) {
 		log.Debug("Plugin %s doesn't exist, extracting...", name)
 		gzr, err := gzip.NewReader(bytes.NewReader(data))
