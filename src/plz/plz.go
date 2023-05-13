@@ -27,8 +27,13 @@ var log = logging.Log
 // starting this (otherwise a sufficiently fast build may bypass you completely).
 func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, config *core.Configuration, arch cli.Arch) {
 	build.Init(state)
-	if err := plugin.LoadPlugins(state); err != nil {
-		log.Fatalf("Failed to initialise plugins: %s", err)
+	if state.Config.Remote.URL != "" {
+		f := plugin.MustLoadSymbol[func(state *core.BuildState) core.RemoteClient]("remote", "New")
+		state.RemoteClient = f(state)
+	}
+	if state.Config.Metrics.PrometheusGatewayURL != "" {
+		register := plugin.MustLoadSymbol[func()]("prometheus", "Register")
+		register()
 	}
 	if config.Display.SystemStats {
 		go state.UpdateResources()

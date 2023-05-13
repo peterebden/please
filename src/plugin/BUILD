@@ -8,7 +8,6 @@ go_library(
     ],
     deps = [
         "//src/cli/logging",
-        "//src/core",
         "//src/fs",
     ],
 )

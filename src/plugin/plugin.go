@@ -5,14 +5,12 @@ import (
 	"bytes"
 	"compress/gzip"
 	_ "embed"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"plugin"
 
 	"github.com/thought-machine/please/src/cli/logging"
-	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/fs"
 )
 
@@ -36,34 +34,9 @@ var verifyPlugin []byte
 //go:embed verify.so.gz.sha256
 var verifyPluginHash string
 
-// LoadPlugins loads the relevant plugins for the current config
-func LoadPlugins(state *core.BuildState) error {
-	if state.Config.Remote.URL != "" {
-		sym, err := loadPlugin(remotePlugin, remotePluginHash, "remote", "New")
-		if err != nil {
-			return fmt.Errorf("Remote: %w", err)
-		}
-		f := sym.(func(state *core.BuildState) core.RemoteClient)
-		state.RemoteClient = f(state)
-	}
-	if state.Config.Metrics.PrometheusGatewayURL != "" {
-		sym, err := loadPlugin(promPlugin, promPluginHash, "prometheus", "Register")
-		if err != nil {
-			return fmt.Errorf("Prometheus: %w", err)
-		}
-		f := sym.(func())
-		f()
-	}
-	return nil
-}
-
 // LoadSymbol loads a symbol for a known plugin.
 func LoadSymbol[T any](plugin, symbol string) (T, error) {
-	if plugin != "verify" {
-		// You can't load the other two plugins this way.
-		panic("unknown plugin " + plugin)
-	}
-	sym, err := loadPlugin(verifyPlugin, verifyPluginHash, "verify", "VerifySignature")
+	sym, err := loadPlugin(plugin, symbol)
 	if err != nil {
 		var t T
 		return t, err
@@ -71,7 +44,28 @@ func LoadSymbol[T any](plugin, symbol string) (T, error) {
 	return sym.(T), nil
 }
 
-func loadPlugin(data []byte, hash, name, sym string) (plugin.Symbol, error) {
+// MustLoadSymbol is like LoadSymbol but dies on errors
+func MustLoadSymbol[T any](plugin, symbol string) T {
+	t, err := LoadSymbol[T](plugin, symbol)
+	if err != nil {
+		log.Fatalf("Failed to initialise %s plugin: %s", plugin, err)
+	}
+	return t
+}
+
+func loadPlugin(plugin, symbol string) (plugin.Symbol, error) {
+	switch plugin {
+	case "prometheus":
+		return loadSymbol(promPlugin, promPluginHash, plugin, symbol)
+	case "remote":
+		return loadSymbol(remotePlugin, remotePluginHash, plugin, symbol)
+	case "verify":
+		return loadSymbol(verifyPlugin, verifyPluginHash, plugin, symbol)
+	}
+	panic("unknown plugin " + plugin)
+}
+
+func loadSymbol(data []byte, hash, name, sym string) (plugin.Symbol, error) {
 	log.Debug("Loading plugin %s...", name)
 	dir, err := os.UserCacheDir()
 	if err != nil {

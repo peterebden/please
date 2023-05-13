@@ -38,10 +38,7 @@ func mustVerifySignature(message, signature io.Reader, progress bool) io.Reader 
 		panic(err)
 	}
 	log.Notice("Verifying signature of downloaded tarball...")
-	verify, err := plugin.LoadSymbol[func(io.Reader, io.Reader, []byte) bool]("verify", "VerifySignature")
-	if err != nil {
-		panic("failed to load verification plugin: " + err.Error())
-	}
+	verify := plugin.MustLoadSymbol[func(io.Reader, io.Reader, []byte) bool]("verify", "VerifySignature")
 	if !verify(bytes.NewReader(b), signature, key) {
 		panic("Invalid signature on downloaded file, possible tampering; will not continue.")
 	}
