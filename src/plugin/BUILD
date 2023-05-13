@@ -1,3 +1,5 @@
+subinclude("///go//build_defs:go")
+
 go_library(
     name = "plugin",
     srcs = ["plugin.go"],
@@ -12,11 +14,17 @@ go_library(
     ],
 )
 
+subrepo(
+    name = "plugins",
+    path = ".",
+    config = "plzconfig.plugins",
+)
+
 filegroup(
     name = "plugins",
     srcs = [
-        "///plugins//src/plugin/prometheus",
-        "///plugins//src/plugin/remote",
-        "///plugins//src/plugin/verify",
+        "///src/plugin/plugins//src/plugin/prometheus",
+        "///src/plugin/plugins//src/plugin/remote",
+        "///src/plugin/plugins//src/plugin/verify",
     ],
 )
