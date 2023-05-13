@@ -11,7 +11,12 @@ go_toolchain(
         "464b6b66591f6cf055bc5df90a9750bf5fbc9d038722bb84a9d56a2bea974be6",  # linux_amd64
         "efa97fac9574fc6ef6c9ff3e3758fb85f1439b046573bf434cccb5e012bd00c8",  # linux_arm64
     ],
+    install_std = False,
     version = "1.19",
+)
+
+go_stdlib(
+    name = "std",
 )
 
 go_mod_download(

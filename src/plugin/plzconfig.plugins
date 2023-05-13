@@ -1,2 +1,3 @@
 [plugin "go"]
 buildmode = plugin
+stdlib = ///src/plugin/plugins//third_party/go:std
