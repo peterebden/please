@@ -39,6 +39,7 @@ func Push(config *core.Configuration) {
 // An Incrementer is the interface needed backing a Counter
 type Incrementer interface {
 	Inc()
+	Add(float64)
 }
 
 // A Counter is a metric that counts up a unitless quantity.
@@ -52,9 +53,16 @@ func (counter *Counter) Inc() {
 	counter.counter.Inc()
 }
 
+// Add increments the counter by the given number
+func (counter *Counter) Add(n int) {
+	counter.counter.Add(float64(n))
+}
+
 type noopCounter struct{}
 
 func (n noopCounter) Inc() {}
+
+func (n noopCounter) Add(float64) {}
 
 var counters []*Counter
 
@@ -79,6 +87,7 @@ type Observer interface {
 // A Histogram counts individual observations of values in buckets.
 type Histogram struct {
 	Subsystem, Name, Help string
+	Buckets               []float64
 	hist                  Observer
 }
 
@@ -100,8 +109,19 @@ func NewHistogram(subsystem, name, help string, buckets []float64) *Histogram {
 		Subsystem: subsystem,
 		Name:      name,
 		Help:      help,
+		Buckets:   buckets,
 		hist:      noopHistogram{},
 	}
 	histograms = append(histograms, histogram)
 	return histogram
+}
+
+// ExponentialBuckets creates a set of count buckets starting at the given value and increasing by factor each time
+func ExponentialBuckets(start, factor float64, count int) []float64 {
+	buckets := make([]float64, count)
+	for i := range buckets {
+		buckets[i] = start
+		start *= factor
+	}
+	return buckets
 }

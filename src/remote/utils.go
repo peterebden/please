@@ -231,7 +231,7 @@ func (c *Client) locallyCacheResults(target *core.BuildTarget, dg *pb.Digest, me
 		for _, dir := range tree.Children {
 			c.directories.Store(c.digestMessage(dir).Hash, dir)
 		}
-		directoriesStored.Add(float64(len(tree.Children)))
+		directoriesStored.Add(len(tree.Children))
 		data, _ := proto.Marshal(&tree)
 		metadata.RemoteOutputs = data
 	}

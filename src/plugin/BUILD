@@ -13,6 +13,7 @@ go_library(
 filegroup(
     name = "plugins",
     srcs = [
-        "///plugins//src/plugin/remote:remote",
+        "///plugins//src/plugin/prometheus",
+        "///plugins//src/plugin/remote",
     ],
 )

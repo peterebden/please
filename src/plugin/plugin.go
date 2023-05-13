@@ -24,15 +24,29 @@ var remotePlugin []byte
 //go:embed remote.so.gz.sha256
 var remotePluginHash string
 
+//go:embed prometheus.so.gz
+var promPlugin []byte
+
+//go:embed prometheus.so.gz.sha256
+var promPluginHash string
+
 // LoadPlugins loads the relevant plugins for the current config
 func LoadPlugins(state *core.BuildState) error {
 	if state.Config.Remote.URL != "" {
 		sym, err := loadPlugin(remotePlugin, remotePluginHash, "remote", "New")
 		if err != nil {
-			return fmt.Errorf("Remote plugin: %w", err)
+			return fmt.Errorf("Remote: %w", err)
 		}
 		f := sym.(func(state *core.BuildState) core.RemoteClient)
 		state.RemoteClient = f(state)
+	}
+	if state.Config.Metrics.PrometheusGatewayURL != "" {
+		sym, err := loadPlugin(promPlugin, promPluginHash, "prometheus", "Register")
+		if err != nil {
+			return fmt.Errorf("Prometheus: %w", err)
+		}
+		f := sym.(func())
+		f()
 	}
 	return nil
 }

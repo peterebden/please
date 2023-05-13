@@ -69,7 +69,7 @@ func (p *prom) RegisterHistogram(hist *metrics.Histogram) metrics.Observer {
 		Subsystem: hist.Subsystem,
 		Name:      hist.Name,
 		Help:      hist.Help,
-		Buckets:   prometheus.ExponentialBuckets(0.5, 2, 16), // 16 buckets, starting at 0.5ms and doubling in width.
+		Buckets:   hist.Buckets,
 	})
 	p.registerer.MustRegister(h)
 	return h
