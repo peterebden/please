@@ -11,7 +11,7 @@ go_library(
         "//src/fs",
         "//src/metrics",
         "//src/parse",
-        "//src/remote",
+        "//src/plugin",
         "//src/test",
     ],
 )

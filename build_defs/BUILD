@@ -4,6 +4,12 @@ filegroup(
     visibility = ["PUBLIC"],
 )
 
+filegroup(
+    name = "plugin",
+    srcs = ["plugin.build_defs"],
+    visibility = ["//src/plugin/..."],
+)
+
 genrule(
     name = "version",
     srcs = ["//:version"],

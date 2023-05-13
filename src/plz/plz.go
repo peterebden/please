@@ -14,7 +14,7 @@ import (
 	"github.com/thought-machine/please/src/fs"
 	"github.com/thought-machine/please/src/metrics"
 	"github.com/thought-machine/please/src/parse"
-	"github.com/thought-machine/please/src/remote"
+	"github.com/thought-machine/please/src/plugin"
 	"github.com/thought-machine/please/src/test"
 )
 
@@ -27,8 +27,8 @@ var log = logging.Log
 // starting this (otherwise a sufficiently fast build may bypass you completely).
 func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, config *core.Configuration, arch cli.Arch) {
 	build.Init(state)
-	if state.Config.Remote.URL != "" {
-		state.RemoteClient = remote.New(state)
+	if err := plugin.LoadPlugins(state); err != nil {
+		log.Fatalf("Failed to initialise plugins: %s", err)
 	}
 	if config.Display.SystemStats {
 		go state.UpdateResources()

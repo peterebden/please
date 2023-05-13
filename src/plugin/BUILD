@@ -1,11 +1,18 @@
 go_library(
     name = "plugin",
     srcs = ["plugin.go"],
-    resources = [
-        "///plugins//src/plugin/remote:remote_plugin",
-    ],
+    resources = [":plugins"],
     visibility = ["//src/plz/..."],
     deps = [
+        "//src/cli/logging",
         "//src/core",
+        "//src/fs",
+    ],
+)
+
+filegroup(
+    name = "plugins",
+    srcs = [
+        "///plugins//src/plugin/remote:remote",
     ],
 )

@@ -1,0 +1,23 @@
+subinclude("///go//build_defs:go")
+
+def plugin(name:str, srcs:list, deps:list, visibility:list):
+    """Defines a Go plugin for Please."""
+    bin = go_binary(
+        name = name + "_plugin",
+        srcs = srcs,
+        out = name + ".so",
+        deps = deps,
+    )
+    return genrule(
+        name = name,
+        srcs = [bin],
+        outs = {
+            "gz": [name + ".so.gz"],
+            "hash": [name + ".so.gz.sha256"],
+        },
+        cmd = [
+            "gzip -c $SRC > $OUTS_GZ",
+            "shasum -a 256 $OUTS_GZ > $OUTS_HASH",
+        ],
+        visibility = visibility,
+    )
