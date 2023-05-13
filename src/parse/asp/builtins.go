@@ -1129,16 +1129,16 @@ func subrepo(s *scope, args []pyObject) pyObject {
 		sr.PackageRoot = args[PackageRootIdx].String()
 	}
 
+	if args[ConfigArgIdx].IsTruthy() {
+		sr.AdditionalConfigFiles = append(sr.AdditionalConfigFiles, string(args[ConfigArgIdx].(pyString)))
+	}
+
 	// Typically this would be deferred until we have built the subrepo target and have its config available. As we
 	// don't have a subrepo target, we can and should load it here.
 	if target == nil {
 		if err := sr.State.Initialise(sr); err != nil {
 			log.Fatalf("Could not load subrepo config for %s: %v", sr.Name, err)
 		}
-	}
-
-	if args[ConfigArgIdx].IsTruthy() {
-		sr.AdditionalConfigFiles = append(sr.AdditionalConfigFiles, string(args[ConfigArgIdx].(pyString)))
 	}
 
 	if s.state.Config.Bazel.Compatibility && s.pkg.Name == "workspace" {

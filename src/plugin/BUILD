@@ -17,7 +17,7 @@ go_library(
 subrepo(
     name = "plugins",
     path = ".",
-    config = "plzconfig.plugins",
+    config = "src/plugin/plzconfig.plugins",
 )
 
 filegroup(
