@@ -16,8 +16,8 @@ go_library(
 
 subrepo(
     name = "plugins",
-    path = ".",
     config = "src/plugin/plzconfig.plugins",
+    path = ".",
 )
 
 filegroup(
@@ -26,5 +26,15 @@ filegroup(
         "///src/plugin/plugins//src/plugin/prometheus",
         "///src/plugin/plugins//src/plugin/remote",
         "///src/plugin/plugins//src/plugin/verify",
+    ],
+)
+
+go_test(
+    name = "plugin_test",
+    srcs = ["plugin_test.go"],
+    external = True,
+    deps = [
+        ":plugin",
+        "///third_party/go/github.com_stretchr_testify//assert",
     ],
 )
