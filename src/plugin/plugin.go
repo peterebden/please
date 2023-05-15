@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	_ "embed"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -78,6 +79,9 @@ func loadSymbol(data []byte, hash, name, sym string) (plugin.Symbol, error) {
 		log.Debug("Plugin %s doesn't exist, extracting...", name)
 		if err := os.MkdirAll(dir, fs.DirPermissions); err != nil {
 			return nil, err
+		}
+		if len(data) == 0 {
+			return nil, fmt.Errorf("Plugins not enabled in this build of Please")
 		}
 		gzr, err := gzip.NewReader(bytes.NewReader(data))
 		if err != nil {
