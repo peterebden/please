@@ -677,6 +677,7 @@ type Configuration struct {
 	buildEnvStored *storedBuildEnv
 
 	FeatureFlags struct {
+		HideDeprecatedConfigOptions bool `help:"Don't expose deprecated config options to the BUILD language"`
 	} `help:"Flags controlling preview features for the next release. Typically these config options gate breaking changes and only have a lifetime of one major release."`
 	Metrics struct {
 		PrometheusGatewayURL string       `help:"The gateway URL to push prometheus updates to."`
