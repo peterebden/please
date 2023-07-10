@@ -12,8 +12,8 @@ filegroup(
     name = "build_defs",
     srcs = ["test.build_defs"],
     visibility = [
-        "//test/...",
         "//src/test/...",
+        "//test/...",
     ],
 )
 
@@ -23,12 +23,6 @@ filegroup(
         ".plzconfig.e2e",
         ".plzconfig_freebsd_amd64",
     ],
-)
-
-filegroup(
-    name = "cc_embed_binary",
-    srcs = ["cc_embed_binary.build_defs"],
-    visibility = ["//test/..."],
 )
 
 # Used for some of the parse tests that want a subinclude that isn't visible to them.
