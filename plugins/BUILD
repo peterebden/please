@@ -18,6 +18,7 @@ plugin_repo(
 
 plugin_repo(
     name = "python",
+    owner = "peterebden",
     plugin = "python-rules",
-    revision = "v1.2.4",
+    revision = "8609581cc5c55e3f00e7d53ef99eeb1c4fbafcb8",
 )
