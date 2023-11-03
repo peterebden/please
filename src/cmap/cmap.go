@@ -38,15 +38,11 @@ func New[K comparable, V any](shardCount uint64, hasher func(K) uint64) *Map[K, 
 	if (shardCount & mask) != 0 {
 		panic(fmt.Sprintf("Shard count %d is not a power of 2", shardCount))
 	}
-	m := &Map[K, V]{
+	return &Map[K, V]{
 		shards: make([]shard[K, V], shardCount),
 		mask:   mask,
 		hasher: hasher,
 	}
-	for i := range m.shards {
-		m.shards[i].m = map[K]awaitableValue[V]{}
-	}
-	return m
 }
 
 // Add adds the new item to the map.
@@ -102,34 +98,32 @@ type awaitableValue[V any] struct {
 
 // A shard is one of the individual shards of a map.
 type shard[K comparable, V any] struct {
-	m map[K]awaitableValue[V]
-	l sync.RWMutex
+	m sync.Map // implicit type map[K]awaitableValue[V]
 }
 
 // Set is the equivalent of `map[key] = val`.
 // It returns the previous value and true if the item was inserted, false if it was not
 // (because an existing one was found and overwrite was false).
 func (s *shard[K, V]) Set(key K, val V, overwrite bool) (V, bool) {
-	s.l.Lock()
-	defer s.l.Unlock()
-	if existing, present := s.m[key]; present {
-		if existing.Wait == nil {
-			old := existing.Val
-			if !overwrite {
-				return old, false // already added
+	if overwrite {
+		if existing, present := s.m.Swap(key, awaitableValue[V]{Val: val}); present {
+			texisting := existing.(awaitableValue[V])
+			if texisting.Wait != nil {
+				close(texisting.Wait)
 			}
-			existing.Val = val
-			s.m[key] = awaitableValue[V]{Val: val}
-			return old, true
+			return texisting.Val, true
 		}
-		// Hasn't been added, but something is waiting for it to be.
-		s.m[key] = awaitableValue[V]{Val: val}
-		close(existing.Wait)
-		existing.Wait = nil
-		return existing.Val, true
+		var empty V
+		return empty, true
+	}
+	if existing, loaded := s.m.LoadOrStore(key, awaitableValue[V]{Val: val}); loaded {
+		texisting := existing.(awaitableValue[V])
+		if texisting.Wait != nil {
+			close(texisting.Wait)
+		}
+		return texisting.Val, true
 	}
 	var old V
-	s.m[key] = awaitableValue[V]{Val: val}
 	return old, true
 }
 
@@ -138,23 +132,17 @@ func (s *shard[K, V]) Set(key K, val V, overwrite bool) (V, bool) {
 // Exactly one of the target or channel will be returned.
 // The third value is true if it is the first call that is waiting on this value.
 func (s *shard[K, V]) Get(key K) (val V, wait <-chan struct{}, first bool) {
-	s.l.RLock()
-	if v, ok := s.m[key]; ok {
-		s.l.RUnlock()
+	if v, ok := s.m.Load(key); ok {
+		tv := v.(awaitableValue[V])
 		getFast.Inc()
-		return v.Val, v.Wait, false
+		return tv.Val, tv.Wait, false
 	}
-	s.l.RUnlock()
-
-	s.l.Lock()
-	defer s.l.Unlock()
-	if v, ok := s.m[key]; ok {
-		getMedium.Inc()
-		return v.Val, v.Wait, false
-	}
-	getSlow.Inc()
 	ch := make(chan struct{})
-	s.m[key] = awaitableValue[V]{Wait: ch}
+	if v, loaded := s.m.LoadOrStore(key, awaitableValue[V]{Wait: ch}); loaded {
+		tv := v.(awaitableValue[V])
+		getMedium.Inc()
+		return tv.Val, tv.Wait, false
+	}
 	wait = ch
 	first = true
 	return
@@ -162,14 +150,13 @@ func (s *shard[K, V]) Get(key K) (val V, wait <-chan struct{}, first bool) {
 
 // Values returns a copy of all the targets currently in the map.
 func (s *shard[K, V]) Values() []V {
-	s.l.RLock()
-	defer s.l.RUnlock()
-	ret := make([]V, 0, len(s.m))
-	for _, v := range s.m {
-		if v.Wait == nil {
-			ret = append(ret, v.Val)
+	ret := []V{}
+	s.m.Range(func(k, v any) bool {
+		if tv := v.(awaitableValue[V]); tv.Wait == nil {
+			ret = append(ret, tv.Val)
 		}
-	}
+		return true
+	})
 	return ret
 }
 
