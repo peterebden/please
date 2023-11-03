@@ -6,7 +6,10 @@ go_library(
     ],
     pgo_file = "//:pgo",
     visibility = ["PUBLIC"],
-    deps = ["///third_party/go/github.com_cespare_xxhash_v2//:v2"],
+    deps = [
+        "///third_party/go/github.com_cespare_xxhash_v2//:v2",
+        "///third_party/go/github.com_prometheus_client_golang//prometheus",
+    ],
 )
 
 go_test(
