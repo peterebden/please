@@ -2,6 +2,7 @@ package asp
 
 import (
 	"io"
+	"strconv"
 	"unicode"
 	"unicode/utf8"
 )
@@ -224,7 +225,20 @@ func (l *lex) nextToken() Token {
 			return Token{Type: EOL, Pos: pos}
 		}
 		return l.nextToken()
-	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+	case '0':
+		if l.bytes[l.pos] == 'o' {  // 0o123 -> octal number
+			l.pos++
+			l.col++
+			tok := l.consumeInteger(next, pos)
+			i, err := strconv.ParseInt(tok.Value, 8, 64)
+			if err != nil {
+				l.fail(pos, "Invalid octal integer %s", tok.Value)
+			}
+			tok.Value = strconv.Itoa(int(i))
+			return tok
+		}
+		fallthrough
+	case '1', '2', '3', '4', '5', '6', '7', '8', '9':
 		return l.consumeInteger(next, pos)
 	case '"', '\'':
 		// String literal, consume to end.
