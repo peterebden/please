@@ -29,6 +29,7 @@ go_library(
         "//src/cmap",
         "//src/core",
         "//src/fs",
+        "//src/ordmap",
     ],
 )
 

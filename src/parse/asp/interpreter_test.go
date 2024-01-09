@@ -193,13 +193,12 @@ func TestReduce(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, pyInt(6), s.Lookup("r1"))
 	assert.Equal(t, pyInt(16), s.Lookup("r2"))
-	res := pyDict{
-		"a": pyInt(2),
-		"b": pyInt(3),
-		"c": pyInt(4),
-		"d": pyInt(5),
-		"e": pyInt(0),
-	}
+	res := newPyDict()
+	res.Put("e", pyInt(0))
+	res.Put("a", pyInt(2))
+	res.Put("b", pyInt(3))
+	res.Put("c", pyInt(4))
+	res.Put("d", pyInt(5))
 	assert.Equal(t, res, s.Lookup("r3"))
 	assert.Equal(t, s.Lookup("None"), s.Lookup("r4"))
 	assert.Equal(t, pyInt(5), s.Lookup("r5"))
@@ -387,11 +386,11 @@ func TestInterpreterSubincludeAll(t *testing.T) {
 func TestInterpreterDictUnion(t *testing.T) {
 	s, err := parseFile("src/parse/asp/test_data/interpreter/dict_union.build")
 	assert.NoError(t, err)
-	assert.EqualValues(t, pyDict{
-		"mickey": pyInt(1),
-		"donald": pyInt(2),
-		"goofy":  pyInt(3),
-	}, s.Lookup("z"))
+	expected := newPyDict()
+	expected.Put("goofy", pyInt(3))
+	expected.Put("donald", pyInt(2))
+	expected.Put("mickey", pyInt(1))
+	assert.EqualValues(t, expected, s.Lookup("z"))
 }
 
 func TestIsNotNone(t *testing.T) {
@@ -587,16 +586,19 @@ func TestJSON(t *testing.T) {
 	s := parser.interpreter.scope.NewScope("BUILD", core.ParseModeNormal)
 
 	list := pyList{pyString("foo"), pyInt(5)}
-	dict := pyDict{"foo": pyString("bar")}
+	dict := newPyDict()
+	dict.Put("foo", pyString("bar"))
 	confBase := &pyConfigBase{dict: dict}
-	config := &pyConfig{base: confBase, overlay: pyDict{"baz": pyInt(6)}}
+	overlay := newPyDict()
+	overlay.Put("baz", pyInt(6))
+	config := &pyConfig{base: confBase, overlay: overlay}
 
-	s.locals["some_list"] = list
-	s.locals["some_frozen_list"] = list.Freeze()
-	s.locals["some_dict"] = dict
-	s.locals["some_frozen_dict"] = dict.Freeze()
-	s.locals["some_config"] = config
-	s.locals["some_frozen_config"] = config.Freeze()
+	s.locals.Put("some_list", list)
+	s.locals.Put("some_frozen_list", list.Freeze())
+	s.locals.Put("some_dict", dict)
+	s.locals.Put("some_frozen_dict", dict.Freeze())
+	s.locals.Put("some_config", config)
+	s.locals.Put("some_frozen_config", config.Freeze())
 
 	s.interpretStatements(statements)
 
@@ -648,9 +650,13 @@ func TestLogConfigVariable(t *testing.T) {
 	parser.interpreter.optimiseExpressions(statements)
 
 	list := pyList{pyString("foo"), pyInt(5)}
-	dict := pyDict{"foo": pyString("bar"), "baz": list}
+	dict := newPyDict()
+	dict.Put("foo", pyString("bar"))
+	dict.Put("baz", list)
 	confBase := &pyConfigBase{dict: dict}
-	config := &pyConfig{base: confBase, overlay: pyDict{"baz": pyInt(6)}}
+	overlay := newPyDict()
+	overlay.Put("baz", pyInt(6))
+	config := &pyConfig{base: confBase, overlay: overlay}
 
 	s := parser.interpreter.scope.NewScope("BUILD", core.ParseModeNormal)
 	s.config = config
@@ -664,5 +670,5 @@ func TestLogConfigVariable(t *testing.T) {
 	setLogCode(s, "info", capture)
 	s.interpretStatements(statements)
 
-	assert.Equal(t, `//: {"baz": 6, "foo": bar}`, capturedOutput)
+	assert.Equal(t, `//: {"foo": bar, "baz": 6}`, capturedOutput)
 }

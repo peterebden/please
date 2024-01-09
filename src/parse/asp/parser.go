@@ -248,7 +248,8 @@ func (p *Parser) BuildRuleArgOrder() map[string]int {
 	for s := scope.parent; s != nil; s = s.parent {
 		scope = s
 	}
-	args := scope.locals["build_rule"].(*pyFunc).args
+	rule, _ := scope.locals.Get("build_rule")
+	args := rule.(*pyFunc).args
 	ret := make(map[string]int, len(args))
 
 	for order, name := range args {

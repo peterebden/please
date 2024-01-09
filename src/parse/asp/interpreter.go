@@ -34,7 +34,7 @@ type interpreter struct {
 func newInterpreter(state *core.BuildState, p *Parser) *interpreter {
 	s := &scope{
 		state:  state,
-		locals: map[string]pyObject{},
+		locals: newPyDict(),
 	}
 	// If we're creating an interpreter for a subrepo, we should share the subinclude cache.
 	var subincludes *cmap.Map[string, pyDict]
@@ -203,7 +203,7 @@ func (i *interpreter) interpretStatements(s *scope, statements []*Statement) (re
 func (i *interpreter) Subinclude(pkgScope *scope, path string, label core.BuildLabel, preload bool) pyDict {
 	key := filepath.Join(path, pkgScope.state.CurrentSubrepo)
 	globals, wait, first := i.subincludes.GetOrWait(key)
-	if globals != nil {
+	if globals.Map != nil {
 		return globals
 	} else if !first {
 		i.limiter.Release()
@@ -238,8 +238,9 @@ func (i *interpreter) Subinclude(pkgScope *scope, path string, label core.BuildL
 	}
 	s.interpretStatements(stmts)
 	locals := s.Freeze()
-	if s.config.overlay == nil {
-		delete(locals, "CONFIG") // Config doesn't have any local modifications
+	if s.config.overlay.Map == nil {
+		// TODO(peterebden): This is not efficiently implemented on ordmap. Can we find another way?
+		locals.Delete("CONFIG") // Config doesn't have any local modifications
 	}
 	i.subincludes.Set(key, locals)
 	return locals
@@ -399,7 +400,7 @@ func (s *scope) newScope(pkg *core.Package, mode core.ParseMode, filename string
 		pkg:         pkg,
 		parsingFor:  s.parsingFor,
 		parent:      s,
-		locals:      make(pyDict, hint),
+		locals:      sizedPyDict(hint),
 		config:      s.config,
 		Callback:    s.Callback,
 		mode:        mode,
@@ -433,7 +434,7 @@ func (s *scope) NAssert(condition bool, msg string, args ...interface{}) {
 // Lookup looks up a variable name in this scope, walking back up its ancestor scopes as needed.
 // It panics if the variable is not defined.
 func (s *scope) Lookup(name string) pyObject {
-	if obj, present := s.locals[name]; present {
+	if obj, present := s.locals.Get(name); present {
 		return obj
 	} else if s.parent != nil {
 		return s.parent.Lookup(name)
@@ -446,25 +447,27 @@ func (s *scope) Lookup(name string) pyObject {
 // This is typically used for things like function arguments where we're only interested in variables
 // in immediate scope.
 func (s *scope) LocalLookup(name string) pyObject {
-	return s.locals[name]
+	ret, _ := s.locals.Get(name)
+	return ret
 }
 
 // Set sets the given variable in this scope.
 func (s *scope) Set(name string, value pyObject) {
-	s.locals[name] = value
+	s.locals.Put(name, value)
 }
 
 // SetAll sets all contents of the given dict in this scope.
 // Optionally it can filter to just public objects (i.e. those not prefixed with an underscore)
 func (s *scope) SetAll(d pyDict, publicOnly bool) {
-	for k, v := range d {
+	for it := d.Iter(); !it.Done(); it.Next() {
+		k, v := it.Item()
 		if k == "CONFIG" {
 			// Special case; need to merge config entries rather than overwriting the entire object.
 			c, ok := v.(*pyFrozenConfig)
 			s.Assert(ok, "incoming CONFIG isn't a config object")
 			s.config.Merge(c)
 		} else if !publicOnly || k[0] != '_' {
-			s.locals[k] = v
+			s.locals.Put(k, v)
 		}
 	}
 }
@@ -472,9 +475,10 @@ func (s *scope) SetAll(d pyDict, publicOnly bool) {
 // Freeze freezes the contents of this scope, preventing mutable objects from being changed.
 // It returns the newly frozen set of locals.
 func (s *scope) Freeze() pyDict {
-	for k, v := range s.locals {
+	for it := s.locals.Iter(); !it.Done(); it.Next() {
+		k, v := it.Item()
 		if f, ok := v.(freezable); ok {
-			s.locals[k] = f.Freeze()
+			s.locals.Put(k, f.Freeze())
 		}
 	}
 	return s.locals
@@ -877,7 +881,7 @@ func (s *scope) interpretList(expr *List) pyList {
 
 func (s *scope) interpretDict(expr *Dict) pyObject {
 	if expr.Comprehension == nil {
-		d := make(pyDict, len(expr.Items))
+		d := sizedPyDict(len(expr.Items))
 		for _, v := range expr.Items {
 			d.IndexAssign(s.interpretExpression(&v.Key), s.interpretExpression(&v.Value))
 		}
@@ -885,7 +889,7 @@ func (s *scope) interpretDict(expr *Dict) pyObject {
 	}
 	cs := s.NewScope(s.filename, s.mode)
 	it := s.iterable(expr.Comprehension.Expr)
-	ret := make(pyDict, it.Len())
+	ret := sizedPyDict(it.Len())
 	cs.evaluateComprehension(it, expr.Comprehension, func(li pyObject) {
 		ret.IndexAssign(cs.interpretExpression(&expr.Items[0].Key), cs.interpretExpression(&expr.Items[0].Value))
 	})

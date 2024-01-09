@@ -42,6 +42,17 @@ func TestUnion(t *testing.T) {
 	}, Items(c))
 }
 
+func TestDelete(t *testing.T) {
+	var m ordmap.Map[string, string]
+	m.Put("1", "2")
+	m.Put("3", "4")
+	m.Put("5", "4")
+	m.Put("6", "7")
+	m.Delete("3")
+	actual, _ := m.Get("6")
+	assert.Equal(t, "7", actual)
+}
+
 // Items returns all the items from a map.
 func Items[K comparable, V any](m *ordmap.Map[K, V]) []item[K, V] {
 	ret := []item[K, V]{}
