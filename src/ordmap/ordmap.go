@@ -138,11 +138,6 @@ func (it *Iter[K, V]) Next() {
 	it.i++
 }
 
-// Map returns the original map this iterator refers to
-func (it *Iter[K, V]) Map() *Map[K, V] {
-	return it.m
-}
-
 // Key returns the key at the iterator's current position.
 // It will panic if the iterator has reached its end.
 func (it Iter[K, V]) Key() K {

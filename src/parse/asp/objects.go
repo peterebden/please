@@ -3,6 +3,7 @@ package asp
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -980,7 +981,7 @@ func (r *pyRange) Property(scope *scope, name string) pyObject {
 }
 
 func (r *pyRange) Operator(operator Operator, operand pyObject) pyObject {
-	if l, ok := operand.(pyList); ok {
+	if l, ok := operand.(pyList); ok && operator == Add {
 		ret := make(pyList, 0, r.Len()+len(l))
 		for i := r.Start; i < r.Stop; i += r.Step {
 			ret = append(ret, i)
@@ -1014,38 +1015,70 @@ func (r *pyRangeIterator) Item() pyObject {
 	return r.X
 }
 
-// A pyDictKeys is an iterator over the set of keys in a dict
-type pyDictKeys struct {
-	it ordmap.Iter[string, pyObject]
+// A pyDictView is view on either the keys, values or item pairs in a dict.
+type pyDictView[T pyDictKeyIter | pyDictValIter | pyDictItemIter] struct {
+	d pyDict
 }
 
-func (k pyDictKeys) String() string {
-	return "keys"
+func (k pyDictView[T]) String() string {
+	return "view"
 }
 
-func (k *pyDictKeys) Type() string {
-	return "keys"
+func (k pyDictView[T]) Type() string {
+	return "view"
 }
 
-func (k *pyDictKeys) IsTruthy() bool {
+func (k pyDictView[T]) IsTruthy() bool {
 	return true
 }
 
-func (k *pyDictKeys) Property(scope *scope, name string) pyObject {
-	panic("keys object has no property " + name)
+func (k pyDictView[T]) Property(scope *scope, name string) pyObject {
+	panic("view object has no property " + name)
 }
 
-func (k *pyDictKeys) Operator(operator Operator, operand pyObject) pyObject {
-	if l, ok := operand.(pyList); ok {
+func (k pyDictView[T]) Operator(operator Operator, operand pyObject) pyObject {
+	if l, ok := operand.(pyList); ok && operator == Add {
 		ret := make(pyList, 0, k.Len()+len(l))
-		for ; !k.it.Done(); k.it.Next() {
-			ret = append(ret, pyString(k.it.Key()))
+		for it := k.Iter(); !it.Done(); it.Next() {
+			ret = append(ret, it.Item())
 		}
 		return append(ret, l...)
 	}
 	panic(fmt.Sprintf("operator %s not implemented on type range", operator))
 }
 
-func (k *pyDictKeys) Len() int {
-	return k.it.Map().Len()
+func (k pyDictView[T]) Len() int {
+	return k.d.Len()
+}
+
+func (k pyDictView[T]) Iter() iterator {
+	t := new(T)
+	// TODO(peterebden): Is there a nice non-reflective way to do this?
+	reflect.ValueOf(t).Elem().Field(0).Set(reflect.ValueOf(k.d.Iter()))
+	return t
+}
+
+type pyDictKeyIter struct {
+	ordmap.Iter[string, pyObject]
+}
+
+func (k *pyDictKeyIter) Item() pyObject {
+	return pyString(k.Iter.Key())
+}
+
+type pyDictValIter struct {
+	*ordmap.Iter[string, pyObject]
+}
+
+func (v *pyDictValIter) Item() pyObject {
+	return v.Iter.Val()
+}
+
+type pyDictItemIter struct {
+	*ordmap.Iter[string, pyObject]
+}
+
+func (i *pyDictItemIter) Item() pyObject {
+	k, v := i.Iter.Item()
+	return pyList{pyString(k), v}
 }
