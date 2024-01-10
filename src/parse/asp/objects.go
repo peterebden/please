@@ -1016,7 +1016,7 @@ func (r *pyRangeIterator) Item() pyObject {
 }
 
 // A pyDictView is view on either the keys, values or item pairs in a dict.
-type pyDictView[T pyDictKeyIter | pyDictValIter | pyDictItemIter] struct {
+type pyDictView[T iterator] struct {
 	d pyDict
 }
 
@@ -1052,7 +1052,7 @@ func (k pyDictView[T]) Len() int {
 }
 
 func (k pyDictView[T]) Iter() iterator {
-	t := new(T)
+	var t T
 	// TODO(peterebden): Is there a nice non-reflective way to do this?
 	reflect.ValueOf(t).Elem().Field(0).Set(reflect.ValueOf(k.d.Iter()))
 	return t

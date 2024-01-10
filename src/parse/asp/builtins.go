@@ -671,31 +671,15 @@ func dictGet(s *scope, args []pyObject) pyObject {
 }
 
 func dictKeys(s *scope, args []pyObject) pyObject {
-	self := args[0].(pyDict)
-	ret := make(pyList, 0, self.Len())
-	for it := self.Iter(); !it.Done(); it.Next() {
-		ret = append(ret, pyString(it.Key()))
-	}
-	return ret
+	return pyDictView[*pyDictKeyIter]{args[0].(pyDict)}
 }
 
 func dictValues(s *scope, args []pyObject) pyObject {
-	self := args[0].(pyDict)
-	ret := make(pyList, 0, self.Len())
-	for it := self.Iter(); !it.Done(); it.Next() {
-		ret = append(ret, it.Val())
-	}
-	return ret
+	return pyDictView[*pyDictValIter]{args[0].(pyDict)}
 }
 
 func dictItems(s *scope, args []pyObject) pyObject {
-	self := args[0].(pyDict)
-	ret := make(pyList, 0, self.Len())
-	for it := self.Iter(); !it.Done(); it.Next() {
-		k, v := it.Item()
-		ret = append(ret, pyList{pyString(k), v})
-	}
-	return ret
+	return pyDictView[*pyDictItemIter]{args[0].(pyDict)}
 }
 
 func dictCopy(s *scope, args []pyObject) pyObject {
