@@ -240,13 +240,16 @@ func pkg(s *scope, args []pyObject) pyObject {
 		// Merge in the existing config for dictionaries
 		if overrides, ok := v.(pyDict); ok {
 			if pluginConfig, ok := configVal.(pyDict); ok {
+				newPluginConfig := pluginConfig.Copy()
 				for it := overrides.Iter(); !it.Done(); it.Next() {
-					pluginKey := strings.ToUpper(it.Key())
+					k, v := it.Item()
+					pluginKey := strings.ToUpper(k)
 					if !pluginConfig.Contains(pluginKey) {
 						s.Error("error calling package(): %s.%s is not a known config value", k, pluginKey)
 					}
+					newPluginConfig.Put(pluginKey, v)
 				}
-				v = pyDict{pluginConfig.Union(overrides.Map)}
+				v = newPluginConfig
 			} else {
 				s.Error("error calling package(): can't assign a dict to %s as it's not a dict", k)
 			}
