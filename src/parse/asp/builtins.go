@@ -7,6 +7,7 @@ import (
 	"io"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -686,22 +687,28 @@ func dictCopy(s *scope, args []pyObject) pyObject {
 	return args[0].(pyDict).Copy()
 }
 
+// coerceToList takes the given object and attempts to turn it into a list
+func coerceToList(s *scope, o pyObject) pyList {
+	if l, ok := o.(pyList); ok {
+		return l[:] // create a new slice for sorted/reversed
+	}
+	it, n := s.iterator(o)
+	l := make(pyList, 0, n)
+	for ; !it.Done(); it.Next() {
+		l = append(l, it.Item())
+	}
+	return l
+}
+
 func sorted(s *scope, args []pyObject) pyObject {
-	l, ok := args[0].(pyList)
-	s.Assert(ok, "unsortable type %s", args[0].Type())
-	l = l[:]
+	l := coerceToList(s, args[0])
 	sort.Slice(l, func(i, j int) bool { return l[i].Operator(LessThan, l[j]).IsTruthy() })
 	return l
 }
 
 func reversed(s *scope, args []pyObject) pyObject {
-	l, ok := args[0].(pyList)
-	s.Assert(ok, "irreversible type %s", args[0].Type())
-	l = l[:]
-	// TODO(chrisnovakovic): replace with slices.Reverse after upgrading to Go 1.21
-	for i, j := 0, len(l)-1; i < j; i, j = i+1, j-1 {
-		l[i], l[j] = l[j], l[i]
-	}
+	l := coerceToList(s, args[0])
+	slices.Reverse(l)
 	return l
 }
 

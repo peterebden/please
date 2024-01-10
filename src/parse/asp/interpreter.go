@@ -942,7 +942,11 @@ func (s *scope) unpackNames(names []string, obj pyObject) {
 
 // iterable returns the result of the given expression as an iterator object.
 func (s *scope) iterable(expr *Expression) (iterator, int) {
-	o := s.interpretExpression(expr)
+	return s.iterator(s.interpretExpression(expr))
+}
+
+// iterator returns an iterator from the given object and its size, if available.
+func (s *scope) iterator(o pyObject) (iterator, int) {
 	it, ok := o.(iterable)
 	s.Assert(ok, "Non-iterable type %s", o.Type())
 	if l, ok := o.(lengthable); ok {
