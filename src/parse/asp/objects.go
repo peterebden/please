@@ -968,3 +968,43 @@ func (r *pyRange) Len() int {
 func (r *pyRange) Item(index int) pyObject {
 	return r.Start + pyInt(index)*r.Step
 }
+
+// A pyDictKeys is an iterator over the set of keys in a dict
+type pyDictKeys struct {
+	it ordmap.Iter[string, pyObject]
+}
+
+func (k pyDictKeys) String() string {
+	return "keys"
+}
+
+func (r *pyDictKeys) Type() string {
+	return "keys"
+}
+
+func (r *pyDictKeys) IsTruthy() bool {
+	return true
+}
+
+func (r *pyDictKeys) Property(scope *scope, name string) pyObject {
+	panic("keys object has no property " + name)
+}
+
+func (r *pyDictKeys) Operator(operator Operator, operand pyObject) pyObject {
+	if l, ok := operand.(pyList); ok {
+		ret := make(pyList, 0, r.it.Len()+len(l))
+		for i := r.Start; i < r.Stop; i += r.Step {
+			ret = append(ret, i)
+		}
+		return append(ret, l...)
+	}
+	panic(fmt.Sprintf("operator %s not implemented on type range", operator))
+}
+
+func (r *pyDictKeys) Len() int {
+	return int((r.Stop - r.Start) / r.Step)
+}
+
+func (r *pyDictKeys) Item(index int) pyObject {
+	return r.Start + pyInt(index)*r.Step
+}

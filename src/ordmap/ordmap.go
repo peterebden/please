@@ -116,6 +116,8 @@ func (m *Map[K, V]) Copy() *Map[K, V] {
 //	    val := it.Val()
 //	    key, val = it.Item()
 //	}
+//
+// Behaviour is undefined if the map is modified during iteration.
 func (m *Map[K, V]) Iter() Iter[K, V] {
 	return Iter[K, V]{m: m}
 }
