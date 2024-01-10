@@ -563,10 +563,9 @@ func (s *scope) interpretIf(stmt *IfStatement) pyObject {
 }
 
 func (s *scope) interpretFor(stmt *ForStatement) pyObject {
-	it := s.iterable(&stmt.Expr)
-	for i, n := 0, it.Len(); i < n; i++ {
-		li := it.Item(i)
-		s.unpackNames(stmt.Names, li)
+	it, _ := s.iterable(&stmt.Expr)
+	for ; !it.Done(); it.Next() {
+		s.unpackNames(stmt.Names, it.Item())
 		if ret := s.interpretStatements(stmt.Statements); ret != nil {
 			if s, ok := ret.(pySentinel); ok && s == continueIteration {
 				continue
@@ -652,7 +651,7 @@ func (s *scope) interpretJoin(base string, list *List) pyObject {
 	// Has a comprehension. Note that there is only ever one level; by the anecdata, two-level ones
 	// are rare in this context so not worth worrying about here.
 	cs := s.NewScope(s.filename, s.mode)
-	it := s.iterable(list.Comprehension.Expr)
+	it, _ := s.iterable(list.Comprehension.Expr)
 	first := true
 	cs.evaluateComprehension(it, list.Comprehension, func(li pyObject) {
 		if first {
@@ -867,8 +866,8 @@ func (s *scope) interpretList(expr *List) pyList {
 		return pyList(s.evaluateExpressions(expr.Values))
 	}
 	cs := s.NewScope(s.filename, s.mode)
-	it := s.iterable(expr.Comprehension.Expr)
-	ret := make(pyList, 0, it.Len())
+	it, size := s.iterable(expr.Comprehension.Expr)
+	ret := make(pyList, 0, size)
 	cs.evaluateComprehension(it, expr.Comprehension, func(li pyObject) {
 		if len(expr.Values) == 1 {
 			ret = append(ret, cs.interpretExpression(expr.Values[0]))
@@ -888,8 +887,8 @@ func (s *scope) interpretDict(expr *Dict) pyObject {
 		return d
 	}
 	cs := s.NewScope(s.filename, s.mode)
-	it := s.iterable(expr.Comprehension.Expr)
-	ret := sizedPyDict(it.Len())
+	it, size := s.iterable(expr.Comprehension.Expr)
+	ret := sizedPyDict(size)
 	cs.evaluateComprehension(it, expr.Comprehension, func(li pyObject) {
 		ret.IndexAssign(cs.interpretExpression(&expr.Items[0].Key), cs.interpretExpression(&expr.Items[0].Value))
 	})
@@ -898,22 +897,21 @@ func (s *scope) interpretDict(expr *Dict) pyObject {
 
 // evaluateComprehension handles iterating a comprehension's loops.
 // The provided callback function is called with each item to be added to the result.
-func (s *scope) evaluateComprehension(it iterable, comp *Comprehension, callback func(pyObject)) {
+func (s *scope) evaluateComprehension(it iterator, comp *Comprehension, callback func(pyObject)) {
 	if comp.Second != nil {
-		for i, n := 0, it.Len(); i < n; i++ {
-			li := it.Item(i)
-			s.unpackNames(comp.Names, li)
-			it2 := s.iterable(comp.Second.Expr)
-			for j, n := 0, it2.Len(); j < n; j++ {
-				li2 := it2.Item(j)
+		for ; !it.Done(); it.Next() {
+			s.unpackNames(comp.Names, it.Item())
+			it2, _ := s.iterable(comp.Second.Expr)
+			for ; !it2.Done(); it2.Next() {
+				li2 := it2.Item()
 				if s.evaluateComprehensionExpression(comp, comp.Second.Names, li2) {
 					callback(li2)
 				}
 			}
 		}
 	} else {
-		for i, n := 0, it.Len(); i < n; i++ {
-			li := it.Item(i)
+		for ; !it.Done(); it.Next() {
+			li := it.Item()
 			if s.evaluateComprehensionExpression(comp, comp.Names, li) {
 				callback(li)
 			}
@@ -942,12 +940,15 @@ func (s *scope) unpackNames(names []string, obj pyObject) {
 	}
 }
 
-// iterable returns the result of the given expression as an iterable object.
-func (s *scope) iterable(expr *Expression) iterable {
+// iterable returns the result of the given expression as an iterator object.
+func (s *scope) iterable(expr *Expression) (iterator, int) {
 	o := s.interpretExpression(expr)
 	it, ok := o.(iterable)
 	s.Assert(ok, "Non-iterable type %s", o.Type())
-	return it
+	if l, ok := o.(lengthable); ok {
+		return it.Iter(), l.Len()
+	}
+	return it.Iter(), 0
 }
 
 // evaluateExpressions runs a series of Python expressions in this scope and creates a series of concrete objects from them.

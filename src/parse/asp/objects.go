@@ -35,9 +35,20 @@ type freezable interface {
 // Not all pyObjects implement this.
 type iterable interface {
 	pyObject
-	// This isn't super generic but it works fine for all cases we have right now.
+	Iter() iterator
+}
+
+// An iterator represents an internal type that iterates over a sequence.
+// They may or may not also be pyObjects.
+type iterator interface {
+	Done() bool
+	Next()
+	Item() pyObject
+}
+
+// A lengthable is an extension to an object that knows its own length.
+type lengthable interface {
 	Len() int
-	Item(index int) pyObject
 }
 
 // An indexAssignable represents an object that can be assigned to by index (i.e. the x in x[y] = z)
@@ -394,14 +405,32 @@ func (l pyList) Repeat(n pyInt) pyList {
 	return ret
 }
 
-// Len returns the length of this list, implementing iterable.
+// Iter returns an iterator for this list
+func (l pyList) Iter() iterator {
+	return &listIterator{l: l}
+}
+
+// Len returns the length of this list
 func (l pyList) Len() int {
 	return len(l)
 }
 
-// Item returns the i'th item of this list, implementing iterable.
-func (l pyList) Item(i int) pyObject {
-	return l[i]
+// A listIterator fulfils the iterator interface for iterating a list.
+type listIterator struct {
+	l pyList
+	i int
+}
+
+func (l *listIterator) Done() bool {
+	return l.i == len(l.l)
+}
+
+func (l *listIterator) Next() {
+	l.i++
+}
+
+func (l *listIterator) Item() pyObject {
+	return l.l[l.i]
 }
 
 // A pyFrozenList implements an immutable list.
@@ -961,12 +990,28 @@ func (r *pyRange) Operator(operator Operator, operand pyObject) pyObject {
 	panic(fmt.Sprintf("operator %s not implemented on type range", operator))
 }
 
+func (r *pyRange) Iter() iterator {
+	return &pyRangeIterator{X: r.Start, Stop: r.Stop, Step: r.Step}
+}
+
 func (r *pyRange) Len() int {
 	return int((r.Stop - r.Start) / r.Step)
 }
 
-func (r *pyRange) Item(index int) pyObject {
-	return r.Start + pyInt(index)*r.Step
+type pyRangeIterator struct {
+	X, Stop, Step pyInt
+}
+
+func (r *pyRangeIterator) Done() bool {
+	return r.X >= r.Stop
+}
+
+func (r *pyRangeIterator) Next() {
+	r.X += r.Step
+}
+
+func (r *pyRangeIterator) Item() pyObject {
+	return r.X
 }
 
 // A pyDictKeys is an iterator over the set of keys in a dict
@@ -978,33 +1023,29 @@ func (k pyDictKeys) String() string {
 	return "keys"
 }
 
-func (r *pyDictKeys) Type() string {
+func (k *pyDictKeys) Type() string {
 	return "keys"
 }
 
-func (r *pyDictKeys) IsTruthy() bool {
+func (k *pyDictKeys) IsTruthy() bool {
 	return true
 }
 
-func (r *pyDictKeys) Property(scope *scope, name string) pyObject {
+func (k *pyDictKeys) Property(scope *scope, name string) pyObject {
 	panic("keys object has no property " + name)
 }
 
-func (r *pyDictKeys) Operator(operator Operator, operand pyObject) pyObject {
+func (k *pyDictKeys) Operator(operator Operator, operand pyObject) pyObject {
 	if l, ok := operand.(pyList); ok {
-		ret := make(pyList, 0, r.it.Len()+len(l))
-		for i := r.Start; i < r.Stop; i += r.Step {
-			ret = append(ret, i)
+		ret := make(pyList, 0, k.Len()+len(l))
+		for ; !k.it.Done(); k.it.Next() {
+			ret = append(ret, pyString(k.it.Key()))
 		}
 		return append(ret, l...)
 	}
 	panic(fmt.Sprintf("operator %s not implemented on type range", operator))
 }
 
-func (r *pyDictKeys) Len() int {
-	return int((r.Stop - r.Start) / r.Step)
-}
-
-func (r *pyDictKeys) Item(index int) pyObject {
-	return r.Start + pyInt(index)*r.Step
+func (k *pyDictKeys) Len() int {
+	return k.it.Map().Len()
 }
