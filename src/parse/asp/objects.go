@@ -1054,8 +1054,9 @@ func (k pyDictView[T]) Len() int {
 func (k pyDictView[T]) Iter() iterator {
 	var t T
 	// TODO(peterebden): Is there a nice non-reflective way to do this?
-	reflect.ValueOf(t).Elem().Field(0).Set(reflect.ValueOf(k.d.Iter()))
-	return t
+	ret := reflect.New(reflect.TypeOf(t).Elem())
+	ret.Elem().Field(0).Set(reflect.ValueOf(k.d.Iter()))
+	return ret.Interface().(iterator)
 }
 
 type pyDictKeyIter struct {
@@ -1067,7 +1068,7 @@ func (k *pyDictKeyIter) Item() pyObject {
 }
 
 type pyDictValIter struct {
-	*ordmap.Iter[string, pyObject]
+	ordmap.Iter[string, pyObject]
 }
 
 func (v *pyDictValIter) Item() pyObject {
@@ -1075,7 +1076,7 @@ func (v *pyDictValIter) Item() pyObject {
 }
 
 type pyDictItemIter struct {
-	*ordmap.Iter[string, pyObject]
+	ordmap.Iter[string, pyObject]
 }
 
 func (i *pyDictItemIter) Item() pyObject {

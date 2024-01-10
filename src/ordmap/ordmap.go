@@ -89,13 +89,13 @@ func (m *Map[K, V]) Union(that *Map[K, V]) *Map[K, V] {
 	for i, o := range m.objs {
 		objs[i] = o
 	}
-	for k, i := range that.keys {
-		if idx, present := keys[k]; present {
-			objs[idx] = that.objs[i]
+	for _, o := range that.objs {
+		if idx, present := keys[o.Key]; present {
+			objs[idx] = o
 			continue
 		}
-		keys[k] = len(objs)
-		objs = append(objs, that.objs[i])
+		keys[o.Key] = len(objs)
+		objs = append(objs, o)
 	}
 	return &Map[K, V]{keys: keys, objs: objs}
 }
