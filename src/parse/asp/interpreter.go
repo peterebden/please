@@ -34,7 +34,7 @@ type interpreter struct {
 func newInterpreter(state *core.BuildState, p *Parser) *interpreter {
 	s := &scope{
 		state:  state,
-		locals: map[string]pyObject{},
+		locals: newPyDict(),
 	}
 	// If we're creating an interpreter for a subrepo, we should share the subinclude cache.
 	var subincludes *cmap.Map[string, pyDict]
@@ -203,7 +203,7 @@ func (i *interpreter) interpretStatements(s *scope, statements []*Statement) (re
 func (i *interpreter) Subinclude(pkgScope *scope, path string, label core.BuildLabel, preload bool) pyDict {
 	key := filepath.Join(path, pkgScope.state.CurrentSubrepo)
 	globals, wait, first := i.subincludes.GetOrWait(key)
-	if globals != nil {
+	if globals.Map != nil {
 		return globals
 	} else if !first {
 		i.limiter.Release()
@@ -238,8 +238,9 @@ func (i *interpreter) Subinclude(pkgScope *scope, path string, label core.BuildL
 	}
 	s.interpretStatements(stmts)
 	locals := s.Freeze()
-	if s.config.overlay == nil {
-		delete(locals, "CONFIG") // Config doesn't have any local modifications
+	if s.config.overlay.Map == nil {
+		// TODO(peterebden): This is not efficiently implemented on ordmap. Can we find another way?
+		locals.Delete("CONFIG") // Config doesn't have any local modifications
 	}
 	i.subincludes.Set(key, locals)
 	return locals
@@ -399,7 +400,7 @@ func (s *scope) newScope(pkg *core.Package, mode core.ParseMode, filename string
 		pkg:         pkg,
 		parsingFor:  s.parsingFor,
 		parent:      s,
-		locals:      make(pyDict, hint),
+		locals:      sizedPyDict(hint),
 		config:      s.config,
 		Callback:    s.Callback,
 		mode:        mode,
@@ -433,7 +434,7 @@ func (s *scope) NAssert(condition bool, msg string, args ...interface{}) {
 // Lookup looks up a variable name in this scope, walking back up its ancestor scopes as needed.
 // It panics if the variable is not defined.
 func (s *scope) Lookup(name string) pyObject {
-	if obj, present := s.locals[name]; present {
+	if obj, present := s.locals.Get(name); present {
 		return obj
 	} else if s.parent != nil {
 		return s.parent.Lookup(name)
@@ -446,25 +447,27 @@ func (s *scope) Lookup(name string) pyObject {
 // This is typically used for things like function arguments where we're only interested in variables
 // in immediate scope.
 func (s *scope) LocalLookup(name string) pyObject {
-	return s.locals[name]
+	ret, _ := s.locals.Get(name)
+	return ret
 }
 
 // Set sets the given variable in this scope.
 func (s *scope) Set(name string, value pyObject) {
-	s.locals[name] = value
+	s.locals.Put(name, value)
 }
 
 // SetAll sets all contents of the given dict in this scope.
 // Optionally it can filter to just public objects (i.e. those not prefixed with an underscore)
 func (s *scope) SetAll(d pyDict, publicOnly bool) {
-	for k, v := range d {
+	for it := d.Iter(); !it.Done(); it.Next() {
+		k, v := it.Item()
 		if k == "CONFIG" {
 			// Special case; need to merge config entries rather than overwriting the entire object.
 			c, ok := v.(*pyFrozenConfig)
 			s.Assert(ok, "incoming CONFIG isn't a config object")
 			s.config.Merge(c)
 		} else if !publicOnly || k[0] != '_' {
-			s.locals[k] = v
+			s.locals.Put(k, v)
 		}
 	}
 }
@@ -472,9 +475,10 @@ func (s *scope) SetAll(d pyDict, publicOnly bool) {
 // Freeze freezes the contents of this scope, preventing mutable objects from being changed.
 // It returns the newly frozen set of locals.
 func (s *scope) Freeze() pyDict {
-	for k, v := range s.locals {
+	for it := s.locals.Iter(); !it.Done(); it.Next() {
+		k, v := it.Item()
 		if f, ok := v.(freezable); ok {
-			s.locals[k] = f.Freeze()
+			s.locals.Put(k, f.Freeze())
 		}
 	}
 	return s.locals
@@ -559,10 +563,9 @@ func (s *scope) interpretIf(stmt *IfStatement) pyObject {
 }
 
 func (s *scope) interpretFor(stmt *ForStatement) pyObject {
-	it := s.iterable(&stmt.Expr)
-	for i, n := 0, it.Len(); i < n; i++ {
-		li := it.Item(i)
-		s.unpackNames(stmt.Names, li)
+	it, _ := s.iterable(&stmt.Expr)
+	for ; !it.Done(); it.Next() {
+		s.unpackNames(stmt.Names, it.Item())
 		if ret := s.interpretStatements(stmt.Statements); ret != nil {
 			if s, ok := ret.(pySentinel); ok && s == continueIteration {
 				continue
@@ -648,7 +651,7 @@ func (s *scope) interpretJoin(base string, list *List) pyObject {
 	// Has a comprehension. Note that there is only ever one level; by the anecdata, two-level ones
 	// are rare in this context so not worth worrying about here.
 	cs := s.NewScope(s.filename, s.mode)
-	it := s.iterable(list.Comprehension.Expr)
+	it, _ := s.iterable(list.Comprehension.Expr)
 	first := true
 	cs.evaluateComprehension(it, list.Comprehension, func(li pyObject) {
 		if first {
@@ -863,8 +866,8 @@ func (s *scope) interpretList(expr *List) pyList {
 		return pyList(s.evaluateExpressions(expr.Values))
 	}
 	cs := s.NewScope(s.filename, s.mode)
-	it := s.iterable(expr.Comprehension.Expr)
-	ret := make(pyList, 0, it.Len())
+	it, size := s.iterable(expr.Comprehension.Expr)
+	ret := make(pyList, 0, size)
 	cs.evaluateComprehension(it, expr.Comprehension, func(li pyObject) {
 		if len(expr.Values) == 1 {
 			ret = append(ret, cs.interpretExpression(expr.Values[0]))
@@ -877,15 +880,15 @@ func (s *scope) interpretList(expr *List) pyList {
 
 func (s *scope) interpretDict(expr *Dict) pyObject {
 	if expr.Comprehension == nil {
-		d := make(pyDict, len(expr.Items))
+		d := sizedPyDict(len(expr.Items))
 		for _, v := range expr.Items {
 			d.IndexAssign(s.interpretExpression(&v.Key), s.interpretExpression(&v.Value))
 		}
 		return d
 	}
 	cs := s.NewScope(s.filename, s.mode)
-	it := s.iterable(expr.Comprehension.Expr)
-	ret := make(pyDict, it.Len())
+	it, size := s.iterable(expr.Comprehension.Expr)
+	ret := sizedPyDict(size)
 	cs.evaluateComprehension(it, expr.Comprehension, func(li pyObject) {
 		ret.IndexAssign(cs.interpretExpression(&expr.Items[0].Key), cs.interpretExpression(&expr.Items[0].Value))
 	})
@@ -894,22 +897,21 @@ func (s *scope) interpretDict(expr *Dict) pyObject {
 
 // evaluateComprehension handles iterating a comprehension's loops.
 // The provided callback function is called with each item to be added to the result.
-func (s *scope) evaluateComprehension(it iterable, comp *Comprehension, callback func(pyObject)) {
+func (s *scope) evaluateComprehension(it iterator, comp *Comprehension, callback func(pyObject)) {
 	if comp.Second != nil {
-		for i, n := 0, it.Len(); i < n; i++ {
-			li := it.Item(i)
-			s.unpackNames(comp.Names, li)
-			it2 := s.iterable(comp.Second.Expr)
-			for j, n := 0, it2.Len(); j < n; j++ {
-				li2 := it2.Item(j)
+		for ; !it.Done(); it.Next() {
+			s.unpackNames(comp.Names, it.Item())
+			it2, _ := s.iterable(comp.Second.Expr)
+			for ; !it2.Done(); it2.Next() {
+				li2 := it2.Item()
 				if s.evaluateComprehensionExpression(comp, comp.Second.Names, li2) {
 					callback(li2)
 				}
 			}
 		}
 	} else {
-		for i, n := 0, it.Len(); i < n; i++ {
-			li := it.Item(i)
+		for ; !it.Done(); it.Next() {
+			li := it.Item()
 			if s.evaluateComprehensionExpression(comp, comp.Names, li) {
 				callback(li)
 			}
@@ -938,12 +940,19 @@ func (s *scope) unpackNames(names []string, obj pyObject) {
 	}
 }
 
-// iterable returns the result of the given expression as an iterable object.
-func (s *scope) iterable(expr *Expression) iterable {
-	o := s.interpretExpression(expr)
+// iterable returns the result of the given expression as an iterator object.
+func (s *scope) iterable(expr *Expression) (iterator, int) {
+	return s.iterator(s.interpretExpression(expr))
+}
+
+// iterator returns an iterator from the given object and its size, if available.
+func (s *scope) iterator(o pyObject) (iterator, int) {
 	it, ok := o.(iterable)
 	s.Assert(ok, "Non-iterable type %s", o.Type())
-	return it
+	if l, ok := o.(lengthable); ok {
+		return it.Iter(), l.Len()
+	}
+	return it.Iter(), 0
 }
 
 // evaluateExpressions runs a series of Python expressions in this scope and creates a series of concrete objects from them.

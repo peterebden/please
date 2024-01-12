@@ -7,6 +7,7 @@ import (
 	"io"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -230,7 +231,8 @@ func filegroup(s *scope, args []pyObject) pyObject {
 // pkg implements the package() builtin function.
 func pkg(s *scope, args []pyObject) pyObject {
 	s.Assert(s.pkg.NumTargets() == 0, "package() must be called before any build targets are defined")
-	for k, v := range s.locals {
+	for it := s.locals.Iter(); !it.Done(); it.Next() {
+		k, v := it.Item()
 		k = strings.ToUpper(k)
 		configVal := s.config.Get(k, nil)
 		s.Assert(configVal != nil, "error calling package(): %s is not a known config value", k)
@@ -239,13 +241,13 @@ func pkg(s *scope, args []pyObject) pyObject {
 		if overrides, ok := v.(pyDict); ok {
 			if pluginConfig, ok := configVal.(pyDict); ok {
 				newPluginConfig := pluginConfig.Copy()
-				for pluginKey, override := range overrides {
-					pluginKey = strings.ToUpper(pluginKey)
-					if _, ok := newPluginConfig[pluginKey]; !ok {
+				for it := overrides.Iter(); !it.Done(); it.Next() {
+					k, v := it.Item()
+					pluginKey := strings.ToUpper(k)
+					if !pluginConfig.Contains(pluginKey) {
 						s.Error("error calling package(): %s.%s is not a known config value", k, pluginKey)
 					}
-
-					newPluginConfig.IndexAssign(pyString(pluginKey), override)
+					newPluginConfig.Put(pluginKey, v)
 				}
 				v = newPluginConfig
 			} else {
@@ -398,9 +400,9 @@ func objLen(obj pyObject) pyInt {
 	case pyFrozenList:
 		return pyInt(len(t.pyList))
 	case pyDict:
-		return pyInt(len(t))
+		return pyInt(t.Len())
 	case pyFrozenDict:
-		return pyInt(len(t.pyDict))
+		return pyInt(t.pyDict.Len())
 	case pyString:
 		return pyInt(len([]rune(t)))
 	}
@@ -564,7 +566,8 @@ func strRFind(s *scope, args []pyObject) pyObject {
 
 func strFormat(s *scope, args []pyObject) pyObject {
 	self := string(args[0].(pyString))
-	for k, v := range s.locals {
+	for it := s.locals.Iter(); !it.Done(); it.Next() {
+		k, v := it.Item()
 		self = strings.ReplaceAll(self, "{"+k+"}", v.String())
 	}
 	for _, arg := range args[1:] {
@@ -667,64 +670,50 @@ func dictGet(s *scope, args []pyObject) pyObject {
 	self := args[0].(pyDict)
 	sk, ok := args[1].(pyString)
 	s.Assert(ok, "dict keys must be strings, not %s", args[1].Type())
-	if ret, present := self[string(sk)]; present {
+	if ret, present := self.Get(string(sk)); present {
 		return ret
 	}
 	return args[2]
 }
 
 func dictKeys(s *scope, args []pyObject) pyObject {
-	self := args[0].(pyDict)
-	ret := make(pyList, len(self))
-	for i, k := range self.Keys() {
-		ret[i] = pyString(k)
-	}
-	return ret
+	return pyDictView[*pyDictKeyIter]{args[0].(pyDict)}
 }
 
 func dictValues(s *scope, args []pyObject) pyObject {
-	self := args[0].(pyDict)
-	ret := make(pyList, len(self))
-	for i, k := range self.Keys() {
-		ret[i] = self[k]
-	}
-	return ret
+	return pyDictView[*pyDictValIter]{args[0].(pyDict)}
 }
 
 func dictItems(s *scope, args []pyObject) pyObject {
-	self := args[0].(pyDict)
-	ret := make(pyList, len(self))
-	for i, k := range self.Keys() {
-		ret[i] = pyList{pyString(k), self[k]}
-	}
-	return ret
+	return pyDictView[*pyDictItemIter]{args[0].(pyDict)}
 }
 
 func dictCopy(s *scope, args []pyObject) pyObject {
-	self := args[0].(pyDict)
-	ret := make(pyDict, len(self))
-	for k, v := range self {
-		ret[k] = v
+	return args[0].(pyDict).Copy()
+}
+
+// coerceToList takes the given object and attempts to turn it into a list
+func coerceToList(s *scope, o pyObject) pyList {
+	if l, ok := o.(pyList); ok {
+		return l[:] // create a new slice for sorted/reversed
 	}
-	return ret
+	it, n := s.iterator(o)
+	l := make(pyList, 0, n)
+	for ; !it.Done(); it.Next() {
+		l = append(l, it.Item())
+	}
+	return l
 }
 
 func sorted(s *scope, args []pyObject) pyObject {
-	l, ok := args[0].(pyList)
-	s.Assert(ok, "unsortable type %s", args[0].Type())
-	l = l[:]
+	l := coerceToList(s, args[0])
 	sort.Slice(l, func(i, j int) bool { return l[i].Operator(LessThan, l[j]).IsTruthy() })
 	return l
 }
 
 func reversed(s *scope, args []pyObject) pyObject {
-	l, ok := args[0].(pyList)
-	s.Assert(ok, "irreversible type %s", args[0].Type())
-	l = l[:]
-	// TODO(chrisnovakovic): replace with slices.Reverse after upgrading to Go 1.21
-	for i, j := 0, len(l)-1; i < j; i, j = i+1, j-1 {
-		l[i], l[j] = l[j], l[i]
-	}
+	l := coerceToList(s, args[0])
+	slices.Reverse(l)
 	return l
 }
 
@@ -1115,10 +1104,11 @@ func addData(s *scope, args []pyObject) pyObject {
 			}
 		}
 	} else if isType(datum, "dict") {
-		for name, v := range datum.(pyDict) {
+		for it := datum.(pyDict).Iter(); !it.Done(); it.Next() {
+			k, v := it.Item()
 			for _, str := range v.(pyList) {
 				if bi := parseBuildInput(s, str, string(label.(pyString)), systemAllowed, tool); bi != nil {
-					addNamedDatumToTargetAndMaybeQueue(s, name, target, bi, systemAllowed, tool)
+					addNamedDatumToTargetAndMaybeQueue(s, k, target, bi, systemAllowed, tool)
 				}
 			}
 		}
@@ -1181,13 +1171,13 @@ func getNamedOuts(s *scope, args []pyObject) pyObject {
 		outs = target.DeclaredNamedOutputs()
 	}
 
-	ret := make(pyDict, len(outs))
+	ret := sizedPyDict(len(outs))
 	for k, v := range outs {
 		list := make(pyList, len(v))
 		for i, out := range v {
 			list[i] = pyString(out)
 		}
-		ret[k] = list
+		ret.Put(k, list)
 	}
 	return ret
 }
@@ -1211,9 +1201,9 @@ func getEntryPoints(s *scope, args []pyObject) pyObject {
 		target = getTargetPost(s, name)
 	}
 
-	ret := make(pyDict, len(target.EntryPoints))
+	ret := sizedPyDict(len(target.EntryPoints))
 	for name, output := range target.EntryPoints {
-		ret[name] = pyString(output)
+		ret.Put(name, pyString(output))
 	}
 	return ret
 }
@@ -1238,9 +1228,9 @@ func getCommand(s *scope, args []pyObject) pyObject {
 		return pyString(target.GetCommandConfig(config))
 	}
 	if len(target.Commands) > 0 {
-		commands := pyDict{}
+		commands := sizedPyDict(len(target.Commands))
 		for config, cmd := range target.Commands {
-			commands[config] = pyString(cmd)
+			commands.Put(config, pyString(cmd))
 		}
 		return commands
 	}
@@ -1276,13 +1266,18 @@ func selectFunc(s *scope, args []pyObject) pyObject {
 	var def pyObject
 
 	// This is not really the same as Bazel's order-of-matching rules, but is at least deterministic.
-	keys := d.Keys()
+	// TODO(peterebden): Add a proper reverse iterator
+	keys := make([]string, 0, d.Len())
+	for it := d.Iter(); !it.Done(); it.Next() {
+		keys = append(keys, it.Key())
+	}
 	for i := len(keys) - 1; i >= 0; i-- {
 		k := keys[i]
 		if k == "//conditions:default" || k == "default" {
-			def = d[k]
+			def, _ = d.Get(k)
 		} else if selectTarget(s, s.parseLabelInContextPkg(k)).HasLabel("config:on") {
-			return d[k]
+			ret, _ := d.Get(k)
+			return ret
 		}
 	}
 	s.NAssert(def == nil, "None of the select() conditions matched")

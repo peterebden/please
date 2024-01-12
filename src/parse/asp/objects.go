@@ -3,10 +3,12 @@ package asp
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/thought-machine/please/src/ordmap"
 )
 
 // A pyObject is the base type for all interpreter objects.
@@ -34,9 +36,20 @@ type freezable interface {
 // Not all pyObjects implement this.
 type iterable interface {
 	pyObject
-	// This isn't super generic but it works fine for all cases we have right now.
+	Iter() iterator
+}
+
+// An iterator represents an internal type that iterates over a sequence.
+// They may or may not also be pyObjects.
+type iterator interface {
+	Done() bool
+	Next()
+	Item() pyObject
+}
+
+// A lengthable is an extension to an object that knows its own length.
+type lengthable interface {
 	Len() int
-	Item(index int) pyObject
 }
 
 // An indexAssignable represents an object that can be assigned to by index (i.e. the x in x[y] = z)
@@ -393,14 +406,32 @@ func (l pyList) Repeat(n pyInt) pyList {
 	return ret
 }
 
-// Len returns the length of this list, implementing iterable.
+// Iter returns an iterator for this list
+func (l pyList) Iter() iterator {
+	return &listIterator{l: l}
+}
+
+// Len returns the length of this list
 func (l pyList) Len() int {
 	return len(l)
 }
 
-// Item returns the i'th item of this list, implementing iterable.
-func (l pyList) Item(i int) pyObject {
-	return l[i]
+// A listIterator fulfils the iterator interface for iterating a list.
+type listIterator struct {
+	l pyList
+	i int
+}
+
+func (l *listIterator) Done() bool {
+	return l.i == len(l.l)
+}
+
+func (l *listIterator) Next() {
+	l.i++
+}
+
+func (l *listIterator) Item() pyObject {
+	return l.l[l.i]
 }
 
 // A pyFrozenList implements an immutable list.
@@ -414,19 +445,29 @@ func (l pyFrozenList) IndexAssign(index, value pyObject) {
 	panic("list is immutable")
 }
 
-type pyDict map[string]pyObject // Dicts can only be keyed by strings
+type pyDict struct {
+	*ordmap.Map[string, pyObject] // Dicts can only be keyed by strings
+}
+
+func newPyDict() pyDict {
+	return pyDict{&ordmap.Map[string, pyObject]{}}
+}
+
+func sizedPyDict(sizeHint int) pyDict {
+	return pyDict{ordmap.New[string, pyObject](sizeHint)}
+}
 
 func (d pyDict) Type() string {
 	return "dict"
 }
 
 func (d pyDict) IsTruthy() bool {
-	return len(d) > 0
+	return d.Len() > 0
 }
 
 func (d pyDict) Property(scope *scope, name string) pyObject {
 	// We allow looking up dict members by . as well as by indexing in order to facilitate the config map.
-	if obj, present := d[name]; present {
+	if obj, present := d.Get(name); present {
 		return obj
 	} else if prop, present := scope.interpreter.dictMethods[name]; present {
 		return prop.Member(d)
@@ -437,15 +478,14 @@ func (d pyDict) Property(scope *scope, name string) pyObject {
 func (d pyDict) Operator(operator Operator, operand pyObject) pyObject {
 	if operator == In || operator == NotIn {
 		if s, ok := operand.(pyString); ok {
-			_, present := d[string(s)]
-			return newPyBool(present == (operator == In))
+			return newPyBool(d.Contains(string(s)) == (operator == In))
 		}
 		return newPyBool(operator == NotIn)
 	} else if operator == Index {
 		s, ok := operand.(pyString)
 		if !ok {
 			panic("Dict keys must be strings, not " + operand.Type())
-		} else if v, present := d[string(s)]; present {
+		} else if v, present := d.Get(string(s)); present {
 			return v
 		}
 		panic("unknown dict key: " + s.String())
@@ -454,14 +494,7 @@ func (d pyDict) Operator(operator Operator, operand pyObject) pyObject {
 		if !ok {
 			panic("Operator to | must be another dict, not " + operand.Type())
 		}
-		ret := make(pyDict, len(d)+len(d2))
-		for k, v := range d {
-			ret[k] = v
-		}
-		for k, v := range d2 {
-			ret[k] = v
-		}
-		return ret
+		return pyDict{d.Union(d2.Map)}
 	}
 	panic("Unsupported operator on dict")
 }
@@ -471,14 +504,15 @@ func (d pyDict) IndexAssign(index, value pyObject) {
 	if !ok {
 		panic("Dict keys must be strings, not " + index.Type())
 	}
-	d[string(key)] = value
+	d.Put(string(key), value)
 }
 
 func (d pyDict) String() string {
 	var b strings.Builder
 	b.WriteByte('{')
 	started := false
-	for _, k := range d.Keys() {
+	for it := d.Iter(); !it.Done(); it.Next() {
+		k, v := it.Item()
 		if started {
 			b.WriteString(", ")
 		}
@@ -486,52 +520,42 @@ func (d pyDict) String() string {
 		b.WriteByte('"')
 		b.WriteString(k)
 		b.WriteString(`": `)
-		b.WriteString(d[k].String())
+		b.WriteString(v.String())
 	}
 	b.WriteByte('}')
 	return b.String()
 }
 
-// Copy creates a shallow duplicate of this dictionary.
-func (d pyDict) Copy() pyDict {
-	m := make(pyDict, len(d))
-	for k, v := range d {
+func (d pyDict) MarshalJSON() ([]byte, error) {
+	m := map[string]pyObject{}
+	for it := d.Iter(); !it.Done(); it.Next() {
+		k, v := it.Item()
 		m[k] = v
 	}
-	return m
+	return json.Marshal(m)
+}
+
+// Copy creates a shallow duplicate of this dictionary.
+func (d pyDict) Copy() pyDict {
+	return pyDict{d.Map.Copy()}
 }
 
 // Freeze freezes this dict for further updates.
 // Note that this is a "soft" freeze; callers holding the original unfrozen
 // reference can still modify it.
 func (d pyDict) Freeze() pyObject {
-	frozen := pyDict{}
-	for k, v := range d {
-		if f, ok := v.(freezable); ok {
-			frozen[k] = f.Freeze()
-		} else {
-			frozen[k] = v
+	frozen := d.Copy()
+	for it := frozen.Iter(); !it.Done(); it.Next() {
+		key, val := it.Item()
+		if f, ok := val.(freezable); ok {
+			frozen.Put(key, f.Freeze())
 		}
 	}
 	return pyFrozenDict{pyDict: frozen}
 }
 
-// Keys returns the keys of this dict, in order.
-func (d pyDict) Keys() []string {
-	ret := make([]string, 0, len(d))
-	for k := range d {
-		ret = append(ret, k)
-	}
-	sort.Strings(ret)
-	return ret
-}
-
 // A pyFrozenDict implements an immutable python dict.
 type pyFrozenDict struct{ pyDict }
-
-func (d pyFrozenDict) MarshalJSON() ([]byte, error) {
-	return json.Marshal(d.pyDict)
-}
 
 func (d pyFrozenDict) Property(scope *scope, name string) pyObject {
 	if name == "setdefault" {
@@ -812,7 +836,7 @@ type pyConfig struct {
 }
 
 func (c *pyConfig) MarshalJSON() ([]byte, error) {
-	if c.overlay == nil {
+	if c.overlay.Map == nil {
 		return json.Marshal(c.base.dict)
 	}
 
@@ -820,14 +844,7 @@ func (c *pyConfig) MarshalJSON() ([]byte, error) {
 }
 
 func (c *pyConfig) toPyDict() pyDict {
-	merged := make(pyDict, len(c.base.dict)+len(c.overlay))
-	for k, v := range c.base.dict {
-		merged[k] = v
-	}
-	for k, v := range c.overlay {
-		merged[k] = v
-	}
-	return merged
+	return pyDict{c.base.dict.Union(c.overlay.Map)}
 }
 
 func (c *pyConfig) String() string {
@@ -870,11 +887,10 @@ func (c *pyConfig) Operator(operator Operator, operand pyObject) pyObject {
 
 func (c *pyConfig) IndexAssign(index, value pyObject) {
 	key := string(index.(pyString))
-	if c.overlay == nil {
-		c.overlay = pyDict{key: value}
-	} else {
-		c.overlay[key] = value
+	if c.overlay.Map == nil {
+		c.overlay = sizedPyDict(1)
 	}
+	c.overlay.Put(key, value)
 }
 
 // Copy creates a copy of this config object. It does not copy the overlay config, so be careful
@@ -885,13 +901,13 @@ func (c *pyConfig) Copy() *pyConfig {
 
 // Get implements the get() method, similarly to a dict but looks up in both internal maps.
 func (c *pyConfig) Get(key string, fallback pyObject) pyObject {
-	if c.overlay != nil {
-		if obj, present := c.overlay[key]; present {
+	if c.overlay.Map != nil {
+		if obj, present := c.overlay.Get(key); present {
 			return obj
 		}
 	}
 
-	if obj, present := c.base.dict[key]; present {
+	if obj, present := c.base.dict.Get(key); present {
 		return obj
 	}
 	return fallback
@@ -913,12 +929,13 @@ func (c *pyConfig) Freeze() pyObject {
 
 // Merge merges the contents of the given config object into this one.
 func (c *pyConfig) Merge(other *pyFrozenConfig) {
-	if c.overlay == nil {
+	if c.overlay.Map == nil {
 		// N.B. We cannot directly copy since this might get mutated again later on.
-		c.overlay = make(pyDict, len(other.overlay))
+		c.overlay = sizedPyDict(other.overlay.Len())
 	}
-	for k, v := range other.overlay {
-		c.overlay[k] = v
+	for it := other.overlay.Iter(); !it.Done(); it.Next() {
+		k, v := it.Item()
+		c.overlay.Put(k, v)
 	}
 }
 
@@ -970,12 +987,12 @@ func (r *pyRange) Operator(operator Operator, operand pyObject) pyObject {
 	panic(fmt.Sprintf("operator %s not implemented on type range", operator))
 }
 
-func (r *pyRange) Len() int {
-	return int((r.Stop - r.Start) / r.Step)
+func (r *pyRange) Iter() iterator {
+	return &pyRangeIterator{X: r.Start, Stop: r.Stop, Step: r.Step}
 }
 
-func (r *pyRange) Item(index int) pyObject {
-	return r.Start + pyInt(index)*r.Step
+func (r *pyRange) Len() int {
+	return int((r.Stop - r.Start) / r.Step)
 }
 
 func (r *pyRange) MarshalJSON() ([]byte, error) {
@@ -988,4 +1005,89 @@ func (r *pyRange) toList(extraCapacity int) pyList {
 		ret = append(ret, i)
 	}
 	return ret
+}
+
+type pyRangeIterator struct {
+	X, Stop, Step pyInt
+}
+
+func (r *pyRangeIterator) Done() bool {
+	return r.X >= r.Stop
+}
+
+func (r *pyRangeIterator) Next() {
+	r.X += r.Step
+}
+
+func (r *pyRangeIterator) Item() pyObject {
+	return r.X
+}
+
+// A pyDictView is view on either the keys, values or item pairs in a dict.
+type pyDictView[T iterator] struct {
+	d pyDict
+}
+
+func (k pyDictView[T]) String() string {
+	return "view"
+}
+
+func (k pyDictView[T]) Type() string {
+	return "view"
+}
+
+func (k pyDictView[T]) IsTruthy() bool {
+	return true
+}
+
+func (k pyDictView[T]) Property(scope *scope, name string) pyObject {
+	panic("view object has no property " + name)
+}
+
+func (k pyDictView[T]) Operator(operator Operator, operand pyObject) pyObject {
+	if l, ok := operand.(pyList); ok && operator == Add {
+		ret := make(pyList, 0, k.Len()+len(l))
+		for it := k.Iter(); !it.Done(); it.Next() {
+			ret = append(ret, it.Item())
+		}
+		return append(ret, l...)
+	}
+	panic(fmt.Sprintf("operator %s not implemented on type range", operator))
+}
+
+func (k pyDictView[T]) Len() int {
+	return k.d.Len()
+}
+
+func (k pyDictView[T]) Iter() iterator {
+	var t T
+	// TODO(peterebden): Is there a nice non-reflective way to do this?
+	ret := reflect.New(reflect.TypeOf(t).Elem())
+	ret.Elem().Field(0).Set(reflect.ValueOf(k.d.Iter()))
+	return ret.Interface().(iterator)
+}
+
+type pyDictKeyIter struct {
+	ordmap.Iter[string, pyObject]
+}
+
+func (k *pyDictKeyIter) Item() pyObject {
+	return pyString(k.Iter.Key())
+}
+
+type pyDictValIter struct {
+	ordmap.Iter[string, pyObject]
+}
+
+func (v *pyDictValIter) Item() pyObject {
+	return v.Iter.Val()
+}
+
+type pyDictItemIter struct {
+	ordmap.Iter[string, pyObject]
+}
+
+func (i *pyDictItemIter) Item() pyObject {
+	k, v := i.Iter.Item()
+	return pyList{pyString(k), v}
 }
