@@ -10,22 +10,29 @@ import (
 // It is not safe for concurrent use.
 // The zero value is safe for use.
 type Map[K comparable, V any] struct {
-	keys map[K]int
-	objs []entry[K, V]
+	root *node[K, V]
+	size int
 }
 
-type entry[K, V any] struct {
-	Key K
-	Val V
+type colour int
+
+const (
+	red   colour = iota
+	black colour
+)
+
+type node[K comparable, V any] struct {
+	Key                 K
+	Val                 V
+	Left, Right, Parent *node[K, V]
+	Colour              colour
 }
 
 // New returns a new Map with the given capacity preallocated.
 // If capacity is unknown, the zero value for Map can be used directly.
+// TODO(peterebden): Is this still useful?
 func New[K comparable, V any](size int) *Map[K, V] {
-	return &Map[K, V]{
-		keys: make(map[K]int, size),
-		objs: make([]entry[K, V], 0, size),
-	}
+	return &Map[K, V]{}
 }
 
 // Len returns the number of keys currently in the map.
