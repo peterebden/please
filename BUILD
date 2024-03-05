@@ -44,3 +44,8 @@ filegroup(
     srcs = ["default.pgo"],
     visibility = ["//src/..."],
 )
+
+filegroup(
+    name = "go_mod",
+    srcs = ["go.mod"],
+)
