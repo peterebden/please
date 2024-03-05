@@ -8,7 +8,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
-	"github.com/prometheus/common/expfmt"
 
 	"github.com/thought-machine/please/src/cli/logging"
 	"github.com/thought-machine/please/src/core"
@@ -56,7 +55,7 @@ func Push(config *core.Configuration) {
 
 	if err := push.New(config.Metrics.PrometheusGatewayURL, "please").
 		Client(&http.Client{Timeout: time.Duration(config.Metrics.Timeout)}).
-		Gatherer(prometheus.DefaultGatherer).Format(expfmt.FmtText).
+		Gatherer(prometheus.DefaultGatherer).
 		Push(); err != nil {
 		log.Warning("Error pushing Prometheus metrics: %s", err)
 	}
