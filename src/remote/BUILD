@@ -21,7 +21,7 @@ go_library(
         "///third_party/go/github.com_google_uuid//:uuid",
         "///third_party/go/github.com_grpc-ecosystem_go-grpc-middleware//retry",
         "///third_party/go/golang.org_x_sync//errgroup",
-        "///third_party/go/google.golang.org_genproto//googleapis/rpc/status",
+        "///third_party/go/google.golang.org_genproto_googleapis/rpc//status",
         "///third_party/go/google.golang.org_grpc//:grpc",
         "///third_party/go/google.golang.org_grpc//codes",
         "///third_party/go/google.golang.org_grpc//credentials",
