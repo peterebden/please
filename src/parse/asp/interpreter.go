@@ -288,7 +288,7 @@ type scope struct {
 	subincludeLabel *core.BuildLabel
 	parsingFor      *parseTarget
 	parent          *scope
-	locals          pyDict
+	locals          map[string]pyObject
 	config          *pyConfig
 	globber         *fs.Globber
 	// True if this scope is for a pre- or post-build callback.

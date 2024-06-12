@@ -501,7 +501,7 @@ func (l pyFrozenList) IndexAssign(index, value pyObject) {
 	panic("list is immutable")
 }
 
-type pyDict map[string]pyObject // Dicts can only be keyed by strings
+type pyDict struct{ t tree }
 
 func (d pyDict) Type() string {
 	return "dict"
@@ -512,12 +512,12 @@ func (d pyDict) TypeTag() int32 {
 }
 
 func (d pyDict) IsTruthy() bool {
-	return len(d) > 0
+	return d.t.len > 0
 }
 
 func (d pyDict) Property(scope *scope, name string) pyObject {
 	// We allow looking up dict members by . as well as by indexing in order to facilitate the config map.
-	if obj, present := d[name]; present {
+	if obj := d.t.Get(name); obj != nil {
 		return obj
 	} else if prop, present := scope.interpreter.dictMethods[name]; present {
 		return prop.Member(d)
@@ -528,7 +528,7 @@ func (d pyDict) Property(scope *scope, name string) pyObject {
 func (d pyDict) Operator(operator Operator, operand pyObject) pyObject {
 	if operator == In || operator == NotIn {
 		if s, ok := operand.(pyString); ok {
-			_, present := d[string(s)]
+			present := d.t.Get(string(s)) != nil
 			return newPyBool(present == (operator == In))
 		}
 		return newPyBool(operator == NotIn)
@@ -536,7 +536,7 @@ func (d pyDict) Operator(operator Operator, operand pyObject) pyObject {
 		s, ok := operand.(pyString)
 		if !ok {
 			panic("Dict keys must be strings, not " + operand.Type())
-		} else if v, present := d[string(s)]; present {
+		} else if v := d.Get(string(s)); v != nil {
 			return v
 		}
 		panic("unknown dict key: " + s.String())
@@ -545,12 +545,13 @@ func (d pyDict) Operator(operator Operator, operand pyObject) pyObject {
 		if !ok {
 			panic("Operator to | must be another dict, not " + operand.Type())
 		}
-		ret := make(pyDict, len(d)+len(d2))
-		for k, v := range d {
-			ret[k] = v
+		// TODO(peterebden): we should be able to preallocate length here & merge more efficiently
+		ret := pyDict{}
+		for k, v := range d.t.KVs() {
+			ret.Insert(k, v)
 		}
-		for k, v := range d2 {
-			ret[k] = v
+		for k, v := range d2.t.KVs() {
+			ret.Insert(k, v)
 		}
 		return ret
 	}
@@ -562,14 +563,14 @@ func (d pyDict) IndexAssign(index, value pyObject) {
 	if !ok {
 		panic("Dict keys must be strings, not " + index.Type())
 	}
-	d[string(key)] = value
+	d.t.Insert(string(key), value)
 }
 
 func (d pyDict) String() string {
 	var b strings.Builder
 	b.WriteByte('{')
 	started := false
-	for _, k := range d.Keys() {
+	for k, v := range d.t.KVs() {
 		if started {
 			b.WriteString(", ")
 		}
@@ -577,7 +578,7 @@ func (d pyDict) String() string {
 		b.WriteByte('"')
 		b.WriteString(k)
 		b.WriteString(`": `)
-		b.WriteString(d[k].String())
+		b.WriteString(v.String())
 	}
 	b.WriteByte('}')
 	return b.String()
@@ -585,9 +586,10 @@ func (d pyDict) String() string {
 
 // Copy creates a shallow duplicate of this dictionary.
 func (d pyDict) Copy() pyDict {
-	m := make(pyDict, len(d))
-	for k, v := range d {
-		m[k] = v
+	// TODO(peterebden): Preallocation again
+	m := pyDict{t}
+	for k, v := range d.t.KVs() {
+		m.Insert(k, v)
 	}
 	return m
 }
@@ -597,28 +599,26 @@ func (d pyDict) Copy() pyDict {
 // reference can still modify it.
 func (d pyDict) Freeze() pyObject {
 	frozen := pyDict{}
-	for k, v := range d {
+	for k, v := range d.t.KVs() {
 		if f, ok := v.(freezable); ok {
-			frozen[k] = f.Freeze()
+			frozen.Insert(k, f.Freeze())
 		} else {
-			frozen[k] = v
+			frozen.Insert(k, v)
 		}
 	}
 	return pyFrozenDict{pyDict: frozen}
 }
 
-// Keys returns the keys of this dict, in order.
-func (d pyDict) Keys() []string {
-	ret := make([]string, 0, len(d))
-	for k := range d {
-		ret = append(ret, k)
-	}
-	sort.Strings(ret)
-	return ret
+func (d pyDict) Len() int {
+	return d.t.len
 }
 
-func (d pyDict) Len() int {
-	return len(d)
+func (d pyDict) KVs() iter.Seq2[string, pyObject] {
+	return d.t.KVs()
+}
+
+func (d pyDict) Get(k string) pyObject {
+	return d.t.Get(k)
 }
 
 // A pyFrozenDict implements an immutable python dict.

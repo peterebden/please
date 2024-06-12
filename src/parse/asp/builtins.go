@@ -239,9 +239,9 @@ func pkg(s *scope, args []pyObject) pyObject {
 		if overrides, ok := v.(pyDict); ok {
 			if pluginConfig, ok := configVal.(pyDict); ok {
 				newPluginConfig := pluginConfig.Copy()
-				for pluginKey, override := range overrides {
+				for pluginKey, override := range overrides.KVs() {
 					pluginKey = strings.ToUpper(pluginKey)
-					if _, ok := newPluginConfig[pluginKey]; !ok {
+					if newPluginConfig.Get(pluginKey) == nil {
 						s.Error("error calling package(): %s.%s is not a known config value", k, pluginKey)
 					}
 
@@ -712,7 +712,7 @@ func dictGet(s *scope, args []pyObject) pyObject {
 	self := args[0].(pyDict)
 	sk, ok := args[1].(pyString)
 	s.Assert(ok, "dict keys must be strings, not %s", args[1].Type())
-	if ret, present := self[string(sk)]; present {
+	if ret := self.Get(string(sk)); ret != nil {
 		return ret
 	}
 	return args[2]
