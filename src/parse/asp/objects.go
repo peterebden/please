@@ -503,8 +503,9 @@ func (l pyFrozenList) IndexAssign(index, value pyObject) {
 type pyDict struct{ t *tree }
 
 func newPyDict(cap int) pyDict {
-	// TODO(peterebden): Implement some form of preallocation here
-	return pyDict{t: &tree{}}
+	return pyDict{t: &tree{
+		cap: make([]node, cap),
+	}}
 }
 
 func (d pyDict) Type() string {

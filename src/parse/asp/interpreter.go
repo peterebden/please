@@ -234,8 +234,7 @@ func (i *interpreter) Subinclude(pkgScope *scope, path string, label core.BuildL
 		s.interpretStatements(stmts)
 		locals := s.Freeze()
 		if s.config.overlay == nil {
-			// TODO(peterebden): Reimplement this
-			// delete(locals, "CONFIG") // Config doesn't have any local modifications
+			delete(locals, "CONFIG")
 		}
 		return locals, nil
 	})

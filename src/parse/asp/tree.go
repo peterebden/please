@@ -4,10 +4,11 @@ import (
 	"iter"
 )
 
-// A tree implements a simple tree structure
+// A tree implements a simple append-only tree structure, which can act as an ordered map
 type tree struct {
 	root *node
 	len  int
+	cap  []node
 }
 
 type node struct {
@@ -24,7 +25,14 @@ func (t *tree) Insert(k string, v pyObject) {
 
 func (t *tree) insert(n **node, k string, v pyObject) {
 	if *n == nil {
-		*n = &node{K: k, V: v}
+		if len(t.cap) == 0 {
+			*n = &node{K: k, V: v}
+		} else {
+			t.cap[0].K = k
+			t.cap[0].V = v
+			*n = &t.cap[0]
+			t.cap = t.cap[1:]
+		}
 	} else if no := *n; no.K == k {
 		no.V = v
 	} else if no.K > k {
@@ -37,18 +45,18 @@ func (t *tree) insert(n **node, k string, v pyObject) {
 
 // Get returns the item with the given key, or nil if it doesn't exist.
 func (t *tree) Get(k string) pyObject {
-	return t.get(&t.root, k)
+	return t.get(t.root, k)
 }
 
-func (t *tree) get(n **node, k string) pyObject {
-	if *n == nil {
+func (t *tree) get(n *node, k string) pyObject {
+	if n == nil {
 		return nil
-	} else if no := *n; no.K == k {
-		return no.V
-	} else if no.K > k {
-		return t.get(&no.Left, k)
+	} else if n.K == k {
+		return n.V
+	} else if n.K > k {
+		return t.get(n.Left, k)
 	} else {
-		return t.get(&no.Right, k)
+		return t.get(n.Right, k)
 	}
 }
 
