@@ -150,7 +150,7 @@ func pluginConfig(pluginState *core.BuildState, pkgState *core.BuildState) pyDic
 	for key, definition := range pluginState.RepoConfig.PluginConfig {
 		configKey := getConfigKey(key, definition.ConfigKey)
 		key = strings.ToUpper(key)
-		if ret.t.Get(key) != nil && definition.Inherit {
+		if ret.Has(key) && definition.Inherit {
 			// If the config key is already defined, and we should inherit it from the host repo, continue.
 			continue
 		}

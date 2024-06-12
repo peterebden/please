@@ -1144,7 +1144,7 @@ func addData(s *scope, args []pyObject) pyObject {
 		}
 	} else if isType(datum, "dict") {
 		d := datum.(pyDict)
-		for name, v := range d.t.KVs() {
+		for name, v := range d.KVs() {
 			for _, str := range v.(pyList) {
 				if bi := parseBuildInput(s, str, string(label.(pyString)), systemAllowed, tool); bi != nil {
 					addNamedDatumToTargetAndMaybeQueue(s, name, target, bi, systemAllowed, tool)
@@ -1216,7 +1216,7 @@ func getNamedOuts(s *scope, args []pyObject) pyObject {
 		for i, out := range v {
 			list[i] = pyString(out)
 		}
-		ret.t.Insert(k, list)
+		ret.Set(k, list)
 	}
 	return ret
 }
@@ -1242,7 +1242,7 @@ func getEntryPoints(s *scope, args []pyObject) pyObject {
 
 	ret := newPyDict(len(target.EntryPoints))
 	for name, output := range target.EntryPoints {
-		ret.t.Insert(name, pyString(output))
+		ret.Set(name, pyString(output))
 	}
 	return ret
 }
@@ -1269,7 +1269,7 @@ func getCommand(s *scope, args []pyObject) pyObject {
 	if len(target.Commands) > 0 {
 		commands := newPyDict(len(target.Commands))
 		for config, cmd := range target.Commands {
-			commands.t.Insert(config, pyString(cmd))
+			commands.Set(config, pyString(cmd))
 		}
 		return commands
 	}
@@ -1306,7 +1306,7 @@ func selectFunc(s *scope, args []pyObject) pyObject {
 
 	// This is not really the same as Bazel's order-of-matching rules, but is at least deterministic.
 	// TODO(peterebden): this doesn't work the same any more. can we just ditch this?
-	for k, v := range d.t.KVs() {
+	for k, v := range d.KVs() {
 		if k == "//conditions:default" || k == "default" {
 			def = v
 		} else if selectTarget(s, s.parseLabelInContextPkg(k)).HasLabel("config:on") {
