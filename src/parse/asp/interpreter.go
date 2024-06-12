@@ -18,7 +18,7 @@ import (
 type interpreter struct {
 	scope       *scope
 	parser      *Parser
-	subincludes *cmap.ErrMap[string, pyDict]
+	subincludes *cmap.ErrMap[string, pyRawDict]
 	asts        *cmap.ErrMap[string, []*Statement]
 
 	configs      map[*core.BuildState]*pyConfig
@@ -30,12 +30,16 @@ type interpreter struct {
 	stringMethods, dictMethods, configMethods map[string]*pyFunc
 }
 
+// pyRawDicts are used in a few places where we need a dict-like mapping but we don't need to
+// expose it to the interpreter.
+type pyRawDict map[string]pyObject
+
 // newInterpreter creates and returns a new interpreter instance.
 // It loads all the builtin rules at this point.
 func newInterpreter(state *core.BuildState, p *Parser) *interpreter {
 	s := &scope{
 		state:  state,
-		locals: map[string]pyObject{},
+		locals: pyRawDict{},
 	}
 	i := &interpreter{
 		scope:   s,
@@ -48,7 +52,7 @@ func newInterpreter(state *core.BuildState, p *Parser) *interpreter {
 		i.subincludes = p.interpreter.subincludes
 		i.asts = p.interpreter.asts
 	} else {
-		i.subincludes = cmap.NewErrMap[string, pyDict](cmap.SmallShardCount, cmap.XXHash, i.limiter)
+		i.subincludes = cmap.NewErrMap[string, pyRawDict](cmap.SmallShardCount, cmap.XXHash, i.limiter)
 		i.asts = cmap.NewErrMap[string, []*Statement](cmap.SmallShardCount, cmap.XXHash, i.limiter)
 	}
 	s.interpreter = i
@@ -202,12 +206,12 @@ func (i *interpreter) interpretStatements(s *scope, statements []*Statement) (re
 }
 
 // Subinclude returns the global values corresponding to subincluding the given file.
-func (i *interpreter) Subinclude(pkgScope *scope, path string, label core.BuildLabel, preload bool) pyDict {
+func (i *interpreter) Subinclude(pkgScope *scope, path string, label core.BuildLabel, preload bool) pyRawDict {
 	key := filepath.Join(path, pkgScope.state.CurrentSubrepo)
-	globals, err := i.subincludes.GetOrSet(key, func() (pyDict, error) {
+	globals, err := i.subincludes.GetOrSet(key, func() (pyRawDict, error) {
 		stmts, err := i.parseSubinclude(path)
 		if err != nil {
-			return pyDict{}, err
+			return nil, err
 		}
 
 		mode := pkgScope.mode
@@ -224,7 +228,7 @@ func (i *interpreter) Subinclude(pkgScope *scope, path string, label core.BuildL
 
 		if !mode.IsPreload() {
 			if err := i.preloadSubincludes(s); err != nil {
-				return pyDict{}, err
+				return nil, err
 			}
 		}
 		s.interpretStatements(stmts)
@@ -289,7 +293,7 @@ type scope struct {
 	subincludeLabel *core.BuildLabel
 	parsingFor      *parseTarget
 	parent          *scope
-	locals          map[string]pyObject
+	locals          pyRawDict
 	config          *pyConfig
 	globber         *fs.Globber
 	// True if this scope is for a pre- or post-build callback.
@@ -406,7 +410,7 @@ func (s *scope) newScope(pkg *core.Package, mode core.ParseMode, filename string
 		pkg:         pkg,
 		parsingFor:  s.parsingFor,
 		parent:      s,
-		locals:      make(map[string]pyObject, hint),
+		locals:      make(pyRawDict, hint),
 		config:      s.config,
 		Callback:    s.Callback,
 		mode:        mode,
@@ -463,8 +467,8 @@ func (s *scope) Set(name string, value pyObject) {
 
 // SetAll sets all contents of the given dict in this scope.
 // Optionally it can filter to just public objects (i.e. those not prefixed with an underscore)
-func (s *scope) SetAll(d pyDict, publicOnly bool) {
-	for k, v := range d.t.KVs() {
+func (s *scope) SetAll(d pyRawDict, publicOnly bool) {
+	for k, v := range d {
 		if k == "CONFIG" {
 			// Special case; need to merge config entries rather than overwriting the entire object.
 			c, ok := v.(*pyFrozenConfig)
@@ -478,7 +482,7 @@ func (s *scope) SetAll(d pyDict, publicOnly bool) {
 
 // Freeze freezes the contents of this scope, preventing mutable objects from being changed.
 // It returns the newly frozen set of locals.
-func (s *scope) Freeze() map[string]pyObject {
+func (s *scope) Freeze() pyRawDict {
 	for k, v := range s.locals {
 		if f, ok := v.(freezable); ok {
 			s.locals[k] = f.Freeze()
@@ -909,7 +913,7 @@ func (s *scope) interpretList(expr *List) pyList {
 
 func (s *scope) interpretDict(expr *Dict) pyObject {
 	if expr.Comprehension == nil {
-		d := make(pyDict, len(expr.Items))
+		d := newPyDict(len(expr.Items))
 		for _, v := range expr.Items {
 			d.IndexAssign(s.interpretExpression(&v.Key), s.interpretExpression(&v.Value))
 		}
@@ -917,7 +921,7 @@ func (s *scope) interpretDict(expr *Dict) pyObject {
 	}
 	cs := s.NewScope(s.filename, s.mode)
 	it := s.iterable(expr.Comprehension.Expr)
-	ret := make(pyDict, it.Len())
+	ret := newPyDict(it.Len())
 	cs.evaluateComprehension(it.Iter(), expr.Comprehension, func(li pyObject) {
 		ret.IndexAssign(cs.interpretExpression(&expr.Items[0].Key), cs.interpretExpression(&expr.Items[0].Value))
 	})

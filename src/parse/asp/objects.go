@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -552,10 +551,10 @@ func (d pyDict) Operator(operator Operator, operand pyObject) pyObject {
 		}
 		ret := newPyDict(d.t.len + d2.t.len)
 		for k, v := range d.t.KVs() {
-			ret.Insert(k, v)
+			ret.Set(k, v)
 		}
 		for k, v := range d2.t.KVs() {
-			ret.Insert(k, v)
+			ret.Set(k, v)
 		}
 		return ret
 	}
@@ -592,7 +591,7 @@ func (d pyDict) String() string {
 func (d pyDict) Copy() pyDict {
 	m := newPyDict(d.t.len)
 	for k, v := range d.t.KVs() {
-		m.Insert(k, v)
+		m.t.Insert(k, v)
 	}
 	return m
 }
@@ -603,7 +602,7 @@ func (d pyDict) Get(key string) pyObject {
 }
 
 func (d pyDict) Set(key string, val pyObject) {
-	return d.t.Insert(key, val)
+	d.t.Insert(key, val)
 }
 
 // Has returns true if this dictionary has an item with the given key
@@ -618,9 +617,9 @@ func (d pyDict) Freeze() pyObject {
 	frozen := newPyDict(d.t.len)
 	for k, v := range d.t.KVs() {
 		if f, ok := v.(freezable); ok {
-			frozen.Insert(k, f.Freeze())
+			frozen.Set(k, f.Freeze())
 		} else {
-			frozen.Insert(k, v)
+			frozen.Set(k, v)
 		}
 	}
 	return pyFrozenDict{pyDict: frozen}
@@ -937,12 +936,12 @@ func (c *pyConfig) MarshalJSON() ([]byte, error) {
 }
 
 func (c *pyConfig) toPyDict() pyDict {
-	merged := make(pyDict, len(c.base.dict)+len(c.overlay))
-	for k, v := range c.base.dict {
-		merged[k] = v
+	merged := newPyDict(c.base.dict.Len() + c.overlay.Len())
+	for k, v := range c.base.dict.t.KVs() {
+		merged.Set(k, v)
 	}
-	for k, v := range c.overlay {
-		merged[k] = v
+	for k, v := range c.overlay.KVs() {
+		merged.Set(k, v)
 	}
 	return merged
 }
@@ -994,9 +993,9 @@ func (c *pyConfig) IndexAssign(index, value pyObject) {
 	if c.overlay == nil {
 		d := newPyDict(1)
 		d.t.Insert(key, value)
-		c.overlay = d
+		c.overlay = &d
 	} else {
-		c.overlay[key] = value
+		c.overlay.Set(key, value)
 	}
 }
 
@@ -1009,12 +1008,12 @@ func (c *pyConfig) Copy() *pyConfig {
 // Get implements the get() method, similarly to a dict but looks up in both internal maps.
 func (c *pyConfig) Get(key string, fallback pyObject) pyObject {
 	if c.overlay != nil {
-		if obj, present := c.overlay[key]; present {
+		if obj := c.overlay.Get(key); obj != nil {
 			return obj
 		}
 	}
 
-	if obj, present := c.base.dict[key]; present {
+	if obj := c.base.dict.Get(key); obj != nil {
 		return obj
 	}
 	return fallback
@@ -1038,10 +1037,11 @@ func (c *pyConfig) Freeze() pyObject {
 func (c *pyConfig) Merge(other *pyFrozenConfig) {
 	if c.overlay == nil {
 		// N.B. We cannot directly copy since this might get mutated again later on.
-		c.overlay = make(pyDict, len(other.overlay))
+		d := newPyDict(other.overlay.Len())
+		c.overlay = &d
 	}
-	for k, v := range other.overlay {
-		c.overlay[k] = v
+	for k, v := range other.overlay.KVs() {
+		c.overlay.Set(k, v)
 	}
 }
 
