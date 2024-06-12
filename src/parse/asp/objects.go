@@ -38,10 +38,12 @@ type lengthable interface {
 	Len() int
 }
 
+type sequence iter.Seq[pyObject]
+
 // An iterable represents an object that can be iterated (the y in `for x in y`).
 type iterable interface {
 	lengthable // currently at least, all iterable objects know their own length
-	Iter() iter.Seq[pyObject]
+	Iter() sequence
 }
 
 // An indexable represents an object that can be indexed into.
@@ -198,11 +200,16 @@ func pyIndex(obj, index pyObject, slice bool) pyInt {
 	i, ok := index.(pyInt)
 	if !ok {
 		panic(obj.Type() + " indices must be integers, not " + index.Type())
-	} else if l := objLen(obj); i < 0 {
-		i = l + i // Go doesn't support negative indices
-	} else if i > l {
+	}
+	l, ok := obj.(lengthable)
+	if !ok {
+		panic("object of type " + obj.Type() + " has no len()")
+	}
+	if n := pyInt(l.Len()); i < 0 {
+		i = n + i // Go doesn't support negative indices
+	} else if i > n {
 		if slice {
-			return l
+			return n
 		}
 		panic(obj.Type() + " index out of range")
 	}
@@ -342,6 +349,24 @@ func (s pyString) String() string {
 	return string(s)
 }
 
+func (s pyString) Len() int {
+	return len(s)
+}
+
+func (s pyString) Iter() sequence {
+	return func(yield func(pyObject) bool) {
+		for _, c := range s {
+			if !yield(pyString(c)) {
+				return
+			}
+		}
+	}
+}
+
+func (s pyString) Item(i int) pyObject {
+	return pyString(s[i])
+}
+
 type pyList []pyObject
 
 var emptyList pyObject = make(pyList, 0) // want this to explicitly have zero capacity
@@ -445,14 +470,24 @@ func (l pyList) Repeat(n pyInt) pyList {
 	return ret
 }
 
-// Len returns the length of this list, implementing iterable.
+// Len returns the length of this list, implementing indexable.
 func (l pyList) Len() int {
 	return len(l)
 }
 
-// Item returns the i'th item of this list, implementing iterable.
+// Item returns the i'th item of this list, implementing indexable.
 func (l pyList) Item(i int) pyObject {
 	return l[i]
+}
+
+func (l pyList) Iter() sequence {
+	return func(yield func(pyObject) bool) {
+		for _, x := range l {
+			if !yield(x) {
+				return
+			}
+		}
+	}
 }
 
 // A pyFrozenList implements an immutable list.
@@ -580,6 +615,10 @@ func (d pyDict) Keys() []string {
 	}
 	sort.Strings(ret)
 	return ret
+}
+
+func (d pyDict) Len() int {
+	return len(d)
 }
 
 // A pyFrozenDict implements an immutable python dict.

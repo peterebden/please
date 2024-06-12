@@ -2,7 +2,6 @@ package asp
 
 import (
 	"fmt"
-	"iter"
 	"path/filepath"
 	"reflect"
 	"runtime/debug"
@@ -926,7 +925,7 @@ func (s *scope) interpretDict(expr *Dict) pyObject {
 
 // evaluateComprehension handles iterating a comprehension's loops.
 // The provided callback function is called with each item to be added to the result.
-func (s *scope) evaluateComprehension(it iter.Seq[pyObject], comp *Comprehension, callback func(pyObject)) {
+func (s *scope) evaluateComprehension(it sequence, comp *Comprehension, callback func(pyObject)) {
 	if comp.Second != nil {
 		for x := range it {
 			s.unpackNames(comp.Names, x)

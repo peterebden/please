@@ -411,23 +411,9 @@ func subincludeTarget(s *scope, l core.BuildLabel) *core.BuildTarget {
 }
 
 func lenFunc(s *scope, args []pyObject) pyObject {
-	return objLen(args[0])
-}
-
-func objLen(obj pyObject) pyInt {
-	switch t := obj.(type) {
-	case pyList:
-		return newPyInt(len(t))
-	case pyFrozenList:
-		return newPyInt(len(t.pyList))
-	case pyDict:
-		return newPyInt(len(t))
-	case pyFrozenDict:
-		return newPyInt(len(t.pyDict))
-	case pyString:
-		return newPyInt(len([]rune(t)))
-	}
-	panic("object of type " + obj.Type() + " has no len()")
+	l, ok := args[0].(lengthable)
+	s.Assert(ok, "object of type %s has no len()", l.Type())
+	return pyInt(l.Len())
 }
 
 func chr(s *scope, args []pyObject) pyObject {
@@ -440,7 +426,7 @@ func chr(s *scope, args []pyObject) pyObject {
 func ord(s *scope, args []pyObject) pyObject {
 	c, isStr := args[0].(pyString)
 	s.Assert(isStr, "Argument c must be a string, not %s", args[0].Type())
-	s.Assert(objLen(c) == 1, "Argument c must be a string containing a single Unicode character")
+	s.Assert(c.Len() == 1, "Argument c must be a string containing a single Unicode character")
 	return newPyInt(int([]rune(c)[0]))
 }
 
