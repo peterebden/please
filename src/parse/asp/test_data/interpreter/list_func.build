@@ -1,0 +1,4 @@
+d = {"a": "b", "c": "d"}
+x = list(d.keys())
+y = list(d.values())
+z = list(d.items())

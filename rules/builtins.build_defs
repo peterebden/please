@@ -111,7 +111,7 @@ def int(s:str) -> int:
 def str(s) -> str:
     pass
 def list(l):
-    fail('list is not callable')
+    pass
 def dict(d):
     fail('dict is not callable')
 def callable(f:function) -> bool:

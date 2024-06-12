@@ -55,6 +55,7 @@ func registerBuiltins(s *scope) {
 	setNativeCode(s, "bool", boolType)
 	setNativeCode(s, "int", intType)
 	setNativeCode(s, "str", strType)
+	setNativeCode(s, "list", listType)
 	setNativeCode(s, "join_path", joinPath, varargs)
 	setNativeCode(s, "get_base_path", packageName)
 	setNativeCode(s, "package_name", packageName)
@@ -646,6 +647,16 @@ func intType(s *scope, args []pyObject) pyObject {
 
 func strType(s *scope, args []pyObject) pyObject {
 	return pyString(args[0].String())
+}
+
+func listType(s *scope, args []pyObject) pyObject {
+	iter, ok := args[0].(iterable)
+	s.Assert(ok, "cannot call list() on non-iterable type %s", args[0].Type())
+	l := make(pyList, 0, iter.Len())
+	for x := range iter.Iter() {
+		l = append(l, x)
+	}
+	return l
 }
 
 func glob(s *scope, args []pyObject) pyObject {

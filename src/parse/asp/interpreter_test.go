@@ -686,3 +686,20 @@ func TestOperatorPrecedence(t *testing.T) {
 	assert.EqualValues(t, False, s.Lookup("m"))
 	assert.EqualValues(t, True, s.Lookup("n"))
 }
+
+func TestListFunc(t *testing.T) {
+	s, err := parseFile("src/parse/asp/test_data/interpreter/list_func.build")
+	assert.NoError(t, err)
+	assert.EqualValues(t, pyList{
+		pyString("a"),
+		pyString("c"),
+	}, s.Lookup("x"))
+	assert.EqualValues(t, pyList{
+		pyString("b"),
+		pyString("d"),
+	}, s.Lookup("y"))
+	assert.EqualValues(t, pyList{
+		pyList{pyString("a"), pyString("b")},
+		pyList{pyString("c"), pyString("d")},
+	}, s.Lookup("y"))
+}
