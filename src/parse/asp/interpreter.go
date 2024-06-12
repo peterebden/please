@@ -2,6 +2,7 @@ package asp
 
 import (
 	"fmt"
+	"iter"
 	"path/filepath"
 	"reflect"
 	"runtime/debug"
@@ -565,10 +566,8 @@ func (s *scope) interpretIf(stmt *IfStatement) pyObject {
 }
 
 func (s *scope) interpretFor(stmt *ForStatement) pyObject {
-	it := s.iterable(&stmt.Expr)
-	for i, n := 0, it.Len(); i < n; i++ {
-		li := it.Item(i)
-		s.unpackNames(stmt.Names, li)
+	for x := range s.iterable(&stmt.Expr).Iter() {
+		s.unpackNames(stmt.Names, x)
 		if ret := s.interpretStatements(stmt.Statements); ret != nil {
 			if s, ok := ret.(pySentinel); ok && s == continueIteration {
 				continue
@@ -683,7 +682,7 @@ func (s *scope) interpretJoin(base string, list *List) pyObject {
 	cs := s.NewScope(s.filename, s.mode)
 	it := s.iterable(list.Comprehension.Expr)
 	first := true
-	cs.evaluateComprehension(it, list.Comprehension, func(li pyObject) {
+	cs.evaluateComprehension(it.Iter(), list.Comprehension, func(li pyObject) {
 		if first {
 			first = false
 		} else {
@@ -898,7 +897,7 @@ func (s *scope) interpretList(expr *List) pyList {
 	cs := s.NewScope(s.filename, s.mode)
 	it := s.iterable(expr.Comprehension.Expr)
 	ret := make(pyList, 0, it.Len())
-	cs.evaluateComprehension(it, expr.Comprehension, func(li pyObject) {
+	cs.evaluateComprehension(it.Iter(), expr.Comprehension, func(li pyObject) {
 		if len(expr.Values) == 1 {
 			ret = append(ret, cs.interpretExpression(expr.Values[0]))
 		} else {
@@ -919,7 +918,7 @@ func (s *scope) interpretDict(expr *Dict) pyObject {
 	cs := s.NewScope(s.filename, s.mode)
 	it := s.iterable(expr.Comprehension.Expr)
 	ret := make(pyDict, it.Len())
-	cs.evaluateComprehension(it, expr.Comprehension, func(li pyObject) {
+	cs.evaluateComprehension(it.Iter(), expr.Comprehension, func(li pyObject) {
 		ret.IndexAssign(cs.interpretExpression(&expr.Items[0].Key), cs.interpretExpression(&expr.Items[0].Value))
 	})
 	return ret
@@ -927,24 +926,20 @@ func (s *scope) interpretDict(expr *Dict) pyObject {
 
 // evaluateComprehension handles iterating a comprehension's loops.
 // The provided callback function is called with each item to be added to the result.
-func (s *scope) evaluateComprehension(it iterable, comp *Comprehension, callback func(pyObject)) {
+func (s *scope) evaluateComprehension(it iter.Seq[pyObject], comp *Comprehension, callback func(pyObject)) {
 	if comp.Second != nil {
-		for i, n := 0, it.Len(); i < n; i++ {
-			li := it.Item(i)
-			s.unpackNames(comp.Names, li)
-			it2 := s.iterable(comp.Second.Expr)
-			for j, n := 0, it2.Len(); j < n; j++ {
-				li2 := it2.Item(j)
-				if s.evaluateComprehensionExpression(comp, comp.Second.Names, li2) {
-					callback(li2)
+		for x := range it {
+			s.unpackNames(comp.Names, x)
+			for y := range s.iterable(comp.Second.Expr).Iter() {
+				if s.evaluateComprehensionExpression(comp, comp.Second.Names, y) {
+					callback(y)
 				}
 			}
 		}
 	} else {
-		for i, n := 0, it.Len(); i < n; i++ {
-			li := it.Item(i)
-			if s.evaluateComprehensionExpression(comp, comp.Names, li) {
-				callback(li)
+		for x := range it {
+			if s.evaluateComprehensionExpression(comp, comp.Names, x) {
+				callback(x)
 			}
 		}
 	}

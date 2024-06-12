@@ -3,6 +3,7 @@ package asp
 import (
 	"encoding/json"
 	"fmt"
+	"iter"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,17 +28,25 @@ type pyObject interface {
 }
 
 // A freezable represents an object that can be frozen into a readonly state.
-// Not all pyObjects implement this.
 type freezable interface {
 	Freeze() pyObject
 }
 
-// An iterable represents an object that can be iterated (the y in `for x in y`).
-// Not all pyObjects implement this.
-type iterable interface {
+// A lengthable represents an object that has a length (list, dict, str)
+type lengthable interface {
 	pyObject
-	// This isn't super generic but it works fine for all cases we have right now.
 	Len() int
+}
+
+// An iterable represents an object that can be iterated (the y in `for x in y`).
+type iterable interface {
+	lengthable // currently at least, all iterable objects know their own length
+	Iter() iter.Seq[pyObject]
+}
+
+// An indexable represents an object that can be indexed into.
+type indexable interface {
+	lengthable
 	Item(index int) pyObject
 }
 
