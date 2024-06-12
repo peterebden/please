@@ -501,7 +501,12 @@ func (l pyFrozenList) IndexAssign(index, value pyObject) {
 	panic("list is immutable")
 }
 
-type pyDict struct{ t tree }
+type pyDict struct{ t *tree }
+
+func newPyDict(cap int) pyDict {
+	// TODO(peterebden): Implement some form of preallocation here
+	return pyDict{t: &tree{}}
+}
 
 func (d pyDict) Type() string {
 	return "dict"
@@ -545,8 +550,7 @@ func (d pyDict) Operator(operator Operator, operand pyObject) pyObject {
 		if !ok {
 			panic("Operator to | must be another dict, not " + operand.Type())
 		}
-		// TODO(peterebden): we should be able to preallocate length here & merge more efficiently
-		ret := pyDict{}
+		ret := newPyDict(d.t.len + d2.t.len)
 		for k, v := range d.t.KVs() {
 			ret.Insert(k, v)
 		}
@@ -586,19 +590,32 @@ func (d pyDict) String() string {
 
 // Copy creates a shallow duplicate of this dictionary.
 func (d pyDict) Copy() pyDict {
-	// TODO(peterebden): Preallocation again
-	m := pyDict{t}
+	m := newPyDict(d.t.len)
 	for k, v := range d.t.KVs() {
 		m.Insert(k, v)
 	}
 	return m
 }
 
+// Get gets the item with given key
+func (d pyDict) Get(key string) pyObject {
+	return d.t.Get(key)
+}
+
+func (d pyDict) Set(key string, val pyObject) {
+	return d.t.Insert(key, val)
+}
+
+// Has returns true if this dictionary has an item with the given key
+func (d pyDict) Has(key string) bool {
+	return d.Get(key) != nil
+}
+
 // Freeze freezes this dict for further updates.
 // Note that this is a "soft" freeze; callers holding the original unfrozen
 // reference can still modify it.
 func (d pyDict) Freeze() pyObject {
-	frozen := pyDict{}
+	frozen := newPyDict(d.t.len)
 	for k, v := range d.t.KVs() {
 		if f, ok := v.(freezable); ok {
 			frozen.Insert(k, f.Freeze())
@@ -615,10 +632,6 @@ func (d pyDict) Len() int {
 
 func (d pyDict) KVs() iter.Seq2[string, pyObject] {
 	return d.t.KVs()
-}
-
-func (d pyDict) Get(k string) pyObject {
-	return d.t.Get(k)
 }
 
 // A pyFrozenDict implements an immutable python dict.
@@ -912,7 +925,7 @@ type pyConfigBase struct {
 // on each update.
 type pyConfig struct {
 	base    *pyConfigBase
-	overlay pyDict
+	overlay *pyDict
 }
 
 func (c *pyConfig) MarshalJSON() ([]byte, error) {
@@ -979,7 +992,9 @@ func (c *pyConfig) Operator(operator Operator, operand pyObject) pyObject {
 func (c *pyConfig) IndexAssign(index, value pyObject) {
 	key := string(index.(pyString))
 	if c.overlay == nil {
-		c.overlay = pyDict{key: value}
+		d := newPyDict(1)
+		d.t.Insert(key, value)
+		c.overlay = d
 	} else {
 		c.overlay[key] = value
 	}

@@ -35,7 +35,7 @@ func valueToPyObject(value reflect.Value) pyObject {
 // newConfig creates a new pyConfig object from the configuration.
 // This is typically only created once at global scope, other scopes copy it with .Copy()
 func newConfig(state *core.BuildState) *pyConfig {
-	base := make(pyDict, 100)
+	base := newPyDict(100)
 
 	v := reflect.ValueOf(state.Config).Elem()
 	for i := 0; i < v.NumField(); i++ {
@@ -43,7 +43,7 @@ func newConfig(state *core.BuildState) *pyConfig {
 			for j := 0; j < field.NumField(); j++ {
 				subfieldType := field.Type().Field(j)
 				if varName := subfieldType.Tag.Get("var"); varName != "" {
-					base[varName] = valueToPyObject(field.Field(j))
+					base.Set(varName, valueToPyObject(field.Field(j)))
 				}
 			}
 		}
@@ -55,35 +55,35 @@ func newConfig(state *core.BuildState) *pyConfig {
 		// parent subrepo or not. Historically we wouldn't load from the subrepo at all, so we err on the side of
 		// caution here: we only load in values that aren't already present as this is closer to how it used to work.
 		key := strings.ReplaceAll(strings.ToUpper(k), "-", "_")
-		if _, ok := base[key]; !ok {
+		if !base.Has(key) {
 			// TODO(jpoole): handle relative build labels
-			base[key] = guessType(v)
+			base.Set(key, guessType(v))
 		}
 	}
 	// Settings specific to package() which aren't in the config, but it's easier to
 	// just put them in now.
-	base["DEFAULT_VISIBILITY"] = None
-	base["DEFAULT_TESTONLY"] = False
-	base["DEFAULT_LICENCES"] = None
+	base.Set("DEFAULT_VISIBILITY", None)
+	base.Set("DEFAULT_TESTONLY", False)
+	base.Set("DEFAULT_LICENCES", None)
 	// Bazel supports a 'features' flag to toggle things on and off.
 	// We don't but at least let them call package() without blowing up.
 	if state.Config.Bazel.Compatibility {
-		base["FEATURES"] = pyList{}
+		base.Set("FEATURES", pyList{})
 	}
 
 	arch := state.Arch
 
-	base["OS"] = pyString(arch.OS)
-	base["ARCH"] = pyString(arch.Arch)
-	base["HOSTOS"] = pyString(arch.HostOS())
-	base["HOSTARCH"] = pyString(arch.HostArch())
-	base["TARGET_OS"] = pyString(state.TargetArch.OS)
-	base["TARGET_ARCH"] = pyString(state.TargetArch.Arch)
-	base["BUILD_CONFIG"] = pyString(state.Config.Build.Config)
-	base["DEBUG_PORT"] = pyInt(state.DebugPort)
+	base.Set("OS", pyString(arch.OS))
+	base.Set("ARCH", pyString(arch.Arch))
+	base.Set("HOSTOS", pyString(arch.HostOS()))
+	base.Set("HOSTARCH", pyString(arch.HostArch()))
+	base.Set("TARGET_OS", pyString(state.TargetArch.OS))
+	base.Set("TARGET_ARCH", pyString(state.TargetArch.Arch))
+	base.Set("BUILD_CONFIG", pyString(state.Config.Build.Config))
+	base.Set("DEBUG_PORT", pyInt(state.DebugPort))
 
 	// >= is legal at the start of the plz version but it shouldn't appear to the BUILD file.
-	base["PLZ_VERSION"] = pyString(strings.TrimPrefix(state.Config.Please.Version.String(), ">="))
+	base.Set("PLZ_VERSION", pyString(strings.TrimPrefix(state.Config.Please.Version.String(), ">=")))
 
 	return &pyConfig{base: &pyConfigBase{dict: base}}
 }
@@ -150,7 +150,7 @@ func pluginConfig(pluginState *core.BuildState, pkgState *core.BuildState) pyDic
 	for key, definition := range pluginState.RepoConfig.PluginConfig {
 		configKey := getConfigKey(key, definition.ConfigKey)
 		key = strings.ToUpper(key)
-		if _, ok := ret[key]; ok && definition.Inherit {
+		if ret.t.Get(key) != nil && definition.Inherit {
 			// If the config key is already defined, and we should inherit it from the host repo, continue.
 			continue
 		}
@@ -165,7 +165,7 @@ func pluginConfig(pluginState *core.BuildState, pkgState *core.BuildState) pyDic
 		}
 
 		if len(value) == 0 && !definition.Optional {
-			if _, ok := ret[key]; ok {
+			if ret.Has(key) {
 				// Inherit config from the host repo if we don't override it
 				continue
 			}
@@ -181,13 +181,13 @@ func pluginConfig(pluginState *core.BuildState, pkgState *core.BuildState) pyDic
 			for _, v := range value {
 				l = append(l, toPyObject(fullConfigKey, v, definition.Type))
 			}
-			ret[key] = l
+			ret.Set(key, l)
 		} else {
 			val := ""
 			if len(value) == 1 {
 				val = value[0]
 			}
-			ret[key] = toPyObject(fullConfigKey, val, definition.Type)
+			ret.Set(key, toPyObject(fullConfigKey, val, definition.Type))
 		}
 	}
 	return ret
@@ -205,16 +205,17 @@ func (i *interpreter) loadPluginConfig(s *scope, pluginState *core.BuildState) {
 	}
 
 	if s.config.overlay == nil {
-		s.config.overlay = pyDict{}
+		d := newPyDict(1)
+		s.config.overlay = &d
 	}
 
 	key := strings.ToUpper(pluginName)
-	if _, ok := s.config.overlay[key]; ok {
+	if s.config.overlay.Has(key) {
 		return
 	}
 
 	cfg := pluginConfig(pluginState, s.state)
-	s.config.overlay[key] = cfg
+	s.config.overlay.Set(key, cfg)
 }
 
 func toPyObject(key, val, toType string) pyObject {

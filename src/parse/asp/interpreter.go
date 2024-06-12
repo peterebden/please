@@ -207,7 +207,7 @@ func (i *interpreter) Subinclude(pkgScope *scope, path string, label core.BuildL
 	globals, err := i.subincludes.GetOrSet(key, func() (pyDict, error) {
 		stmts, err := i.parseSubinclude(path)
 		if err != nil {
-			return nil, err
+			return pyDict{}, err
 		}
 
 		mode := pkgScope.mode
@@ -224,13 +224,14 @@ func (i *interpreter) Subinclude(pkgScope *scope, path string, label core.BuildL
 
 		if !mode.IsPreload() {
 			if err := i.preloadSubincludes(s); err != nil {
-				return nil, err
+				return pyDict{}, err
 			}
 		}
 		s.interpretStatements(stmts)
 		locals := s.Freeze()
 		if s.config.overlay == nil {
-			delete(locals, "CONFIG") // Config doesn't have any local modifications
+			// TODO(peterebden): Reimplement this
+			// delete(locals, "CONFIG") // Config doesn't have any local modifications
 		}
 		return locals, nil
 	})
@@ -405,7 +406,7 @@ func (s *scope) newScope(pkg *core.Package, mode core.ParseMode, filename string
 		pkg:         pkg,
 		parsingFor:  s.parsingFor,
 		parent:      s,
-		locals:      make(pyDict, hint),
+		locals:      make(map[string]pyObject, hint),
 		config:      s.config,
 		Callback:    s.Callback,
 		mode:        mode,
@@ -463,7 +464,7 @@ func (s *scope) Set(name string, value pyObject) {
 // SetAll sets all contents of the given dict in this scope.
 // Optionally it can filter to just public objects (i.e. those not prefixed with an underscore)
 func (s *scope) SetAll(d pyDict, publicOnly bool) {
-	for k, v := range d {
+	for k, v := range d.t.KVs() {
 		if k == "CONFIG" {
 			// Special case; need to merge config entries rather than overwriting the entire object.
 			c, ok := v.(*pyFrozenConfig)
@@ -477,7 +478,7 @@ func (s *scope) SetAll(d pyDict, publicOnly bool) {
 
 // Freeze freezes the contents of this scope, preventing mutable objects from being changed.
 // It returns the newly frozen set of locals.
-func (s *scope) Freeze() pyDict {
+func (s *scope) Freeze() map[string]pyObject {
 	for k, v := range s.locals {
 		if f, ok := v.(freezable); ok {
 			s.locals[k] = f.Freeze()

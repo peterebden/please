@@ -1143,7 +1143,8 @@ func addData(s *scope, args []pyObject) pyObject {
 			}
 		}
 	} else if isType(datum, "dict") {
-		for name, v := range datum.(pyDict) {
+		d := datum.(pyDict)
+		for name, v := range d.t.KVs() {
 			for _, str := range v.(pyList) {
 				if bi := parseBuildInput(s, str, string(label.(pyString)), systemAllowed, tool); bi != nil {
 					addNamedDatumToTargetAndMaybeQueue(s, name, target, bi, systemAllowed, tool)
@@ -1209,13 +1210,13 @@ func getNamedOuts(s *scope, args []pyObject) pyObject {
 		outs = target.DeclaredNamedOutputs()
 	}
 
-	ret := make(pyDict, len(outs))
+	ret := newPyDict(len(outs))
 	for k, v := range outs {
 		list := make(pyList, len(v))
 		for i, out := range v {
 			list[i] = pyString(out)
 		}
-		ret[k] = list
+		ret.t.Insert(k, list)
 	}
 	return ret
 }
@@ -1239,9 +1240,9 @@ func getEntryPoints(s *scope, args []pyObject) pyObject {
 		target = getTargetPost(s, name)
 	}
 
-	ret := make(pyDict, len(target.EntryPoints))
+	ret := newPyDict(len(target.EntryPoints))
 	for name, output := range target.EntryPoints {
-		ret[name] = pyString(output)
+		ret.t.Insert(name, pyString(output))
 	}
 	return ret
 }
@@ -1266,9 +1267,9 @@ func getCommand(s *scope, args []pyObject) pyObject {
 		return pyString(target.GetCommandConfig(config))
 	}
 	if len(target.Commands) > 0 {
-		commands := pyDict{}
+		commands := newPyDict(len(target.Commands))
 		for config, cmd := range target.Commands {
-			commands[config] = pyString(cmd)
+			commands.t.Insert(config, pyString(cmd))
 		}
 		return commands
 	}
@@ -1304,13 +1305,12 @@ func selectFunc(s *scope, args []pyObject) pyObject {
 	var def pyObject
 
 	// This is not really the same as Bazel's order-of-matching rules, but is at least deterministic.
-	keys := d.Keys()
-	for i := len(keys) - 1; i >= 0; i-- {
-		k := keys[i]
+	// TODO(peterebden): this doesn't work the same any more. can we just ditch this?
+	for k, v := range d.t.KVs() {
 		if k == "//conditions:default" || k == "default" {
-			def = d[k]
+			def = v
 		} else if selectTarget(s, s.parseLabelInContextPkg(k)).HasLabel("config:on") {
-			return d[k]
+			return v
 		}
 	}
 	s.NAssert(def == nil, "None of the select() conditions matched")
