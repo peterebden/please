@@ -720,38 +720,21 @@ func dictGet(s *scope, args []pyObject) pyObject {
 
 func dictKeys(s *scope, args []pyObject) pyObject {
 	self := args[0].(pyDict)
-	ret := make(pyList, len(self))
-	for i, k := range self.Keys() {
-		ret[i] = pyString(k)
-	}
-	return ret
+	return pyView{d: self, s: self.t.Keys()}
 }
 
 func dictValues(s *scope, args []pyObject) pyObject {
 	self := args[0].(pyDict)
-	ret := make(pyList, len(self))
-	for i, k := range self.Keys() {
-		ret[i] = self[k]
-	}
-	return ret
+	return pyView{d: self, s: self.t.Values()}
 }
 
 func dictItems(s *scope, args []pyObject) pyObject {
 	self := args[0].(pyDict)
-	ret := make(pyList, len(self))
-	for i, k := range self.Keys() {
-		ret[i] = pyList{pyString(k), self[k]}
-	}
-	return ret
+	return pyView{d: self, s: self.t.Items()}
 }
 
 func dictCopy(s *scope, args []pyObject) pyObject {
-	self := args[0].(pyDict)
-	ret := make(pyDict, len(self))
-	for k, v := range self {
-		ret[k] = v
-	}
-	return ret
+	return args[0].(pyDict).Copy()
 }
 
 func sorted(s *scope, args []pyObject) pyObject {

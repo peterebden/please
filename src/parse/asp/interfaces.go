@@ -37,6 +37,10 @@ func testInterfacesAreFulfilled() {
 	f = fd
 	len = fd
 
+	dv := dictView{}
+	len = dv
+	it = dv
+
 	f = f
 	len = len
 	it = it

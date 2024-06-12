@@ -1102,6 +1102,43 @@ func (r *pyRange) toList(extraCapacity int) pyList {
 	return ret
 }
 
+// A pyView implements views onto dicts via keys() / values() / items()
+type pyView struct {
+	d pyDict
+	s sequence
+}
+
+func (v pyView) String() string {
+	return "view"
+}
+
+func (v pyView) Type() string {
+	return "view"
+}
+func (d pyView) TypeTag() int32 {
+	return 0
+}
+
+func (d pyView) IsTruthy() bool {
+	return true
+}
+
+func (d pyView) Property(scope *scope, name string) pyObject {
+	panic("view object has no property " + name)
+}
+
+func (d pyView) Operator(operator Operator, operand pyObject) pyObject {
+	panic(fmt.Sprintf("operator %s not implemented on type view", operator))
+}
+
+func (d pyView) Len() int {
+	return d.d.Len()
+}
+
+func (d pyView) Iter() sequence {
+	return d.s
+}
+
 // Known types, used for type signatures on function arguments
 // This doesn't have to be totally exhaustive, it's only the ones that can be declared in syntax.
 var (
