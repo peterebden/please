@@ -4,7 +4,7 @@ import (
 	"iter"
 )
 
-const bucketSize = 8
+const bucketSize = 16
 
 // An OrderedMap is an implementation of a mapping structure in Go similar to map, but which
 // retains a consistent iteration order.
@@ -78,7 +78,7 @@ func (m *OrderedMap[V]) Set(k string, v V) {
 	}
 	// If we get here, it wasn't in the bucket, and we didn't have space. Disaster! We're going
 	// to have to increase our size and try again.
-	m.resize(len(m.buckets) * 2)
+	m.resize(len(m.buckets) * 4)
 	m.Set(k, v)
 }
 
