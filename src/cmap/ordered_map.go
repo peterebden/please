@@ -13,6 +13,7 @@ type OrderedMap[V any] struct {
 	buckets     []hashBucket[V]
 	bucket0     [1]hashBucket[V]
 	first, last *hashEntry[V]
+	length      int
 }
 
 type hashBucket[V any] struct {
@@ -57,6 +58,7 @@ func (m *OrderedMap[V]) Set(k string, v V) {
 	for i := range bucket.Entries {
 		if entry := &bucket.Entries[i]; entry.Hash == hash && entry.Key == k {
 			entry.Value = v
+			m.length++
 			return // Don't need to reorder anything on overwrite
 		} else if entry.Hash == 0 && entry.Key == "" {
 			// We have reached empty entries, so insert it here
@@ -70,6 +72,7 @@ func (m *OrderedMap[V]) Set(k string, v V) {
 			if m.first == nil {
 				m.first = entry
 			}
+			m.length++
 			return
 		}
 	}
@@ -138,4 +141,9 @@ func (m *OrderedMap[V]) Values() iter.Seq[V] {
 			}
 		}
 	}
+}
+
+// Len returns the current number of items in this map
+func (m *OrderedMap[V]) Len() int {
+	return m.length
 }

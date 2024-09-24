@@ -14,15 +14,17 @@ func TestEmptyBucketDetection(t *testing.T) {
 }
 
 func TestGetAndSet(t *testing.T) {
+	const n = 20
 	m := NewOrdered[int](5)
-	for i := range 20 {
+	for i := range n {
 		m.Set(strconv.Itoa(i), i)
 	}
-	for i := range 20 {
+	for i := range n {
 		v, present := m.Get(strconv.Itoa(i))
 		assert.True(t, present)
 		assert.Equal(t, i, v)
 	}
+	assert.Equal(t, n, m.Len())
 }
 
 func TestIteration(t *testing.T) {
