@@ -1082,7 +1082,7 @@ func (r *pyRange) toList(extraCapacity int) pyList {
 
 // A pyDictItemsView represents the return value from dict.items() which is an opaque iterable object.
 type pyDictItemsView struct {
-	dict *pyDict
+	d *pyDict
 }
 
 func (r pyDictItemsView) String() string {
@@ -1101,19 +1101,58 @@ func (r pyDictItemsView) IsTruthy() bool {
 	return true
 }
 
-func (r pyDictItemsView) Property(scope *scope, name string) pyObject {
-	panic("dict_items object has no property " + name)
+func (r pyDictItemsView) Iter() iter.Seq[pyObject] {
+	return r.d.Items()
 }
 
-func (r pyDictItemsView) Operator(operator Operator, operand pyObject) pyObject {
-	if l, ok := operand.(pyList); ok {
-		return append(r.toList(len(l)), l...)
-	}
-	panic(fmt.Sprintf("operator %s not implemented on type range", operator))
+// A pyDictKeysView represents the return value from dict.keys() which is an opaque iterable object.
+type pyDictKeysView struct {
+	d *pyDict
 }
 
-func (r pyDictItemsView) Len() int {
-	return int((r.Stop - r.Start) / r.Step)
+func (r pyDictKeysView) String() string {
+	return "dict_keys"
+}
+
+func (r pyDictKeysView) Type() string {
+	return "dict_keys"
+}
+
+func (r pyDictKeysView) TypeTag() int32 {
+	return 0
+}
+
+func (r pyDictKeysView) IsTruthy() bool {
+	return true
+}
+
+func (r pyDictKeysView) Iter() iter.Seq[pyObject] {
+	return r.d.Keys()
+}
+
+// A pyDictValuesView represents the return value from dict.values() which is an opaque iterable object.
+type pyDictValuesView struct {
+	d *pyDict
+}
+
+func (r pyDictValuesView) String() string {
+	return "dict_values"
+}
+
+func (r pyDictValuesView) Type() string {
+	return "dict_values"
+}
+
+func (r pyDictValuesView) TypeTag() int32 {
+	return 0
+}
+
+func (r pyDictValuesView) IsTruthy() bool {
+	return true
+}
+
+func (r pyDictValuesView) Iter() iter.Seq[pyObject] {
+	return r.d.Values()
 }
 
 // Known types, used for type signatures on function arguments
