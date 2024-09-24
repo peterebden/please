@@ -38,3 +38,13 @@ go_benchmark(
         "///third_party/go/github.com_cespare_xxhash_v2//:v2",
     ],
 )
+
+go_benchmark(
+    name = "ordered_map_benchmark",
+    srcs = ["ordered_map_test.go"],
+    deps = [
+        ":cmap",
+        "///third_party/go/github.com_cespare_xxhash_v2//:v2",
+        "///third_party/go/github.com_stretchr_testify//assert",
+    ],
+)

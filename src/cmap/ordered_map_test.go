@@ -57,3 +57,22 @@ func TestIteration(t *testing.T) {
 	})
 
 }
+
+func BenchmarkOrderedMapInsertions(b *testing.B) {
+	m := NewOrdered[int](0)
+	for i := range b.N {
+		k := strconv.Itoa(i)
+		m.Set(k, i)
+		v, _ := m.Get(k)
+		assert.Equal(b, v, i)
+	}
+}
+
+func BenchmarkGoMapInsertions(b *testing.B) {
+	m := map[string]int{}
+	for i := range b.N {
+		k := strconv.Itoa(i)
+		m[k] = i
+		assert.Equal(b, m[k], i)
+	}
+}
