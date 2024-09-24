@@ -1080,6 +1080,42 @@ func (r *pyRange) toList(extraCapacity int) pyList {
 	return ret
 }
 
+// A pyDictItemsView represents the return value from dict.items() which is an opaque iterable object.
+type pyDictItemsView struct {
+	dict *pyDict
+}
+
+func (r pyDictItemsView) String() string {
+	return "dict_items"
+}
+
+func (r pyDictItemsView) Type() string {
+	return "dict_items"
+}
+
+func (r pyDictItemsView) TypeTag() int32 {
+	return 0
+}
+
+func (r pyDictItemsView) IsTruthy() bool {
+	return true
+}
+
+func (r pyDictItemsView) Property(scope *scope, name string) pyObject {
+	panic("dict_items object has no property " + name)
+}
+
+func (r pyDictItemsView) Operator(operator Operator, operand pyObject) pyObject {
+	if l, ok := operand.(pyList); ok {
+		return append(r.toList(len(l)), l...)
+	}
+	panic(fmt.Sprintf("operator %s not implemented on type range", operator))
+}
+
+func (r pyDictItemsView) Len() int {
+	return int((r.Stop - r.Start) / r.Step)
+}
+
 // Known types, used for type signatures on function arguments
 // This doesn't have to be totally exhaustive, it's only the ones that can be declared in syntax.
 var (

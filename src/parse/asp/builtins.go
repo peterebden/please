@@ -479,7 +479,7 @@ func isType(obj pyObject, name string) bool {
 		return name == "range"
 	case pyList:
 		return name == "list"
-	case pyDict:
+	case *pyDict:
 		return name == "dict"
 	case *pyConfig:
 		return name == "config"
@@ -616,7 +616,7 @@ func strFormat(s *scope, args []pyObject) pyObject {
 			s.Assert(arg < len(args), "format string specifies at least %d positional arguments, but only %d were supplied", arg, len(args)-1)
 			buf.WriteString(args[arg].String())
 			arg++
-		} else if val, present := s.locals[key]; present {
+		} else if val, present := s.locals.Get(key); present {
 			buf.WriteString(val.String())
 		} else {
 			// We may want to error here in some future revision
@@ -750,7 +750,7 @@ func configItems(s *scope, args []pyObject) pyObject {
 }
 
 func dictGet(s *scope, args []pyObject) pyObject {
-	self := args[0].(pyDict)
+	self := args[0].(*pyDict)
 	sk, ok := args[1].(pyString)
 	s.Assert(ok, "dict keys must be strings, not %s", args[1].Type())
 	if ret, present := self[string(sk)]; present {
@@ -760,7 +760,7 @@ func dictGet(s *scope, args []pyObject) pyObject {
 }
 
 func dictKeys(s *scope, args []pyObject) pyObject {
-	self := args[0].(pyDict)
+	self := args[0].(*pyDict)
 	ret := make(pyList, len(self))
 	for i, k := range self.Keys() {
 		ret[i] = pyString(k)
@@ -769,7 +769,7 @@ func dictKeys(s *scope, args []pyObject) pyObject {
 }
 
 func dictValues(s *scope, args []pyObject) pyObject {
-	self := args[0].(pyDict)
+	self := args[0].(*pyDict)
 	ret := make(pyList, len(self))
 	for i, k := range self.Keys() {
 		ret[i] = self[k]
@@ -778,7 +778,7 @@ func dictValues(s *scope, args []pyObject) pyObject {
 }
 
 func dictItems(s *scope, args []pyObject) pyObject {
-	self := args[0].(pyDict)
+	self := args[0].(*pyDict)
 	ret := make(pyList, len(self))
 	for i, k := range self.Keys() {
 		ret[i] = pyList{pyString(k), self[k]}
@@ -787,12 +787,7 @@ func dictItems(s *scope, args []pyObject) pyObject {
 }
 
 func dictCopy(s *scope, args []pyObject) pyObject {
-	self := args[0].(pyDict)
-	ret := make(pyDict, len(self))
-	for k, v := range self {
-		ret[k] = v
-	}
-	return ret
+	return args[0].(*pyDict).Copy()
 }
 
 func sorted(s *scope, args []pyObject) pyObject {
