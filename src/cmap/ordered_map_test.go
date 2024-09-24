@@ -24,3 +24,34 @@ func TestGetAndSet(t *testing.T) {
 		assert.Equal(t, i, v)
 	}
 }
+
+func TestIteration(t *testing.T) {
+	const n = 22
+	m := NewOrdered[int](n / 2)
+	for i := range n {
+		m.Set(strconv.Itoa(i), i)
+	}
+	t.Run("Items", func(t *testing.T) {
+		x := 0
+		for k, v := range m.Items() {
+			assert.Equal(t, strconv.Itoa(x), k)
+			assert.Equal(t, x, v)
+			x++
+		}
+	})
+	t.Run("Keys", func(t *testing.T) {
+		x := 0
+		for k := range m.Keys() {
+			assert.Equal(t, strconv.Itoa(x), k)
+			x++
+		}
+	})
+	t.Run("Values", func(t *testing.T) {
+		x := 0
+		for v := range m.Values() {
+			assert.Equal(t, x, v)
+			x++
+		}
+	})
+
+}

@@ -1,5 +1,9 @@
 package cmap
 
+import (
+	"iter"
+)
+
 const bucketSize = 8
 
 // An OrderedMap is an implementation of a mapping structure in Go similar to map, but which
@@ -98,4 +102,40 @@ func (m *OrderedMap[V]) resize(capacity int) {
 
 func (m *OrderedMap[V]) bucket(hash uint64) *hashBucket[V] {
 	return &m.buckets[int(hash)&(len(m.buckets)-1)] // buckets are always a power of 2
+}
+
+// Items returns an iterator over (key, value) pairs of this map.
+// Modifying the map during iteration is unsupported.
+func (m *OrderedMap[V]) Items() iter.Seq2[string, V] {
+	return func(yield func(string, V) bool) {
+		for e := m.first; e != nil; e = e.Next {
+			if !yield(e.Key, e.Value) {
+				return
+			}
+		}
+	}
+}
+
+// Keys returns an iterator over the keys of this map.
+// Modifying the map during iteration is unsupported.
+func (m *OrderedMap[V]) Keys() iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for e := m.first; e != nil; e = e.Next {
+			if !yield(e.Key) {
+				return
+			}
+		}
+	}
+}
+
+// Values returns an iterator over the values of this map.
+// Modifying the map during iteration is unsupported.
+func (m *OrderedMap[V]) Values() iter.Seq[V] {
+	return func(yield func(V) bool) {
+		for e := m.first; e != nil; e = e.Next {
+			if !yield(e.Value) {
+				return
+			}
+		}
+	}
 }
