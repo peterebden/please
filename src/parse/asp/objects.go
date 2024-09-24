@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/thought-machine/please/src/cmap"
 )
 
 // A pyObject is the base type for all interpreter objects.
@@ -463,21 +465,27 @@ func (l pyFrozenList) IndexAssign(index, value pyObject) {
 	panic("list is immutable")
 }
 
-type pyDict map[string]pyObject // Dicts can only be keyed by strings
+type pyDict struct {
+	cmap.OrderedMap[pyObject]
+}
 
-func (d pyDict) Type() string {
+func newPyDict(capacity int) *pyDict {
+	return cmap.NewOrdered[pyObject](capacity)
+}
+
+func (d *pyDict) Type() string {
 	return "dict"
 }
 
-func (d pyDict) TypeTag() int32 {
+func (d *pyDict) TypeTag() int32 {
 	return pyDictTag
 }
 
-func (d pyDict) IsTruthy() bool {
-	return len(d) > 0
+func (d *pyDict) IsTruthy() bool {
+	return d.Len() > 0
 }
 
-func (d pyDict) Property(scope *scope, name string) pyObject {
+func (d *pyDict) Property(scope *scope, name string) pyObject {
 	// We allow looking up dict members by . as well as by indexing in order to facilitate the config map.
 	if obj, present := d[name]; present {
 		return obj
@@ -487,10 +495,10 @@ func (d pyDict) Property(scope *scope, name string) pyObject {
 	panic("dict object has no property " + name)
 }
 
-func (d pyDict) Operator(operator Operator, operand pyObject) pyObject {
+func (d *pyDict) Operator(operator Operator, operand pyObject) pyObject {
 	if operator == In || operator == NotIn {
 		if s, ok := operand.(pyString); ok {
-			_, present := d[string(s)]
+			_, present := d.Get(string(s))
 			return newPyBool(present == (operator == In))
 		}
 		return newPyBool(operator == NotIn)
@@ -498,21 +506,22 @@ func (d pyDict) Operator(operator Operator, operand pyObject) pyObject {
 		s, ok := operand.(pyString)
 		if !ok {
 			panic("Dict keys must be strings, not " + operand.Type())
-		} else if v, present := d[string(s)]; present {
+		} else if v, present := d.Get(string(s)); present {
 			return v
 		}
 		panic("unknown dict key: " + s.String())
 	} else if operator == Union {
-		d2, ok := operand.(pyDict)
+		d2, ok := operand.(*pyDict)
 		if !ok {
 			panic("Operator to | must be another dict, not " + operand.Type())
 		}
-		ret := make(pyDict, len(d)+len(d2))
-		for k, v := range d {
-			ret[k] = v
+		// TODO(pebers): Add an optimised Union function on OrderedMap
+		ret := newPyDict(len(d) + len(d2))
+		for k, v := range d.Items() {
+			ret.Set(k, v)
 		}
-		for k, v := range d2 {
-			ret[k] = v
+		for k, v := range d2.Items() {
+			ret.Set(k, v)
 		}
 		return ret
 	}
@@ -523,19 +532,19 @@ func (d pyDict) Len() int {
 	return len(d)
 }
 
-func (d pyDict) IndexAssign(index, value pyObject) {
+func (d *pyDict) IndexAssign(index, value pyObject) {
 	key, ok := index.(pyString)
 	if !ok {
 		panic("Dict keys must be strings, not " + index.Type())
 	}
-	d[string(key)] = value
+	d.Set(string(key), value)
 }
 
-func (d pyDict) String() string {
+func (d *pyDict) String() string {
 	var b strings.Builder
 	b.WriteByte('{')
 	started := false
-	for _, k := range d.Keys() {
+	for k, v := range d.Items() {
 		if started {
 			b.WriteString(", ")
 		}
@@ -543,17 +552,18 @@ func (d pyDict) String() string {
 		b.WriteByte('"')
 		b.WriteString(k)
 		b.WriteString(`": `)
-		b.WriteString(d[k].String())
+		b.WriteString(v.String())
 	}
 	b.WriteByte('}')
 	return b.String()
 }
 
 // Copy creates a shallow duplicate of this dictionary.
-func (d pyDict) Copy() pyDict {
-	m := make(pyDict, len(d))
-	for k, v := range d {
-		m[k] = v
+func (d *pyDict) Copy() *pyDict {
+	// TODO(peterebden): Add an optimised Copy() on OrderedMap
+	m := newPyDict(d.Len())
+	for k, v := range d.Items() {
+		m.Set(k, v)
 	}
 	return m
 }
@@ -561,43 +571,33 @@ func (d pyDict) Copy() pyDict {
 // Freeze freezes this dict for further updates.
 // Note that this is a "soft" freeze; callers holding the original unfrozen
 // reference can still modify it.
-func (d pyDict) Freeze() pyObject {
-	frozen := pyDict{}
-	for k, v := range d {
+func (d *pyDict) Freeze() pyObject {
+	frozen := newPyDict(d.Len())
+	for k, v := range d.Items() {
 		if f, ok := v.(freezable); ok {
-			frozen[k] = f.Freeze()
+			frozen.Set(k, f.Freeze())
 		} else {
-			frozen[k] = v
+			frozen.Set(k, v)
 		}
 	}
-	return pyFrozenDict{pyDict: frozen}
-}
-
-// Keys returns the keys of this dict, in order.
-func (d pyDict) Keys() []string {
-	ret := make([]string, 0, len(d))
-	for k := range d {
-		ret = append(ret, k)
-	}
-	sort.Strings(ret)
-	return ret
+	return pyFrozenDict{pyDict: *frozen}
 }
 
 // A pyFrozenDict implements an immutable python dict.
 type pyFrozenDict struct{ pyDict }
 
-func (d pyFrozenDict) MarshalJSON() ([]byte, error) {
+func (d *pyFrozenDict) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.pyDict)
 }
 
-func (d pyFrozenDict) Property(scope *scope, name string) pyObject {
+func (d *pyFrozenDict) Property(scope *scope, name string) pyObject {
 	if name == "setdefault" {
 		panic("dict is immutable")
 	}
 	return d.pyDict.Property(scope, name)
 }
 
-func (d pyFrozenDict) IndexAssign(index, value pyObject) {
+func (d *pyFrozenDict) IndexAssign(index, value pyObject) {
 	panic("dict is immutable")
 }
 
@@ -1083,7 +1083,7 @@ func (r *pyRange) toList(extraCapacity int) pyList {
 // Known types, used for type signatures on function arguments
 // This doesn't have to be totally exhaustive, it's only the ones that can be declared in syntax.
 var (
-	knownTypes         = []pyObject{False, pyString(""), pyInt(0), pyList{}, pyDict{}, &pyFunc{}, &pyConfig{}, None}
+	knownTypes         = []pyObject{False, pyString(""), pyInt(0), pyList{}, newPyDict(0), &pyFunc{}, &pyConfig{}, None}
 	knownTypeNames     = make([]string, len(knownTypes))
 	knownTypeTagToName = make(map[int]string, len(knownTypes))
 	knownTypeNameToTag = make(map[string]int32, len(knownTypes))

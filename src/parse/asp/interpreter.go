@@ -19,7 +19,7 @@ import (
 type interpreter struct {
 	scope       *scope
 	parser      *Parser
-	subincludes *cmap.ErrMap[string, pyDict]
+	subincludes *cmap.ErrMap[string, *pyDict]
 	asts        *cmap.ErrMap[string, []*Statement]
 
 	configs      map[*core.BuildState]*pyConfig
@@ -49,7 +49,7 @@ func newInterpreter(state *core.BuildState, p *Parser) *interpreter {
 		i.subincludes = p.interpreter.subincludes
 		i.asts = p.interpreter.asts
 	} else {
-		i.subincludes = cmap.NewErrMap[string, pyDict](cmap.SmallShardCount, cmap.XXHash, i.limiter)
+		i.subincludes = cmap.NewErrMap[string, *pyDict](cmap.SmallShardCount, cmap.XXHash, i.limiter)
 		i.asts = cmap.NewErrMap[string, []*Statement](cmap.SmallShardCount, cmap.XXHash, i.limiter)
 	}
 	s.interpreter = i

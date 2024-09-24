@@ -234,18 +234,18 @@ func filegroup(s *scope, args []pyObject) pyObject {
 // pkg implements the package() builtin function.
 func pkg(s *scope, args []pyObject) pyObject {
 	s.Assert(s.pkg.NumTargets() == 0, "package() must be called before any build targets are defined")
-	for k, v := range s.locals {
+	for k, v := range s.locals.Items() {
 		k = strings.ToUpper(k)
 		configVal := s.config.Get(k, nil)
 		s.Assert(configVal != nil, "error calling package(): %s is not a known config value", k)
 
 		// Merge in the existing config for dictionaries
-		if overrides, ok := v.(pyDict); ok {
-			if pluginConfig, ok := configVal.(pyDict); ok {
+		if overrides, ok := v.(*pyDict); ok {
+			if pluginConfig, ok := configVal.(*pyDict); ok {
 				newPluginConfig := pluginConfig.Copy()
-				for pluginKey, override := range overrides {
+				for pluginKey, override := range overrides.Items() {
 					pluginKey = strings.ToUpper(pluginKey)
-					if _, ok := newPluginConfig[pluginKey]; !ok {
+					if _, ok := newPluginConfig.Get(pluginKey); !ok {
 						s.Error("error calling package(): %s.%s is not a known config value", k, pluginKey)
 					}
 

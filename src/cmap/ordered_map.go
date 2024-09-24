@@ -4,6 +4,7 @@ import (
 	"iter"
 )
 
+// Determined somewhat empirically.
 const bucketSize = 16
 
 // An OrderedMap is an implementation of a mapping structure in Go similar to map, but which
