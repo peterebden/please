@@ -249,13 +249,15 @@ func (p *Parser) optimiseBuiltinCalls(stmts []*Statement) {
 			for _, arg := range stmt.FuncDef.Arguments {
 				if arg.Value != nil && arg.Value.Val.Dict != nil && arg.Value.Val.Dict.Comprehension == nil && len(arg.Value.Val.Dict.Items) == 0 {
 					arg.Value.optimised = &optimisedExpression{
-						Constant: pyFrozenDict{},
+						Constant: &constantDict,
 					}
 				}
 			}
 		}
 	}
 }
+
+var constantDict = pyFrozenDict{}
 
 // whitelistedKwargs returns true if the given built-in function name is allowed to
 // be called as non-kwargs.

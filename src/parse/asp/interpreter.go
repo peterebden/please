@@ -36,7 +36,7 @@ type interpreter struct {
 func newInterpreter(state *core.BuildState, p *Parser) *interpreter {
 	s := &scope{
 		state:  state,
-		locals: map[string]pyObject{},
+		locals: newPyDict(0),
 	}
 	i := &interpreter{
 		scope:   s,
@@ -203,9 +203,9 @@ func (i *interpreter) interpretStatements(s *scope, statements []*Statement) (re
 }
 
 // Subinclude returns the global values corresponding to subincluding the given file.
-func (i *interpreter) Subinclude(pkgScope *scope, path string, label core.BuildLabel, preload bool) pyDict {
+func (i *interpreter) Subinclude(pkgScope *scope, path string, label core.BuildLabel, preload bool) *pyDict {
 	key := filepath.Join(path, pkgScope.state.CurrentSubrepo)
-	globals, err := i.subincludes.GetOrSet(key, func() (pyDict, error) {
+	globals, err := i.subincludes.GetOrSet(key, func() (*pyDict, error) {
 		stmts, err := i.parseSubinclude(path)
 		if err != nil {
 			return nil, err
@@ -231,7 +231,8 @@ func (i *interpreter) Subinclude(pkgScope *scope, path string, label core.BuildL
 		s.interpretStatements(stmts)
 		locals := s.Freeze()
 		if s.config.overlay == nil {
-			delete(locals, "CONFIG") // Config doesn't have any local modifications
+			// TODO(peterebden): Figure out what we're going to do here...
+			// delete(locals, "CONFIG") // Config doesn't have any local modifications
 		}
 		return locals, nil
 	})
@@ -289,7 +290,7 @@ type scope struct {
 	subincludeLabel *core.BuildLabel
 	parsingFor      *parseTarget
 	parent          *scope
-	locals          pyDict
+	locals          *pyDict
 	config          *pyConfig
 	globber         *fs.Globber
 	// True if this scope is for a pre- or post-build callback.
@@ -406,7 +407,7 @@ func (s *scope) newScope(pkg *core.Package, mode core.ParseMode, filename string
 		pkg:         pkg,
 		parsingFor:  s.parsingFor,
 		parent:      s,
-		locals:      make(pyDict, hint),
+		locals:      newPyDict(hint),
 		config:      s.config,
 		Callback:    s.Callback,
 		mode:        mode,
@@ -440,7 +441,7 @@ func (s *scope) NAssert(condition bool, msg string, args ...interface{}) {
 // Lookup looks up a variable name in this scope, walking back up its ancestor scopes as needed.
 // It panics if the variable is not defined.
 func (s *scope) Lookup(name string) pyObject {
-	if obj, present := s.locals[name]; present {
+	if obj, present := s.locals.Get(name); present {
 		return obj
 	} else if s.parent != nil {
 		return s.parent.Lookup(name)
@@ -453,35 +454,36 @@ func (s *scope) Lookup(name string) pyObject {
 // This is typically used for things like function arguments where we're only interested in variables
 // in immediate scope.
 func (s *scope) LocalLookup(name string) pyObject {
-	return s.locals[name]
+	o, _ := s.locals.Get(name)
+	return o
 }
 
 // Set sets the given variable in this scope.
 func (s *scope) Set(name string, value pyObject) {
-	s.locals[name] = value
+	s.locals.Set(name, value)
 }
 
 // SetAll sets all contents of the given dict in this scope.
 // Optionally it can filter to just public objects (i.e. those not prefixed with an underscore)
-func (s *scope) SetAll(d pyDict, publicOnly bool) {
-	for k, v := range d {
+func (s *scope) SetAll(d *pyDict, publicOnly bool) {
+	for k, v := range d.Items() {
 		if k == "CONFIG" {
 			// Special case; need to merge config entries rather than overwriting the entire object.
 			c, ok := v.(*pyFrozenConfig)
 			s.Assert(ok, "incoming CONFIG isn't a config object")
 			s.config.Merge(c)
 		} else if !publicOnly || k[0] != '_' {
-			s.locals[k] = v
+			s.locals.Set(k, v)
 		}
 	}
 }
 
 // Freeze freezes the contents of this scope, preventing mutable objects from being changed.
 // It returns the newly frozen set of locals.
-func (s *scope) Freeze() pyDict {
-	for k, v := range s.locals {
+func (s *scope) Freeze() *pyDict {
+	for k, v := range s.locals.Items() {
 		if f, ok := v.(freezable); ok {
-			s.locals[k] = f.Freeze()
+			s.locals.Set(k, f.Freeze())
 		}
 	}
 	return s.locals
@@ -925,7 +927,7 @@ func (s *scope) interpretList(expr *List) pyList {
 
 func (s *scope) interpretDict(expr *Dict) pyObject {
 	if expr.Comprehension == nil {
-		d := make(pyDict, len(expr.Items))
+		d := newPyDict(len(expr.Items))
 		for _, v := range expr.Items {
 			d.IndexAssign(s.interpretExpression(&v.Key), s.interpretExpression(&v.Value))
 		}
@@ -933,7 +935,7 @@ func (s *scope) interpretDict(expr *Dict) pyObject {
 	}
 	cs := s.NewScope(s.filename, s.mode)
 	it, l := s.iterableLen(expr.Comprehension.Expr)
-	ret := make(pyDict, l)
+	ret := newPyDict(l)
 	cs.evaluateComprehension(it, expr.Comprehension, func(li pyObject) {
 		ret.IndexAssign(cs.interpretExpression(&expr.Items[0].Key), cs.interpretExpression(&expr.Items[0].Value))
 	})

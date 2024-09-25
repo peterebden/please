@@ -470,7 +470,7 @@ type pyDict struct {
 }
 
 func newPyDict(capacity int) *pyDict {
-	return cmap.NewOrdered[pyObject](capacity)
+	return &pyDict{*cmap.NewOrdered[pyObject](capacity)}
 }
 
 func (d *pyDict) Type() string {
@@ -487,7 +487,7 @@ func (d *pyDict) IsTruthy() bool {
 
 func (d *pyDict) Property(scope *scope, name string) pyObject {
 	// We allow looking up dict members by . as well as by indexing in order to facilitate the config map.
-	if obj, present := d[name]; present {
+	if obj, present := d.Get(name); present {
 		return obj
 	} else if prop, present := scope.interpreter.dictMethods[name]; present {
 		return prop.Member(d)
@@ -516,7 +516,7 @@ func (d *pyDict) Operator(operator Operator, operand pyObject) pyObject {
 			panic("Operator to | must be another dict, not " + operand.Type())
 		}
 		// TODO(pebers): Add an optimised Union function on OrderedMap
-		ret := newPyDict(len(d) + len(d2))
+		ret := newPyDict(d.Len() + d2.Len())
 		for k, v := range d.Items() {
 			ret.Set(k, v)
 		}
@@ -529,7 +529,7 @@ func (d *pyDict) Operator(operator Operator, operand pyObject) pyObject {
 }
 
 func (d pyDict) Len() int {
-	return len(d)
+	return d.OrderedMap.Len()
 }
 
 func (d *pyDict) IndexAssign(index, value pyObject) {
@@ -580,7 +580,7 @@ func (d *pyDict) Freeze() pyObject {
 			frozen.Set(k, v)
 		}
 	}
-	return pyFrozenDict{pyDict: *frozen}
+	return &pyFrozenDict{pyDict: *frozen}
 }
 
 // A pyFrozenDict implements an immutable python dict.
@@ -857,7 +857,7 @@ func (f *pyFunc) validateType(s *scope, i int, expr *Expression) pyObject {
 }
 
 type pyConfigBase struct {
-	dict pyDict
+	dict *pyDict
 }
 
 // A pyConfig is a wrapper object around Please's global config.
@@ -866,7 +866,7 @@ type pyConfigBase struct {
 // on each update.
 type pyConfig struct {
 	base    *pyConfigBase
-	overlay pyDict
+	overlay *pyDict
 }
 
 func (c *pyConfig) MarshalJSON() ([]byte, error) {
@@ -877,13 +877,14 @@ func (c *pyConfig) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c.toPyDict())
 }
 
-func (c *pyConfig) toPyDict() pyDict {
-	merged := make(pyDict, len(c.base.dict)+len(c.overlay))
-	for k, v := range c.base.dict {
-		merged[k] = v
+func (c *pyConfig) toPyDict() *pyDict {
+	// TODO(peterebden): Another place for an optimised Union function
+	merged := newPyDict(c.base.dict.Len()+c.overlay.Len())
+	for k, v := range c.base.dict.Items() {
+		merged.Set(k, v)
 	}
-	for k, v := range c.overlay {
-		merged[k] = v
+	for k, v := range c.overlay.Items() {
+		merged.Set(k, v)
 	}
 	return merged
 }
@@ -933,10 +934,9 @@ func (c *pyConfig) Operator(operator Operator, operand pyObject) pyObject {
 func (c *pyConfig) IndexAssign(index, value pyObject) {
 	key := string(index.(pyString))
 	if c.overlay == nil {
-		c.overlay = pyDict{key: value}
-	} else {
-		c.overlay[key] = value
+		c.overlay = newPyDict(1)
 	}
+	c.overlay.Set(key, value)
 }
 
 // Copy creates a copy of this config object. It does not copy the overlay config, so be careful
@@ -949,29 +949,28 @@ func (c *pyConfig) Copy() *pyConfig {
 // both internal maps.
 func (c *pyConfig) Keys() []string {
 	ret := make([]string, 0)
-	for k := range c.base.dict {
+	for k := range c.base.dict.Keys() {
 		ret = append(ret, k)
 	}
 	if c.overlay != nil {
-		for k := range c.overlay {
-			ret = append(ret, k)
+		for k := range c.overlay.Keys() {
+			if _, present := c.base.dict.Get(k); !present {
+				ret = append(ret, k)
+			}
 		}
 	}
-	sort.Strings(ret)
-	// Remove duplicate keys that appear in both the base and overlay dicts
-	ret = slices.Compact(ret)
 	return ret
 }
 
 // Get implements the get() method, similarly to a dict but looks up in both internal maps.
 func (c *pyConfig) Get(key string, fallback pyObject) pyObject {
 	if c.overlay != nil {
-		if obj, present := c.overlay[key]; present {
+		if obj, present := c.overlay.Get(key); present {
 			return obj
 		}
 	}
 
-	if obj, present := c.base.dict[key]; present {
+	if obj, present := c.base.dict.Get(key); present {
 		return obj
 	}
 	return fallback
@@ -995,10 +994,12 @@ func (c *pyConfig) Freeze() pyObject {
 func (c *pyConfig) Merge(other *pyFrozenConfig) {
 	if c.overlay == nil {
 		// N.B. We cannot directly copy since this might get mutated again later on.
-		c.overlay = make(pyDict, len(other.overlay))
+		// TODO(peterebden): surely we can just Copy() it?
+		c.overlay = newPyDict(other.overlay.Len())
 	}
-	for k, v := range other.overlay {
-		c.overlay[k] = v
+	// TODO(peterebden): Some kind of optimised merge here would be nice
+	for k, v := range other.overlay.Items() {
+		c.overlay.Set(k, v)
 	}
 }
 
@@ -1102,7 +1103,13 @@ func (r pyDictItemsView) IsTruthy() bool {
 }
 
 func (r pyDictItemsView) Iter() iter.Seq[pyObject] {
-	return r.d.Items()
+	return func(yield func(pyObject) bool) {
+		for k, v := range r.d.Items() {
+			if !yield(pyList{pyString(k), v}) {
+				return
+			}
+		}
+	}
 }
 
 // A pyDictKeysView represents the return value from dict.keys() which is an opaque iterable object.
@@ -1127,7 +1134,13 @@ func (r pyDictKeysView) IsTruthy() bool {
 }
 
 func (r pyDictKeysView) Iter() iter.Seq[pyObject] {
-	return r.d.Keys()
+	return func(yield func(pyObject) bool) {
+		for k := range r.d.Keys() {
+			if !yield(pyString(k)) {
+				return
+			}
+		}
+	}
 }
 
 // A pyDictValuesView represents the return value from dict.values() which is an opaque iterable object.

@@ -1345,14 +1345,11 @@ func selectFunc(s *scope, args []pyObject) pyObject {
 	var def pyObject
 
 	// This is not really the same as Bazel's order-of-matching rules, but is at least deterministic.
-
-	keys := d.Keys()
-	for i := len(keys) - 1; i >= 0; i-- {
-		k := keys[i]
+	for k, v := range d.Items() {
 		if k == "//conditions:default" || k == "default" {
-			def = d[k]
+			def = v
 		} else if selectTarget(s, s.parseLabelInContextPkg(k)).HasLabel("config:on") {
-			return d[k]
+			return v
 		}
 	}
 	s.NAssert(def == nil, "None of the select() conditions matched")
