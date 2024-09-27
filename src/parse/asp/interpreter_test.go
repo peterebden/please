@@ -201,13 +201,13 @@ func TestReduce(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, pyInt(6), s.Lookup("r1"))
 	assert.Equal(t, pyInt(16), s.Lookup("r2"))
-	res := pyDict{
+	res := mapToPyDict(map[string]pyObject{
 		"a": pyInt(2),
 		"b": pyInt(3),
 		"c": pyInt(4),
 		"d": pyInt(5),
 		"e": pyInt(0),
-	}
+	})
 	assert.Equal(t, res, s.Lookup("r3"))
 	assert.Equal(t, s.Lookup("None"), s.Lookup("r4"))
 	assert.Equal(t, pyInt(5), s.Lookup("r5"))
@@ -395,11 +395,11 @@ func TestInterpreterSubincludeAll(t *testing.T) {
 func TestInterpreterDictUnion(t *testing.T) {
 	s, err := parseFile("src/parse/asp/test_data/interpreter/dict_union.build")
 	assert.NoError(t, err)
-	assert.EqualValues(t, pyDict{
+	assert.EqualValues(t, mapToPyDict(map[string]pyObject{
 		"mickey": pyInt(1),
 		"donald": pyInt(2),
 		"goofy":  pyInt(3),
-	}, s.Lookup("z"))
+	}), s.Lookup("z"))
 }
 
 func TestIsNotNone(t *testing.T) {
@@ -595,16 +595,16 @@ func TestJSON(t *testing.T) {
 	s := parser.interpreter.scope.NewScope("BUILD", core.ParseModeNormal)
 
 	list := pyList{pyString("foo"), pyInt(5)}
-	dict := pyDict{"foo": pyString("bar")}
+	dict := mapToPyDict(map[string]pyObject{"foo": pyString("bar")})
 	confBase := &pyConfigBase{dict: dict}
-	config := &pyConfig{base: confBase, overlay: pyDict{"baz": pyInt(6)}}
+	config := &pyConfig{base: confBase, overlay: mapToPyDict(map[string]pyObject{"baz": pyInt(6)})}
 
-	s.locals["some_list"] = list
-	s.locals["some_frozen_list"] = list.Freeze()
-	s.locals["some_dict"] = dict
-	s.locals["some_frozen_dict"] = dict.Freeze()
-	s.locals["some_config"] = config
-	s.locals["some_frozen_config"] = config.Freeze()
+	s.locals.Set("some_list", list)
+	s.locals.Set("some_frozen_list", list.Freeze())
+	s.locals.Set("some_dict", dict)
+	s.locals.Set("some_frozen_dict", dict.Freeze())
+	s.locals.Set("some_config", config)
+	s.locals.Set("some_frozen_config", config.Freeze())
 
 	s.interpretStatements(statements)
 
@@ -658,9 +658,9 @@ func TestLogConfigVariable(t *testing.T) {
 	parser.interpreter.optimiseExpressions(statements)
 
 	list := pyList{pyString("foo"), pyInt(5)}
-	dict := pyDict{"foo": pyString("bar"), "baz": list}
+	dict := mapToPyDict(map[string]pyObject{"foo": pyString("bar"), "baz": list})
 	confBase := &pyConfigBase{dict: dict}
-	config := &pyConfig{base: confBase, overlay: pyDict{"baz": pyInt(6)}}
+	config := &pyConfig{base: confBase, overlay: mapToPyDict(map[string]pyObject{"baz": pyInt(6)})}
 
 	s := parser.interpreter.scope.NewScope("BUILD", core.ParseModeNormal)
 	s.config = config
@@ -674,7 +674,7 @@ func TestLogConfigVariable(t *testing.T) {
 	setLogCode(s, "info", capture)
 	s.interpretStatements(statements)
 
-	assert.Equal(t, `//: {"baz": 6, "foo": bar}`, capturedOutput)
+	assert.Equal(t, `//: {"foo": bar, "baz": 6}`, capturedOutput)
 }
 
 func TestOperatorPrecedence(t *testing.T) {
