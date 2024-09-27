@@ -55,10 +55,10 @@ func TestTag(t *testing.T) {
 
 func TestStrFormat(t *testing.T) {
 	s := &scope{
-		locals: mapToPyDict(map[string]pyObject{
-			"spam": pyString("abc"),
-			"eggs": pyString("def"),
-		}),
+		locals: pyDictValues(
+			"spam", pyString("abc"),
+			"eggs", pyString("def"),
+		),
 	}
 
 	assert.EqualValues(t, "test 123 abc ${wibble} 456 def {wobble}", strFormat(s, []pyObject{
@@ -68,11 +68,11 @@ func TestStrFormat(t *testing.T) {
 
 func TestStrFormat2(t *testing.T) {
 	s := &scope{
-		locals: mapToPyDict(map[string]pyObject{
-			"owner":    pyString("please-build"),
-			"plugin":   pyString("java-rules"),
-			"revision": pyString("v0.3.0"),
-		}),
+		locals: pyDictValues(
+			"owner", pyString("please-build"),
+			"plugin", pyString("java-rules"),
+			"revision", pyString("v0.3.0"),
+		),
 	}
 
 	assert.EqualValues(t, "https://github.com/please-build/java-rules/archive/v0.3.0.zip", strFormat(s, []pyObject{
@@ -82,11 +82,11 @@ func TestStrFormat2(t *testing.T) {
 
 func TestStrFormat3(t *testing.T) {
 	s := &scope{
-		locals: mapToPyDict(map[string]pyObject{
-			"url_base":     pyString("https://please.build/py-wheels"),
-			"package_name": pyString("coverage"),
-			"version":      pyString("5.5"),
-		}),
+		locals: pyDictValues(
+			"url_base", pyString("https://please.build/py-wheels"),
+			"package_name", pyString("coverage"),
+			"version", pyString("5.5"),
+		),
 	}
 
 	assert.EqualValues(t, "https://please.build/py-wheels/coverage-5.5-${OS}_${ARCH}.whl", strFormat(s, []pyObject{
@@ -108,15 +108,15 @@ func TestObjLen(t *testing.T) {
 	l := pyList{pyInt(1)}
 	assert.EqualValues(t, 1, objLen(l))
 	assert.EqualValues(t, 1, objLen(l.Freeze()))
-	d := mapToPyDict(map[string]pyObject{"1": pyInt(1)})
+	d := pyDictValues("1", pyInt(1))
 	assert.EqualValues(t, 1, objLen(d))
 	assert.EqualValues(t, 1, objLen(d.Freeze()))
 }
 
-func mapToPyDict(m map[string]pyObject) *pyDict {
-	d := newPyDict(len(m))
-	for k, v := range m {
-		d.Set(k, v)
+func pyDictValues(args ...any) *pyDict {
+	d := newPyDict(len(args) / 2)
+	for i := 0; i < len(args); i += 2 {
+		d.Set(args[i].(string), args[i+1].(pyObject))
 	}
 	return d
 }
