@@ -1,6 +1,8 @@
 package cmap
 
 import (
+	"bytes"
+	"encoding/json"
 	"iter"
 )
 
@@ -147,4 +149,26 @@ func (m *OrderedMap[V]) Values() iter.Seq[V] {
 // Len returns the current number of items in this map
 func (m *OrderedMap[V]) Len() int {
 	return m.length
+}
+
+// MarshalJSON implements JSON marshaling for this map.
+func (m *OrderedMap[V]) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	for entry := m.first; entry != nil; entry = entry.Next {
+		if entry != m.first {
+			buf.WriteByte(',')
+		}
+		buf.WriteByte('"')
+		buf.WriteString(entry.Key)
+		buf.WriteByte('"')
+		buf.WriteByte(':')
+		v, err := json.Marshal(entry.Value)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(v)
+	}
+	buf.WriteByte('}')
+	return buf.Bytes(), nil
 }

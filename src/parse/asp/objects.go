@@ -586,7 +586,7 @@ func (d *pyDict) Freeze() pyObject {
 type pyFrozenDict struct{ pyDict }
 
 func (d *pyFrozenDict) MarshalJSON() ([]byte, error) {
-	return json.Marshal(d.pyDict)
+	return d.pyDict.MarshalJSON()
 }
 
 func (d *pyFrozenDict) Property(scope *scope, name string) pyObject {
