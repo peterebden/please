@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"iter"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -879,7 +878,7 @@ func (c *pyConfig) MarshalJSON() ([]byte, error) {
 
 func (c *pyConfig) toPyDict() *pyDict {
 	// TODO(peterebden): Another place for an optimised Union function
-	merged := newPyDict(c.base.dict.Len()+c.overlay.Len())
+	merged := newPyDict(c.base.dict.Len() + c.overlay.Len())
 	for k, v := range c.base.dict.Items() {
 		merged.Set(k, v)
 	}

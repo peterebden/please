@@ -241,8 +241,8 @@ func decodeCommands(s *scope, obj pyObject) (string, map[string]string) {
 	cmds, ok := asDict(obj)
 	s.Assert(ok, "Unknown type for command [%s]", obj.Type())
 	// Have to convert all the keys too
-	m := make(map[string]string, len(cmds))
-	for k, v := range cmds {
+	m := make(map[string]string, cmds.Len())
+	for k, v := range cmds.Items() {
 		if v != None {
 			sv, ok := v.(pyString)
 			s.Assert(ok, "Unknown type for command")
@@ -319,7 +319,7 @@ func addEntryPoints(s *scope, arg pyObject, target *core.BuildTarget) {
 	entryPointsPy, ok := asDict(arg)
 	s.Assert(ok, "entry_points must be a dict")
 
-	for name, entryPointPy := range entryPointsPy {
+	for name, entryPointPy := range entryPointsPy.Items() {
 		entryPoint, ok := entryPointPy.(pyString)
 		s.Assert(ok, "Values of entry_points must be strings, found %v at key %v", entryPointPy.Type(), name)
 		target.AddEntryPoint(name, string(entryPoint))
@@ -331,8 +331,8 @@ func addEnv(s *scope, arg pyObject, target *core.BuildTarget) {
 	envPy, ok := asDict(arg)
 	s.Assert(ok, "env must be a dict")
 
-	env := make(map[string]string, len(envPy))
-	for name, val := range envPy {
+	env := make(map[string]string, envPy.Len())
+	for name, val := range envPy.Items() {
 		v, ok := val.(pyString)
 		s.Assert(ok, "Values of env must be strings, found %v at key %v", val.Type(), name)
 		env[name] = string(v)
@@ -354,7 +354,7 @@ func addMaybeNamed(s *scope, name string, obj pyObject, anon func(core.BuildInpu
 		}
 	} else if d, ok := asDict(obj); ok {
 		s.Assert(named != nil, "%s cannot be given as a dict", name)
-		for k, v := range d {
+		for k, v := range d.Items() {
 			if v != None {
 				if l, ok := asList(v); ok {
 					for _, li := range l {
@@ -410,7 +410,7 @@ func addMaybeNamedOutput(s *scope, name string, obj pyObject, anon func(string),
 		}
 	} else if d, ok := asDict(obj); ok {
 		s.Assert(named != nil, "%s cannot be given as a dict", name)
-		for k, v := range d {
+		for k, v := range d.Items() {
 			l, ok := asList(v)
 			s.Assert(ok, "Values must be lists of strings")
 			for _, li := range l {
@@ -452,7 +452,7 @@ func addMaybeNamedSecret(s *scope, name string, obj pyObject, anon func(string),
 		}
 	} else if d, ok := asDict(obj); ok {
 		s.Assert(named != nil, "%s cannot be given as a dict", name)
-		for k, v := range d {
+		for k, v := range d.Items() {
 			l, ok := asList(v)
 			s.Assert(ok, "Values must be lists of strings")
 			for _, li := range l {
@@ -504,7 +504,7 @@ func addProvides(s *scope, name string, obj pyObject, t *core.BuildTarget) {
 	if obj != nil && obj != None {
 		d, ok := asDict(obj)
 		s.Assert(ok, "Argument %s must be a dict, not %s, %v", name, obj.Type(), obj)
-		for k, v := range d {
+		for k, v := range d.Items() {
 			if str, ok := v.(pyString); ok {
 				t.AddProvide(k, []core.BuildLabel{assertNotPseudoLabel(s, s.parseLabelInPackage(string(str), s.pkg))})
 				continue
@@ -671,11 +671,11 @@ func mustList(obj pyObject) pyList {
 }
 
 // asDict converts an object to a pyDict, accounting for frozen dicts.
-func asDict(obj pyObject) (pyDict, bool) {
-	if d, ok := obj.(pyDict); ok {
+func asDict(obj pyObject) (*pyDict, bool) {
+	if d, ok := obj.(*pyDict); ok {
 		return d, true
-	} else if d, ok := obj.(pyFrozenDict); ok {
-		return d.pyDict, true
+	} else if d, ok := obj.(*pyFrozenDict); ok {
+		return &d.pyDict, true
 	}
 	return nil, false
 }
