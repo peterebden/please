@@ -185,7 +185,7 @@ func (m *OrderedMap[V]) Copy() *OrderedMap[V] {
 	// Calling resize() will cause it to re-insert everything at their correct places.
 	// Conceptually we could get a _bit_ more efficient but it's hard to rebuild the linked list
 	// so we'll leave it until needed.
-	n.resize(m.length)
+	n.resize(len(m.buckets))
 	return n
 }
 
@@ -197,7 +197,7 @@ func (m *OrderedMap[V]) Union(that *OrderedMap[V]) *OrderedMap[V] {
 		first:  m.first,
 		length: m.length,
 	}
-	n.resize(m.length + that.length)
+	n.resize(len(m.buckets) + len(that.buckets))
 	n.Merge(that)
 	return n
 }
