@@ -94,6 +94,7 @@ func TestUnion(t *testing.T) {
 }
 
 func BenchmarkOrderedMapInsertions(b *testing.B) {
+	b.ReportAllocs()
 	m := NewOrdered[int](0)
 	for i := range b.N {
 		k := strconv.Itoa(i)
@@ -104,10 +105,36 @@ func BenchmarkOrderedMapInsertions(b *testing.B) {
 }
 
 func BenchmarkGoMapInsertions(b *testing.B) {
+	b.ReportAllocs()
 	m := map[string]int{}
 	for i := range b.N {
 		k := strconv.Itoa(i)
 		m[k] = i
+		assert.Equal(b, m[k], i)
+	}
+}
+
+func BenchmarkOrderedMapLookups(b *testing.B) {
+	m := NewOrdered[int](0)
+	for i := range b.N {
+		m.Set(strconv.Itoa(i), i)
+	}
+	b.ResetTimer()
+	for i := range b.N {
+		k := strconv.Itoa(i)
+		v, _ := m.Get(k)
+		assert.Equal(b, v, i)
+	}
+}
+
+func BenchmarkGoMapLookups(b *testing.B) {
+	m := map[string]int{}
+	for i := range b.N {
+		m[strconv.Itoa(i)] = i
+	}
+	b.ResetTimer()
+	for i := range b.N {
+		k := strconv.Itoa(i)
 		assert.Equal(b, m[k], i)
 	}
 }
