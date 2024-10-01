@@ -93,6 +93,19 @@ func TestUnion(t *testing.T) {
 	})
 }
 
+func TestMerge(t *testing.T) {
+	m1 := NewOrdered[int](0)
+	m2 := NewOrdered[int](0)
+	m1.Set("1", 1)
+	m1.Set("3", 3)
+	m2.Set("1", 2)
+	m2.Set("4", 4)
+	m1.Merge(m2)
+	assert.Equal(t, 3, m1.Len())
+	v, _ := m1.Get("1")
+	assert.Equal(t, 2, v)
+}
+
 func BenchmarkOrderedMapInsertions(b *testing.B) {
 	b.ReportAllocs()
 	m := NewOrdered[int](0)

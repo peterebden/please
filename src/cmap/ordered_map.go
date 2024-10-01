@@ -198,8 +198,13 @@ func (m *OrderedMap[V]) Union(that *OrderedMap[V]) *OrderedMap[V] {
 		length: m.length,
 	}
 	n.resize(m.length + that.length)
-	for entry := that.first; entry != nil; entry = entry.Next {
-		n.set(entry.Hash, entry.Key, entry.Value)
-	}
+	n.Merge(that)
 	return n
+}
+
+// Merge adds the values from the given map into this one, overwriting duplicate keys.
+func (m *OrderedMap[V]) Merge(that *OrderedMap[V]) {
+	for entry := that.first; entry != nil; entry = entry.Next {
+		m.set(entry.Hash, entry.Key, entry.Value)
+	}
 }

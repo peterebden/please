@@ -975,10 +975,7 @@ func (c *pyConfig) Merge(other *pyFrozenConfig) {
 		// TODO(peterebden): surely we can just Copy() it?
 		c.overlay = newPyDict(other.overlay.Len())
 	}
-	// TODO(peterebden): Some kind of optimised merge here would be nice
-	for k, v := range other.overlay.Items() {
-		c.overlay.Set(k, v)
-	}
+	c.overlay.Merge(&other.overlay.OrderedMap)
 }
 
 // A pyFrozenConfig is a config object that disallows further updates.
