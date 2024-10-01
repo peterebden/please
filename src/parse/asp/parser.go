@@ -257,7 +257,7 @@ func (p *Parser) optimiseBuiltinCalls(stmts []*Statement) {
 	}
 }
 
-var constantDict = pyFrozenDict{}
+var constantDict = pyFrozenDict{pyDict: *newPyDict(0)}
 
 // whitelistedKwargs returns true if the given built-in function name is allowed to
 // be called as non-kwargs.
