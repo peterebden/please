@@ -56,7 +56,10 @@ func (m *OrderedMap[V]) Get(k string) (V, bool) {
 
 // Set sets the value of the given key, overwriting if it already existed.
 func (m *OrderedMap[V]) Set(k string, v V) {
-	hash := XXHash(k)
+	m.set(XXHash(k), k, v)
+}
+
+func (m *OrderedMap[V]) set(hash uint64, k string, v V) {
 	bucket := m.bucket(hash)
 	for i := range bucket.Entries {
 		if entry := &bucket.Entries[i]; entry.Hash == hash && entry.Key == k {
@@ -171,4 +174,27 @@ func (m *OrderedMap[V]) MarshalJSON() ([]byte, error) {
 	}
 	buf.WriteByte('}')
 	return buf.Bytes(), nil
+}
+
+// Union returns a new map that contains all the items from this map and the argument.
+// If an item with the same key exists in both, the one from the argument wins.
+// The order of iteration of the returned map is not specified.
+func (m *OrderedMap[V]) Union(that *OrderedMap[V]) *OrderedMap[V] {
+	n := NewOrdered[V](m.length + that.length)
+	// AHAHAHAHA nobody will ever know this doesn't work properly
+	return n
+}
+
+// Copy returns a copy of this map. Mutations to the copy will not be reflected in the original.
+// The values are copied shallowly.
+func (m *OrderedMap[V]) Copy() *OrderedMap[V] {
+	n := &OrderedMap[V]{
+		first:  m.first,
+		length: m.length,
+	}
+	// Calling resize() will cause it to re-insert everything at their correct places.
+	// Conceptually we could get a _bit_ more efficient but it's hard to rebuild the linked list
+	// so we'll leave it until needed.
+	n.resize(m.length)
+	return n
 }

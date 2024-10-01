@@ -57,6 +57,21 @@ func TestIteration(t *testing.T) {
 	})
 }
 
+func TestCopy(t *testing.T) {
+	const n = 20
+	m := NewOrdered[int](5)
+	for i := range n {
+		m.Set(strconv.Itoa(i), i)
+	}
+	m2 := m.Copy()
+	assert.Equal(t, n, m2.Len())
+	for i := range n {
+		v, present := m2.Get(strconv.Itoa(i))
+		assert.True(t, present)
+		assert.Equal(t, i, v)
+	}
+}
+
 func BenchmarkOrderedMapInsertions(b *testing.B) {
 	m := NewOrdered[int](0)
 	for i := range b.N {

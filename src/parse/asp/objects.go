@@ -559,12 +559,7 @@ func (d *pyDict) String() string {
 
 // Copy creates a shallow duplicate of this dictionary.
 func (d *pyDict) Copy() *pyDict {
-	// TODO(peterebden): Add an optimised Copy() on OrderedMap
-	m := newPyDict(d.Len())
-	for k, v := range d.Items() {
-		m.Set(k, v)
-	}
-	return m
+	return &pyDict{OrderedMap: *d.OrderedMap.Copy()}
 }
 
 // Freeze freezes this dict for further updates.
