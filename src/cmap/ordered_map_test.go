@@ -72,6 +72,27 @@ func TestCopy(t *testing.T) {
 	}
 }
 
+func TestUnion(t *testing.T) {
+	m1 := NewOrdered[int](0)
+	m2 := NewOrdered[int](0)
+	m1.Set("1", 1)
+	m1.Set("3", 3)
+	m2.Set("1", 2)
+	m2.Set("4", 4)
+	t.Run("Left to right", func(t *testing.T) {
+		n := m1.Union(m2)
+		assert.Equal(t, 3, n.Len())
+		v, _ := n.Get("1")
+		assert.Equal(t, 2, v)
+	})
+	t.Run("Right to left", func(t *testing.T) {
+		n := m2.Union(m1)
+		assert.Equal(t, 3, n.Len())
+		v, _ := n.Get("1")
+		assert.Equal(t, 1, v)
+	})
+}
+
 func BenchmarkOrderedMapInsertions(b *testing.B) {
 	m := NewOrdered[int](0)
 	for i := range b.N {

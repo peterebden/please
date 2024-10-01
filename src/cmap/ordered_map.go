@@ -64,7 +64,6 @@ func (m *OrderedMap[V]) set(hash uint64, k string, v V) {
 	for i := range bucket.Entries {
 		if entry := &bucket.Entries[i]; entry.Hash == hash && entry.Key == k {
 			entry.Value = v
-			m.length++
 			return // Don't need to reorder anything on overwrite
 		} else if entry.Hash == 0 && entry.Key == "" {
 			// We have reached empty entries, so insert it here
@@ -85,7 +84,7 @@ func (m *OrderedMap[V]) set(hash uint64, k string, v V) {
 	// If we get here, it wasn't in the bucket, and we didn't have space. Disaster! We're going
 	// to have to increase our size and try again.
 	m.resize(len(m.buckets) * 4)
-	m.Set(k, v)
+	m.set(hash, k, v)
 }
 
 func (m *OrderedMap[V]) resize(capacity int) {
@@ -176,15 +175,6 @@ func (m *OrderedMap[V]) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Union returns a new map that contains all the items from this map and the argument.
-// If an item with the same key exists in both, the one from the argument wins.
-// The order of iteration of the returned map is not specified.
-func (m *OrderedMap[V]) Union(that *OrderedMap[V]) *OrderedMap[V] {
-	n := NewOrdered[V](m.length + that.length)
-	// AHAHAHAHA nobody will ever know this doesn't work properly
-	return n
-}
-
 // Copy returns a copy of this map. Mutations to the copy will not be reflected in the original.
 // The values are copied shallowly.
 func (m *OrderedMap[V]) Copy() *OrderedMap[V] {
@@ -196,5 +186,20 @@ func (m *OrderedMap[V]) Copy() *OrderedMap[V] {
 	// Conceptually we could get a _bit_ more efficient but it's hard to rebuild the linked list
 	// so we'll leave it until needed.
 	n.resize(m.length)
+	return n
+}
+
+// Union returns a new map that contains all the items from this map and the argument.
+// If an item with the same key exists in both, the one from the argument wins.
+// The order of iteration of the returned map is not specified.
+func (m *OrderedMap[V]) Union(that *OrderedMap[V]) *OrderedMap[V] {
+	n := &OrderedMap[V]{
+		first:  m.first,
+		length: m.length,
+	}
+	n.resize(m.length + that.length)
+	for entry := that.first; entry != nil; entry = entry.Next {
+		n.set(entry.Hash, entry.Key, entry.Value)
+	}
 	return n
 }

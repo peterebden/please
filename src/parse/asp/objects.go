@@ -514,15 +514,7 @@ func (d *pyDict) Operator(operator Operator, operand pyObject) pyObject {
 		if !ok {
 			panic("Operator to | must be another dict, not " + operand.Type())
 		}
-		// TODO(pebers): Add an optimised Union function on OrderedMap
-		ret := newPyDict(d.Len() + d2.Len())
-		for k, v := range d.Items() {
-			ret.Set(k, v)
-		}
-		for k, v := range d2.Items() {
-			ret.Set(k, v)
-		}
-		return ret
+		return &pyDict{OrderedMap: *d.Union(&d2.OrderedMap)}
 	}
 	panic("Unsupported operator on dict")
 }
@@ -872,15 +864,7 @@ func (c *pyConfig) MarshalJSON() ([]byte, error) {
 }
 
 func (c *pyConfig) toPyDict() *pyDict {
-	// TODO(peterebden): Another place for an optimised Union function
-	merged := newPyDict(c.base.dict.Len() + c.overlay.Len())
-	for k, v := range c.base.dict.Items() {
-		merged.Set(k, v)
-	}
-	for k, v := range c.overlay.Items() {
-		merged.Set(k, v)
-	}
-	return merged
+	return &pyDict{OrderedMap: *c.base.dict.Union(&c.overlay.OrderedMap)}
 }
 
 func (c *pyConfig) String() string {
