@@ -202,13 +202,13 @@ func TestReduce(t *testing.T) {
 	assert.Equal(t, pyInt(6), s.Lookup("r1"))
 	assert.Equal(t, pyInt(16), s.Lookup("r2"))
 	res := pyDictValues(
+		"e", pyInt(0),
 		"a", pyInt(2),
 		"b", pyInt(3),
 		"c", pyInt(4),
 		"d", pyInt(5),
-		"e", pyInt(0),
 	)
-	assert.Equal(t, res, s.Lookup("r3"))
+	assertDictsEqual(t, res, s.Lookup("r3").(*pyDict))
 	assert.Equal(t, s.Lookup("None"), s.Lookup("r4"))
 	assert.Equal(t, pyInt(5), s.Lookup("r5"))
 	assert.Equal(t, pyInt(6), s.Lookup("r6"))
@@ -395,11 +395,11 @@ func TestInterpreterSubincludeAll(t *testing.T) {
 func TestInterpreterDictUnion(t *testing.T) {
 	s, err := parseFile("src/parse/asp/test_data/interpreter/dict_union.build")
 	assert.NoError(t, err)
-	assert.EqualValues(t, pyDictValues(
-		"mickey", pyInt(1),
-		"donald", pyInt(2),
+	assertDictsEqual(t, pyDictValues(
 		"goofy", pyInt(3),
-	), s.Lookup("z"))
+		"donald", pyInt(2),
+		"mickey", pyInt(1),
+	), s.Lookup("z").(*pyDict))
 }
 
 func TestIsNotNone(t *testing.T) {
@@ -708,4 +708,21 @@ func TestListConcatenation(t *testing.T) {
 		pyString("baked beans"),
 		pyString("haribo"),
 	}, s.Lookup("fruit_veg_canned_food_and_sweets"))
+}
+
+func assertDictsEqual(t *testing.T, a, b *pyDict) {
+	t.Helper()
+	// This is not super efficient but doesn't really matter
+	var akeys, bkeys []string
+	var avals, bvals []pyObject
+	for k, v := range a.Items() {
+		akeys = append(akeys, k)
+		avals = append(avals, v)
+	}
+	for k, v := range b.Items() {
+		bkeys = append(bkeys, k)
+		bvals = append(bvals, v)
+	}
+	assert.Equal(t, akeys, bkeys, "map keys not equal")
+	assert.Equal(t, avals, bvals, "map values not equal")
 }

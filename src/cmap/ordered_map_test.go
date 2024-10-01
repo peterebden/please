@@ -55,7 +55,6 @@ func TestIteration(t *testing.T) {
 			x++
 		}
 	})
-
 }
 
 func BenchmarkOrderedMapInsertions(b *testing.B) {
