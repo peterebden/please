@@ -970,7 +970,9 @@ func (c *pyConfig) Freeze() pyObject {
 
 // Merge merges the contents of the given config object into this one.
 func (c *pyConfig) Merge(other *pyFrozenConfig) {
-	if c.overlay == nil {
+	if other.overlay == nil {
+		return
+	} else if c.overlay == nil {
 		// N.B. We cannot directly copy since this might get mutated again later on.
 		// TODO(peterebden): surely we can just Copy() it?
 		c.overlay = newPyDict(other.overlay.Len())
