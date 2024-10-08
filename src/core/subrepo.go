@@ -65,7 +65,7 @@ func (s *Subrepo) FS() iofs.FS {
 
 // IsRemoteSubrepo returns true when the subrepo sources are remote i.e. not downloaded to plz-out
 func (s *Subrepo) IsRemoteSubrepo() bool {
-	return s.Root != "" && s.Target != nil && !s.Target.Local && s.State.RemoteClient != nil
+	return s.Root != "" && s.Target != nil && s.Target.WasRemote()
 }
 
 // Equal returns true if this subrepo is equivalent to another, or false if it is not.

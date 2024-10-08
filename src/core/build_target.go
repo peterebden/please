@@ -1103,6 +1103,12 @@ func (target *BuildTarget) SyncUpdateState(before, after BuildTargetState) bool 
 	return atomic.CompareAndSwapInt32(&target.state, int32(before), int32(after))
 }
 
+// WasRemote returns true if this target was built remotely.
+func (target *BuildTarget) WasRemote() bool {
+	state := target.State()
+	return state == BuiltRemotely || state == ReusedRemotely
+}
+
 // AddLabel adds the given label to this target if it doesn't already have it.
 func (target *BuildTarget) AddLabel(label string) {
 	if !target.HasLabel(label) {

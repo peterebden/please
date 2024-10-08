@@ -430,7 +430,7 @@ func (c *Client) build(target *core.BuildTarget) (*core.BuildMetadata, *pb.Actio
 
 // Download downloads outputs for the given target.
 func (c *Client) Download(target *core.BuildTarget) error {
-	if target.Local {
+	if !target.WasRemote() {
 		return nil // No download needed since this target was built locally
 	}
 	return c.download(target, func() error {
