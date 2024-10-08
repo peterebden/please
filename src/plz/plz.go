@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/peterebden/go-cli-init/v5/flags"
 
@@ -60,13 +61,25 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, config *
 	go func() {
 		for task := range actions {
 			go func(task core.Task) {
-				remote := anyRemote && !task.Target.Local
-				if remote {
-					remoteLimiter.Acquire()
-					defer remoteLimiter.Release()
-				} else {
+				remote := false
+				if !anyRemote || task.Target.Local {
+					// Task must be run locally
 					localLimiter.Acquire()
 					defer localLimiter.Release()
+				} else if config.Remote.Dynamic {
+					// Give a little time to run this locally, then try to spill it to remote
+					if localLimiter.AcquireTimeout(3 * time.Second) {
+						defer localLimiter.Release()
+					} else {
+						remoteLimiter.Acquire()
+						defer remoteLimiter.Release()
+						remote = true
+					}
+				} else {
+					// Unconditionally run this remotely
+					remoteLimiter.Acquire()
+					defer remoteLimiter.Release()
+					remote = true
 				}
 				switch task.Type {
 				case core.TestTask:
@@ -258,11 +271,20 @@ func ReadAndParseStdinLabels() []core.BuildLabel {
 }
 
 // A limiter allows only a certain number of concurrent tasks
-// TODO(peterebden): We have about four of these now, commonise this somewhere
 type limiter chan struct{}
 
 func (l limiter) Acquire() {
 	l <- struct{}{}
+}
+
+// AcquireTimeout either acquires one task within the given duration and returns true, or fails to & returns false.
+func (l limiter) AcquireTimeout(duration time.Duration) bool {
+	select {
+	case l <- struct{}{}:
+		return true
+	case <-time.After(duration):
+		return false
+	}
 }
 
 func (l limiter) Release() {
