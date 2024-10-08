@@ -58,6 +58,12 @@ func (s *Subrepo) FS() iofs.FS {
 			s.fs = s.State.RemoteClient.SubrepoFS(s.Target, s.Root)
 			return
 		}
+		// TODO(peterebden): This is a really grungy hack that reverses the logic in builtins.go
+		// to decide where the root is based on where we built the target.
+		// We should find a better way of handling this.
+		if !s.Target.Local && s.State.RemoteClient != nil {
+			s.Root = filepath.Join(s.Target.OutDir(), s.Root)
+		}
 		s.fs = os.DirFS(s.Root)
 	})
 	return s.fs
