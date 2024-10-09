@@ -230,6 +230,8 @@ type BuildTarget struct {
 	Stamp bool
 	// If true, the target must be run locally (i.e. is not compatible with remote execution).
 	Local bool
+	// True if the target is/was actually built locally
+	WasLocal bool `print:"false"`
 	// If true, the executed commands will exit whenever an error is encountered (i.e. shells
 	// are executed with -e).
 	ExitOnError bool

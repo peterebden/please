@@ -81,6 +81,7 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, config *
 					defer remoteLimiter.Release()
 					remote = true
 				}
+				task.Target.WasLocal = !remote
 				switch task.Type {
 				case core.TestTask:
 					test.Test(state, task.Target, remote, int(task.Run))

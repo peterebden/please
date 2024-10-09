@@ -145,7 +145,7 @@ func (bt *buildingTargets) updateTarget(idx int, result *core.BuildResult, t *co
 	target.Err = result.Err
 	target.Colour = targetColour(t)
 	target.Target = t
-	target.Remote = bt.anyRemote && !t.Local
+	target.Remote = bt.anyRemote && !t.WasLocal
 
 	if bt.plain {
 		if !active {

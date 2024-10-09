@@ -106,6 +106,7 @@ var KnownFields = map[string]bool{
 	"mutex":                  true,
 	"dependenciesRegistered": true,
 	"finishedBuilding":       true,
+	"WasLocal":               true,
 
 	// Used to save the rule hash rather than actually being hashed itself.
 	"RuleHash": true,
