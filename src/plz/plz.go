@@ -82,10 +82,16 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, config *
 					remote = true
 				}
 				task.Target.WasLocal = !remote
+				desc := "locally"
+				if remote {
+					desc = "remotely"
+				}
 				switch task.Type {
 				case core.TestTask:
+					log.Debug("Testing target %s %s (run %d)", task.Target, desc, task.Run)
 					test.Test(state, task.Target, remote, int(task.Run))
 				case core.BuildTask:
+					log.Debug("Building target %s %s", task.Target, desc)
 					build.Build(state, task.Target, remote)
 				}
 				state.TaskDone()
