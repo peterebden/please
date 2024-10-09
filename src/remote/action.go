@@ -209,7 +209,7 @@ func (c *Client) uploadInputDir(ch chan<- *uploadinfo.Entry, target *core.BuildT
 		if l, ok := input.Label(); ok {
 			o := c.targetOutputs(l)
 			if o == nil {
-				if dep := c.state.Graph.TargetOrDie(l); dep.Local {
+				if dep := c.state.Graph.TargetOrDie(l); dep.WasLocal {
 					// We have built this locally, need to upload its outputs
 					if err := c.uploadLocalTarget(dep); err != nil {
 						return nil, err
