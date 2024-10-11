@@ -37,6 +37,11 @@ func newAsyncCache(realCache core.Cache, config *core.Configuration) core.Cache 
 }
 
 func (c *asyncCache) Store(target *core.BuildTarget, key []byte, files []string) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Debug("%s", r)
+		}
+	}()
 	c.requests <- cacheRequest{
 		target: target,
 		key:    key,
