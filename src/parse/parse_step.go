@@ -28,6 +28,18 @@ var ErrMissingBuildFile = errors.New("build file not found")
 func Parse(ctx context.Context, state *core.BuildState, label, dependent core.BuildLabel, subrepo *core.Subrepo) (*core.Package, error) {
 	state.LogParseResult(label, core.PackageParsing, "Parsing...")
 
+	// TODO(peterebden): I don't _think_ this should be necessary any more, but need to check.
+	// if subrepo.IsExternal() {
+	// 	// We have got the definition of the subrepo, but it depends on something, make sure that has been built.
+	// 	state.WaitForBuiltTarget(subrepo.Target.Label, label, mode|core.ParseModeForSubinclude)
+	// 	if !subrepo.Target.State().IsBuilt() {
+	// 		return fmt.Errorf("%v: failed to build subrepo", label)
+	// 	}
+	// 	if err := subrepo.State.Initialise(subrepo); err != nil {
+	// 		return err
+	// 	}
+	// }
+
 	// Subrepo & nothing else means we just want to ensure that subrepo is present.
 	if label.Subrepo != "" && label.PackageName == "" && label.Name == "" {
 		// TODO(peter): is this relevant still?
@@ -44,7 +56,12 @@ func Parse(ctx context.Context, state *core.BuildState, label, dependent core.Bu
 // parsePackage parses a BUILD file and adds the package to the build graph
 func parsePackage(ctx context.Context, state *core.BuildState, label, dependent core.BuildLabel, subrepo *core.Subrepo) (*core.Package, error) {
 	packageName := label.PackageName
-	pkg := core.NewPackage(packageName)
+	var opts []core.PackageOptions
+	if state.ParseMetadata && !subrepo.IsExternal() {
+		// Skip metadata tracking for external subrepos since these are always used as is and never trimmed.
+		opts = append(opts, core.WithPackageMetadata())
+	}
+	pkg := core.NewPackage(packageName, opts...)
 	pkg.Subrepo = subrepo
 	var fileSystem iofs.FS = fs.HostFS
 	if subrepo != nil {

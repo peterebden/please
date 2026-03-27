@@ -215,6 +215,15 @@ type BuildState struct {
 	EnableBreakpoints bool
 	// NeedDebugDeps is true if we're doing a `plz debug` and we need to build the debug tools and data
 	NeedDebugDeps bool
+	// ParseMetadata is true if we want to store build file metadata
+	ParseMetadata bool
+	// KeepParserRunning prevents closing task workers (parse and build channels) to support later
+	// calls to the parser. This is needed to support the export operation since the export logic will
+	// attempt to export targets that have not been parsed during the normal build phase. An example
+	// is when exporting dependencies of targets that are not explicitly used but adjacent/related.
+	KeepParserRunning bool
+	// WaitForDisplay is a function that blocks until the display thread has finished.
+	WaitForDisplay func()
 
 	// initOnce is used to control loading the subrepo .plzconfig
 	initOnce *sync.Once
@@ -366,6 +375,22 @@ func (state *BuildState) AddOriginalTarget(label BuildLabel) {
 	state.progress.originalTargets.Add(label)
 }
 
+// Cleanup cleans up and shuts down the build state.
+func (state *BuildState) Cleanup() {
+	state.CloseResults()
+
+	if state.WaitForDisplay != nil {
+		state.WaitForDisplay()
+	}
+
+	if state.Cache != nil {
+		state.Cache.Shutdown()
+	}
+	if state.RemoteClient != nil {
+		state.RemoteClient.Disconnect()
+	}
+}
+
 // IsOriginalTarget returns true if a target is an original target, ie. one specified on the command line.
 func (state *BuildState) IsOriginalTarget(target *BuildTarget) bool {
 	return state.isOriginalTarget(target, false)
@@ -493,6 +518,23 @@ func (state *BuildState) LogTestResult(target *BuildTarget, run int, status Buil
 
 // LogBuildError logs a failure for a target to parse, build or test.
 func (state *BuildState) LogBuildError(label BuildLabel, status BuildResultStatus, err error, format string, args ...interface{}) {
+	if status == ParseFailed {
+		// Force close package wait channels to avoid deadlocks when calling waitForPackage() after
+		// the initial parse, for example when KeepParserRunning is set.
+		key := packageKey{Name: label.PackageName, Subrepo: label.Subrepo}
+		if ch := state.progress.pendingPackages.Get(key); ch != nil {
+			func() {
+				defer func() { recover() }() // recover if attempted to close a closed channel.
+				close(ch)                    // This signals to anyone waiting that it's done (failed, but completed).
+			}()
+		}
+		if ch := state.progress.packageWaits.Get(key); ch != nil {
+			func() {
+				defer func() { recover() }() // recover if attempted to close a closed channel.
+				close(ch)                    // This signals to anyone waiting that it's done (failed, but completed).
+			}()
+		}
+	}
 	state.logResult(&BuildResult{
 		Label:       label,
 		Status:      status,
@@ -947,6 +989,7 @@ func NewBuildState(config *Configuration) *BuildState {
 		stats:           &lockedStats{},
 		progress: &stateProgress{
 			originalTargets: NewTargetSet(),
+			buildDone:       make(chan struct{}),
 		},
 		initOnce: new(sync.Once),
 	}

@@ -722,23 +722,23 @@ func (f *pyFunc) Call(s *scope, c *Call) pyObject {
 			if present {
 				name = f.args[idx]
 			}
-			s2.Set(name, f.validateType(s, idx, &a.Value))
+			cs.Set(name, f.validateType(s, idx, &a.Value))
 		} else {
 			if i >= len(f.args) {
 				s.Error("Too many arguments to %s", f.name)
 			} else if f.kwargsonly {
 				s.Error("Function %s can only be called with keyword arguments", f.name)
 			}
-			s2.Set(f.args[i], f.validateType(s, i, &a.Value))
+			cs.Set(f.args[i], f.validateType(s, i, &a.Value))
 		}
 	}
 	// Now make sure any arguments with defaults are set, and check any others have been passed.
 	for i, a := range f.args {
-		if s2.LocalLookup(a) == nil {
-			s2.Set(a, f.defaultArg(s, i, a))
+		if cs.LocalLookup(a) == nil {
+			cs.Set(a, f.defaultArg(s, i, a))
 		}
 	}
-	ret := s2.interpretStatements(f.code)
+	ret := cs.interpretStatements(f.code)
 	if ret == nil {
 		return None // Implicit 'return None' in any function that didn't do that itself.
 	}
@@ -834,7 +834,8 @@ func (f *pyFunc) Member(obj pyObject) pyObject {
 	}
 }
 
-// validateType validates that this argument matches the given type
+// validateType validates that this argument matches the given type. It interprets the expression and
+// returns its value.
 func (f *pyFunc) validateType(s *scope, i int, expr *Expression) pyObject {
 	val := s.interpretExpression(expr)
 	if i >= len(f.types) && (f.varargs || f.kwargs) {
