@@ -243,6 +243,18 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 		return nil
 	}
 
+	defer func() {
+		if state.Cache != nil {
+			state.Cache.Shutdown()
+		}
+		if state.RemoteClient != nil {
+			_, _, in, out := state.RemoteClient.DataRate()
+			log.Info("Total remote RPC data in: %d out: %d", in, out)
+		}
+		state.CloseResults()
+		metrics.Push(state.Config.Metrics, state.Config.IsRemoteExecution())
+	}()
+
 	// Register the preloaded targets with the parser
 	if err := registerPreloads(state); err != nil {
 		return err
@@ -254,22 +266,11 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 		arch:  arch,
 		tasks: g,
 	}
+
 	if err := tf.FindOriginalTasks(preTargets, targets); err != nil {
 		return err
 	}
-	if err := g.Wait(); err != nil {
-		return err
-	}
-	if state.Cache != nil {
-		state.Cache.Shutdown()
-	}
-	if state.RemoteClient != nil {
-		_, _, in, out := state.RemoteClient.DataRate()
-		log.Info("Total remote RPC data in: %d out: %d", in, out)
-	}
-	state.CloseResults()
-	metrics.Push(state.Config.Metrics, state.Config.IsRemoteExecution())
-	return nil
+	return g.Wait()
 }
 
 // RunHost is a convenience function that uses the host architecture, the given state's
