@@ -196,15 +196,11 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 		})
 	}
 
-	state.Test = func(label core.BuildLabel) error {
+	reallyTest := func(target *core.BuildTarget) error {
 		progress.numTotal.Add(int64(state.NumTestRuns))
-		target, err := parseTarget(label)
-		if err != nil {
-			return err
-		}
 		g, _ := errgroup.WithContext(ctx)
 		g.Go(func() error {
-			_, err := state.Build(label)
+			_, err := state.Build(target.Label)
 			return err
 		})
 		// TODO(peterebden): More restructuring here. It's sort of weird that this doesn't go through resolveTarget.
@@ -216,6 +212,9 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 		}
 		if err := g.Wait(); err != nil {
 			return err
+		}
+		if !target.IsTest() {
+			return nil
 		}
 		// Now we're ready to test this target.
 		// TODO(peter): Is it okay for none of these to return errors? I _think_ so and we will capture it later?
@@ -241,6 +240,27 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 		}
 		wg.Wait()
 		return nil
+	}
+
+	state.Test = func(label core.BuildLabel) error {
+		if !label.IsAllTargets() {
+			target, err := parseTarget(label)
+			if err != nil {
+				return err
+			}
+			return reallyTest(target)
+		}
+		pkg, err := state.Parse(label)
+		if err != nil {
+			return err
+		}
+		g, _ := errgroup.WithContext(ctx)
+		for _, target := range pkg.AllTargets() {
+			g.Go(func() error {
+				return reallyTest(target)
+			})
+		}
+		return g.Wait()
 	}
 
 	defer func() {
