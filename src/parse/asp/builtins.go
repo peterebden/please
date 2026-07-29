@@ -305,7 +305,7 @@ func bazelLoad(s *scope, args []pyObject) pyObject {
 func (s *scope) WaitForSubincludedTarget(l, dependent core.BuildLabel) (*core.BuildTarget, error) {
 	s.interpreter.limiter.Release()
 	defer s.interpreter.limiter.Acquire()
-	return s.state.Build(l)
+	return s.state.BuildAndDownload(l)
 }
 
 // builtinFail raises an immediate error that can't be intercepted.

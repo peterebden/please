@@ -729,6 +729,15 @@ func (state *BuildState) EnsureDownloaded(target *BuildTarget) error {
 	return nil
 }
 
+// BuildAndDownload builds a target then ensures it has been downloaded when built remotely.
+func (state *BuildState) BuildAndDownload(label BuildLabel) (*BuildTarget, error) {
+	target, err := state.Build(label)
+	if err != nil {
+		return nil, err
+	}
+	return target, state.EnsureDownloaded(target)
+}
+
 // exportFile adds a single-file export target. This is primarily used for Bazel compat.
 func exportFile(state *BuildState, pkg *Package, label BuildLabel) {
 	t := NewBuildTarget(label)

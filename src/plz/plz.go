@@ -451,7 +451,7 @@ func registerPreloads(state *core.BuildState) error {
 
 		// Queue them up asynchronously to feed the queues as quickly as possible
 		eg.Go(func() error {
-			if _, err := state.Build(inc); err != nil {
+			if _, err := state.BuildAndDownload(inc); err != nil {
 				return err
 			}
 			return state.Parser.RegisterPreload(inc)

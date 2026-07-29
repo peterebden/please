@@ -107,7 +107,6 @@ var KnownFields = map[string]bool{
 	"Progress":               true,
 	"FileSize":               true,
 	"PassUnsafeEnv":          true,
-	"neededForSubinclude":    true,
 	"mutex":                  true,
 	"dependenciesRegistered": true,
 	"finishedBuilding":       true,
