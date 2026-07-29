@@ -2,8 +2,10 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha1"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"hash"
 	"hash/crc32"
@@ -460,6 +462,10 @@ func (state *BuildState) LogBuildError(label BuildLabel, status BuildResultStatu
 
 // logResult logs a build result directly to the state's queue.
 func (state *BuildState) logResult(result *BuildResult) {
+	if result.Err != nil && errors.Is(result.Err, context.Canceled) {
+		// These are failures produced when we stop building because something _else_ failed, don't report them.
+		return
+	}
 	result.Time = time.Now()
 	state.progress.internalResults <- result
 	if result.Status.IsFailure() {

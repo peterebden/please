@@ -89,6 +89,11 @@ func (stack *errorStack) Error() string {
 	return stack.errorMessage()
 }
 
+// Unwrap allows unwrapping to get at the internal error
+func (stack *errorStack) Unwrap() error {
+	return stack.err
+}
+
 // ShortError returns an abbreviated message with just what immediately went wrong.
 func (stack *errorStack) ShortError() string {
 	return stack.err.Error()
