@@ -204,7 +204,7 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 			return err
 		})
 		// TODO(peterebden): More restructuring here. It's sort of weird that this doesn't go through resolveTarget.
-		for dep := range target.IterAllRuntimeDependencies(state.Graph) {
+		for _, dep := range target.RuntimeDependencies() {
 			g.Go(func() error {
 				_, err := state.Build(dep)
 				return err
