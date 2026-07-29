@@ -215,9 +215,6 @@ type BuildTarget struct {
 	FileContent string `name:"content"`
 	// Represents the state of this build target (see below)
 	state int32 `print:"false"`
-	// If true, the target is needed for a subinclude and therefore we will have to make sure its
-	// outputs are available locally when built.
-	neededForSubinclude atomic.Bool `print:"false"`
 	// The number of completed runs
 	completedRuns uint16 `print:"false"`
 	// True if this target is a binary (ie. runnable, will appear in plz-out/bin)
