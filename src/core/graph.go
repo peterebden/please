@@ -6,6 +6,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 	"sort"
@@ -65,7 +66,7 @@ func (graph *BuildGraph) Target(label BuildLabel) *BuildTarget {
 func (graph *BuildGraph) TargetOrDie(label BuildLabel) *BuildTarget {
 	target := graph.Target(label)
 	if target == nil {
-		log.Fatalf("Target %s not found in build graph\n", label)
+		panic(fmt.Sprintf("Target %s not found in build graph\n", label))
 	}
 	return target
 }
