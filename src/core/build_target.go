@@ -610,6 +610,21 @@ func (target *BuildTarget) ExportedDependencies() iter.Seq[BuildLabel] {
 	}
 }
 
+// BuildDependencies returns the build-time dependencies of this target (i.e. not run-time dependencies, data, internal nor source).
+func (target *BuildTarget) BuildDependencies() iter.Seq[BuildLabel] {
+	return func(yield func(BuildLabel) bool) {
+		target.mutex.RLock()
+		defer target.mutex.RUnlock()
+		for _, deps := range target.dependencies {
+			if !deps.Runtime && !deps.Data && !deps.Internal && !deps.Source {
+				if !yield(deps.Label) {
+					break
+				}
+			}
+		}
+	}
+}
+
 // RuntimeDependencies returns any run-time dependencies of this target.
 //
 // Although run-time dependencies are transitive, RuntimeDependencies only returns this target's direct run-time
