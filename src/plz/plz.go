@@ -149,11 +149,6 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 
 		// TODO(peter): Need to handle targets getting extra deps added by post-build functions here.
 
-		// TODO(peter): Temporary, we are going to get rid of all this
-		if err := target.ResolveDependencies(state.Graph); err != nil {
-			return err
-		}
-
 		// Now we are ready to build this target. Grab a thread and get started.
 		remote := anyRemote && !target.Local
 		limiter := limiter(remote)
@@ -203,8 +198,7 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 			_, err := state.Build(target.Label)
 			return err
 		})
-		// TODO(peterebden): More restructuring here. It's sort of weird that this doesn't go through resolveTarget.
-		for _, dep := range target.RuntimeDependencies() {
+		for dep := range target.RuntimeDependencies() {
 			g.Go(func() error {
 				_, err := state.Build(dep)
 				return err

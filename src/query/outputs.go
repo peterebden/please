@@ -31,7 +31,7 @@ func targetOutputsJSON(graph *core.BuildGraph, labels []core.BuildLabel) {
 	data := map[string][]string{}
 	for _, label := range labels {
 		target := graph.TargetOrDie(label)
-		for _, out := range target.Outputs() {
+		for _, out := range target.Outputs(graph) {
 			data[label.String()] = append(data[label.String()], filepath.Join(target.OutDir(), out))
 		}
 	}
