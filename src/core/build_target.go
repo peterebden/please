@@ -13,8 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/thought-machine/please/src/fs"
 )
 
@@ -632,8 +630,8 @@ func (target *BuildTarget) RuntimeDependencies() iter.Seq[BuildLabel] {
 
 // IterAllRuntimeDependencies returns an iterator over the transitive run-time dependencies of this target.
 // Require/provide relationships between pairs of targets are resolved as they are with build-time dependencies.
-func (target *BuildTarget) IterAllRuntimeDependencies(graph *BuildGraph) iter.Seq[*BuildTarget] {
-	return func(yield func(*BuildTarget) bool) {
+func (target *BuildTarget) IterAllRuntimeDependencies(graph *BuildGraph) iter.Seq[BuildLabel] {
+	return func(yield func(BuildLabel) bool) {
 		done := map[BuildLabel]bool{}
 		var push func(*BuildTarget) bool
 		push = func(t *BuildTarget) bool {
@@ -644,11 +642,10 @@ func (target *BuildTarget) IterAllRuntimeDependencies(graph *BuildGraph) iter.Se
 			for _, dep := range t.runtimeDependencies {
 				depLabel, _ := dep.Label()
 				for _, providedDep := range graph.TargetOrDie(depLabel).ProvideFor(t) {
-					t := graph.TargetOrDie(providedDep)
-					if !yield(t) {
+					if !yield(providedDep) {
 						return false
 					}
-					if !push(t) {
+					if !push(graph.TargetOrDie(providedDep)) {
 						return false
 					}
 				}
@@ -770,20 +767,38 @@ func (target *BuildTarget) DeclaredSourceNames() []string {
 	return ret
 }
 
-func (target *BuildTarget) filegroupOutputs(srcs []BuildInput) []string {
+// ResolveDependencySubrepo returns a dependency from the target matching the given label, which might or might not have a subrepo
+func (target *BuildTarget) ResolveDependencySubrepo(label BuildLabel) BuildLabel {
+	target.mutex.RLock()
+	defer target.mutex.RUnlock()
+	for _, dep := range target.dependencies {
+		if dep.Label == label {
+			return label
+		}
+	}
+	if target.Label.Subrepo != "" && label.Subrepo == "" {
+		// Can implicitly use the target's subrepo.
+		label.Subrepo = target.Label.Subrepo
+		return target.ResolveDependencySubrepo(label)
+	}
+	// TODO(peter): Panicking here is not very nice, how should we ideally report this (or do we assume it doesn't happen?)
+	panic(fmt.Errorf("target %s has no dependency %s", target, label))
+}
+
+func (target *BuildTarget) filegroupOutputs(graph *BuildGraph, srcs []BuildInput) []string {
 	ret := make([]string, 0, len(srcs))
 	// Filegroups just re-output their inputs.
 	for _, src := range srcs {
 		if namedLabel, ok := src.(AnnotatedOutputLabel); ok {
 			// Bit of a hack, but this needs different treatment from either of the others.
-			for _, dep := range target.DependenciesFor(namedLabel.BuildLabel) {
-				ret = append(ret, dep.NamedOutputs(namedLabel.Annotation)...)
+			for _, dep := range graph.TargetOrDie(namedLabel.BuildLabel).ProvideFor(target) {
+				ret = append(ret, graph.TargetOrDie(dep).NamedOutputs(graph, namedLabel.Annotation)...)
 			}
 		} else if label, ok := src.nonOutputLabel(); !ok {
 			ret = append(ret, src.LocalPaths(nil)[0])
 		} else {
-			for _, dep := range target.DependenciesFor(label) {
-				ret = append(ret, dep.Outputs()...)
+			for _, dep := range graph.TargetOrDie(label).ProvideFor(target) {
+				ret = append(ret, graph.TargetOrDie(dep).Outputs(graph)...)
 			}
 		}
 	}
@@ -791,10 +806,10 @@ func (target *BuildTarget) filegroupOutputs(srcs []BuildInput) []string {
 }
 
 // Outputs returns a slice of all the outputs of this rule.
-func (target *BuildTarget) Outputs() []string {
+func (target *BuildTarget) Outputs(graph *BuildGraph) []string {
 	var ret []string
 	if target.IsFilegroup {
-		ret = target.filegroupOutputs(target.AllSources())
+		ret = target.filegroupOutputs(graph, target.AllSources())
 	} else {
 		// Must really copy the slice before sorting it ([:] is too shallow)
 		ret = make([]string, len(target.outputs))
@@ -810,8 +825,8 @@ func (target *BuildTarget) Outputs() []string {
 }
 
 // FullOutputs returns a slice of all the outputs of this rule with the target's output directory prepended.
-func (target *BuildTarget) FullOutputs() []string {
-	outs := target.Outputs()
+func (target *BuildTarget) FullOutputs(graph *BuildGraph) []string {
+	outs := target.Outputs(graph)
 	outDir := target.OutDir()
 	for i, out := range outs {
 		outs[i] = filepath.Join(outDir, out)
@@ -821,8 +836,8 @@ func (target *BuildTarget) FullOutputs() []string {
 
 // AllOutputs returns a slice of all the outputs of this rule, including any output directories.
 // Outs are passed through GetTmpOutput as appropriate.
-func (target *BuildTarget) AllOutputs() []string {
-	outs := target.Outputs()
+func (target *BuildTarget) AllOutputs(graph *BuildGraph) []string {
+	outs := target.Outputs(graph)
 	for i, out := range outs {
 		outs[i] = target.GetTmpOutput(out)
 	}
@@ -834,13 +849,13 @@ func (target *BuildTarget) AllOutputs() []string {
 
 // NamedOutputs returns a slice of all the outputs of this rule with a given name.
 // If the name is not declared by this rule it panics.
-func (target *BuildTarget) NamedOutputs(name string) []string {
+func (target *BuildTarget) NamedOutputs(graph *BuildGraph, name string) []string {
 	if target.IsFilegroup {
 		if target.NamedSources == nil {
 			return nil
 		}
 		if srcs, present := target.NamedSources[name]; present {
-			return target.filegroupOutputs(srcs)
+			return target.filegroupOutputs(graph, srcs)
 		}
 		return nil
 	}
@@ -921,7 +936,7 @@ func (target *BuildTarget) CanSee(state *BuildState, dep *BuildTarget) bool {
 // Returns an error if not, or nil if all's well.
 func (target *BuildTarget) CheckDependencyVisibility(state *BuildState) error {
 	for _, d := range target.dependencies {
-		dep := state.Graph.TargetOrDie(*d.declared)
+		dep := state.Graph.TargetOrDie(d.Label)
 		if !target.CanSee(state, dep) {
 			return fmt.Errorf("Target %s isn't visible to %s", dep.Label, target.Label)
 		} else if dep.TestOnly && !target.IsTest() && !target.TestOnly {
@@ -937,9 +952,9 @@ func (target *BuildTarget) CheckDependencyVisibility(state *BuildState) error {
 
 // CheckDuplicateOutputs checks if any of the outputs of this target duplicate one another.
 // Returns an error if so, or nil if all's well.
-func (target *BuildTarget) CheckDuplicateOutputs() error {
+func (target *BuildTarget) CheckDuplicateOutputs(graph *BuildGraph) error {
 	outputs := map[string]struct{}{}
-	for _, output := range target.Outputs() {
+	for _, output := range target.Outputs(graph) {
 		if _, present := outputs[output]; present {
 			return fmt.Errorf("Target %s declares output file %s multiple times", target.Label, output)
 		}
@@ -957,7 +972,7 @@ func (target *BuildTarget) CheckTargetOwnsBuildOutputs(state *BuildState) error 
 		return nil
 	}
 
-	for _, output := range target.Outputs() {
+	for _, output := range target.Outputs(state.Graph) {
 		targetPackage := target.Label.PackageName
 		out := filepath.Join(targetPackage, output)
 
@@ -1698,7 +1713,7 @@ func (target *BuildTarget) isTool(tool BuildLabel, tools []BuildInput, namedTool
 }
 
 // toolPath returns a path to this target when used as a tool.
-func (target *BuildTarget) toolPath(abs bool, namedOutput string) string {
+func (target *BuildTarget) toolPath(graph *BuildGraph, abs bool, namedOutput string) string {
 	outToolPath := func(outputs ...string) string {
 		ret := make([]string, len(outputs))
 		for i, o := range outputs {
@@ -1720,7 +1735,7 @@ func (target *BuildTarget) toolPath(abs bool, namedOutput string) string {
 		}
 		panic(fmt.Sprintf("%v has no named output or entry point %v", target.Label, namedOutput))
 	}
-	return outToolPath(target.Outputs()...)
+	return outToolPath(target.Outputs(graph)...)
 }
 
 // AddOutput adds a new output to the target if it's not already there.
@@ -1754,7 +1769,7 @@ func (target *BuildTarget) AddEntryPoint(name, output string) {
 	if target.EntryPoints == nil {
 		target.EntryPoints = make(map[string]string)
 	}
-	if target.NamedOutputs(name) != nil {
+	if _, present := target.namedOutputs[name]; present {
 		panic(fmt.Sprintf("%v already has a named output named %v; entry points may not have the same name as a named output", target.Label, name))
 	}
 	if target.IsFilegroup && target.NamedSources[name] != nil {
