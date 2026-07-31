@@ -1137,10 +1137,10 @@ func getLabels(s *scope, args []pyObject) pyObject {
 	}
 	if core.LooksLikeABuildLabel(name) {
 		label := core.ParseBuildLabel(name, s.pkg.Name)
-		return getLabelsInternal(s.state.Graph.TargetOrDie(label), prefix, core.Built, all, maxDepth)
+		return getLabelsInternal(s.state.Graph, s.state.Graph.TargetOrDie(label), prefix, core.Built, all, maxDepth)
 	}
 	target := getTargetPost(s, name)
-	return getLabelsInternal(target, prefix, core.Building, all, maxDepth)
+	return getLabelsInternal(s.state.Graph, target, prefix, core.Building, all, maxDepth)
 }
 
 // addLabel adds a set of labels to the named rule
@@ -1160,7 +1160,7 @@ func addLabel(s *scope, args []pyObject) pyObject {
 	return None
 }
 
-func getLabelsInternal(target *core.BuildTarget, prefix string, minState core.BuildTargetState, all bool, maxDepth int) pyObject {
+func getLabelsInternal(graph *core.BuildGraph, target *core.BuildTarget, prefix string, minState core.BuildTargetState, all bool, maxDepth int) pyObject {
 	if target.State() < minState {
 		log.Fatalf("get_labels called on a target that is not yet built: %s", target.Label)
 	}
@@ -1182,8 +1182,9 @@ func getLabelsInternal(target *core.BuildTarget, prefix string, minState core.Bu
 		}
 		if !t.OutputIsComplete || t == target || all {
 			for dep := range t.DeclaredDependencies() {
-				if !done[dep] {
-					getLabels(dep, max(depth-1, -1))
+				t2 := graph.TargetOrDie(dep)
+				if !done[t2] {
+					getLabels(t2, max(depth-1, -1))
 				}
 			}
 		}
@@ -1286,7 +1287,7 @@ func getOuts(s *scope, args []pyObject) pyObject {
 		target = getTargetPost(s, name)
 	}
 
-	outs := target.Outputs()
+	outs := target.Outputs(s.state.Graph)
 	ret := make(pyList, len(outs))
 	for i, out := range outs {
 		ret[i] = pyString(out)
@@ -1460,8 +1461,8 @@ func subrepo(s *scope, args []pyObject) pyObject {
 		// N.B. The target must be already registered on this package.
 		target = s.pkg.TargetOrDie(s.parseLabelInPackage(dep, s.pkg).Name)
 		root = target.Label.Name
-		if len(target.Outputs()) == 1 {
-			root = target.Outputs()[0]
+		if outputs := target.Outputs(s.state.Graph); len(outputs) == 1 {
+			root = outputs[0]
 		}
 		if target.Local || s.state.RemoteClient == nil {
 			root = filepath.Join(target.OutDir(), root)
