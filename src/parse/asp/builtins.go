@@ -348,9 +348,9 @@ func subinclude(s *scope, args []pyObject) pyObject {
 
 		var outs []string
 		if len(annotation) > 0 {
-			outs = t.NamedOutputs(annotation)
+			outs = t.NamedOutputs(s.state.Graph, annotation)
 		} else {
-			outs = t.Outputs()
+			outs = t.Outputs(s.state.Graph)
 		}
 		for _, out := range outs {
 			s.SetAll(s.interpreter.Subinclude(s, filepath.Join(t.OutDir(), out), t.Label, false), false)
@@ -1181,7 +1181,7 @@ func getLabelsInternal(target *core.BuildTarget, prefix string, minState core.Bu
 			return
 		}
 		if !t.OutputIsComplete || t == target || all {
-			for _, dep := range t.Dependencies() {
+			for dep := range t.DeclaredDependencies() {
 				if !done[dep] {
 					getLabels(dep, max(depth-1, -1))
 				}
