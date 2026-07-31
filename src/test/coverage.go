@@ -74,8 +74,8 @@ func collectAllFiles(state *core.BuildState, target *core.BuildTarget, coverageF
 			}
 		}
 		if deps {
-			for _, dep := range target.ExternalDependencies() {
-				collectAllFiles(state, dep, coverageFiles, includeAllFiles, deps, doneTargets)
+			for dep := range target.DeclaredDependencies() {
+				collectAllFiles(state, state.Graph.TargetOrDie(dep), coverageFiles, includeAllFiles, deps, doneTargets)
 			}
 		}
 	}

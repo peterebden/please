@@ -35,8 +35,8 @@ func (c *cycleDetector) Check() *errCycle {
 			return []*BuildTarget{target}, false
 		}
 		partial[target] = struct{}{}
-		for _, dep := range target.Dependencies() {
-			if cycle, done := visit(dep); cycle != nil {
+		for dep := range target.DeclaredDependencies() {
+			if cycle, done := visit(c.graph.TargetOrDie(dep)); cycle != nil {
 				if done || target == cycle[len(cycle)-1] {
 					return cycle, true // This target is already in the cycle
 				}

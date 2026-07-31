@@ -31,7 +31,7 @@ func deps(out io.Writer, state *core.BuildState, target *core.BuildTarget, done 
 	if currentLevel == targetLevel {
 		return
 	}
-	for _, l := range target.DeclaredDependencies() {
+	for l := range target.DeclaredDependencies() {
 		dep := state.Graph.TargetOrDie(l)
 		for _, l := range dep.ProvideFor(target) {
 			if !state.ShouldInclude(dep) || done[l] {
