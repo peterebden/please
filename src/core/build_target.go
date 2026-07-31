@@ -602,10 +602,11 @@ func (target *BuildTarget) ExportedDependencies() iter.Seq[BuildLabel] {
 	return func(yield func(BuildLabel) bool) {
 		target.mutex.RLock()
 		defer target.mutex.RUnlock()
-		ret := make(BuildLabels, 0, len(target.dependencies))
-		for _, info := range target.dependencies {
-			if info.exported {
-				ret = append(ret, *info.declared)
+		for _, deps := range target.dependencies {
+			if deps.Exported {
+				if !yield(deps.Label) {
+					break
+				}
 			}
 		}
 	}
