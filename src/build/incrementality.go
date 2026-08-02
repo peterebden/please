@@ -150,7 +150,14 @@ func RuleHash(state *core.BuildState, target *core.BuildTarget, runtime, postBui
 func ruleHash(state *core.BuildState, target *core.BuildTarget, runtime bool) []byte {
 	h := sha1.New()
 	h.Write([]byte(target.Label.String()))
+	// Sort here so the hash is independent of the order deps were declared in the BUILD file;
+	// DeclaredDependencies yields them in declaration order.
+	var deps core.BuildLabels
 	for dep := range target.DeclaredDependencies() {
+		deps = append(deps, dep)
+	}
+	sort.Sort(deps)
+	for _, dep := range deps {
 		h.Write([]byte(dep.String()))
 	}
 	for _, vis := range target.Visibility {

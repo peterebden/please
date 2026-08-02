@@ -1181,10 +1181,9 @@ func getLabelsInternal(graph *core.BuildGraph, target *core.BuildTarget, prefix 
 			return
 		}
 		if !t.OutputIsComplete || t == target || all {
-			for dep := range t.DeclaredDependencies() {
-				t2 := graph.TargetOrDie(dep)
-				if !done[t2] {
-					getLabels(t2, max(depth-1, -1))
+			for _, dep := range t.Dependencies(graph) {
+				if !done[dep] {
+					getLabels(dep, max(depth-1, -1))
 				}
 			}
 		}

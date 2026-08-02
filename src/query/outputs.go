@@ -21,7 +21,7 @@ func TargetOutputs(graph *core.BuildGraph, labels []core.BuildLabel, useJSON boo
 func targetOutputsFlat(graph *core.BuildGraph, labels []core.BuildLabel) {
 	for _, label := range labels {
 		target := graph.TargetOrDie(label)
-		for _, out := range target.Outputs() {
+		for _, out := range target.Outputs(graph) {
 			fmt.Printf("%s\n", filepath.Join(target.OutDir(), out))
 		}
 	}

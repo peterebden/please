@@ -580,6 +580,27 @@ func (target *BuildTarget) DeclaredDependenciesStrict() iter.Seq[BuildLabel] {
 	}
 }
 
+// Dependencies returns the resolved dependencies of this target, applying any require/provide
+// relationships to map each declared dependency to the target(s) that actually satisfy it.
+// It requires the graph to look targets up, since a BuildTarget no longer caches these itself.
+func (target *BuildTarget) Dependencies(graph *BuildGraph) []*BuildTarget {
+	target.mutex.RLock()
+	labels := make([]BuildLabel, len(target.dependencies))
+	for i, dep := range target.dependencies {
+		labels[i] = dep.Label
+	}
+	target.mutex.RUnlock()
+	ret := make(BuildTargets, 0, len(labels))
+	for _, l := range labels {
+		depTarget := graph.TargetOrDie(l)
+		for _, provided := range depTarget.ProvideFor(target) {
+			ret = append(ret, graph.TargetOrDie(provided))
+		}
+	}
+	sort.Sort(ret)
+	return ret
+}
+
 // BuildDependencies returns the build-time dependency labels of this target (i.e. not run-time dependencies, data, internal nor source).
 func (target *BuildTarget) BuildDependencyLabels() iter.Seq[BuildLabel] {
 	return func(yield func(BuildLabel) bool) {

@@ -186,8 +186,8 @@ func (e *export) export(target *core.BuildTarget) {
 	}
 
 	e.exportedTargets[target.Label] = true
-	for dep := range target.DeclaredDependencies() {
-		e.export(e.state.Graph.TargetOrDie(dep))
+	for _, dep := range target.Dependencies(e.state.Graph) {
+		e.export(dep)
 	}
 	for _, subinclude := range e.state.Graph.PackageOrDie(target.Label).AllSubincludes(e.state.Graph) {
 		e.export(e.state.Graph.TargetOrDie(subinclude))

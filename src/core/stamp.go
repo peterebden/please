@@ -27,9 +27,9 @@ func populateStampInfo(state *BuildState, target *BuildTarget, info *stampInfo) 
 		AcceptedLicence: accepted,
 		Labels:          target.Labels,
 	}
-	for dep := range target.DeclaredDependencies() {
-		if _, present := info.Targets[dep]; !present {
-			populateStampInfo(state, state.Graph.TargetOrDie(dep), info)
+	for _, dep := range target.Dependencies(state.Graph) {
+		if _, present := info.Targets[dep.Label]; !present {
+			populateStampInfo(state, dep, info)
 		}
 	}
 }
