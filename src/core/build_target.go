@@ -601,6 +601,32 @@ func (target *BuildTarget) Dependencies(graph *BuildGraph) []*BuildTarget {
 	return ret
 }
 
+// ExternalDependencies returns the resolved dependencies of this target, with any internal
+// dependencies (i.e. "_target#tag" ones sharing this target's parent) flattened out to the
+// external targets they in turn depend on. Require/provide relationships are applied as in Dependencies.
+func (target *BuildTarget) ExternalDependencies(graph *BuildGraph) []*BuildTarget {
+	target.mutex.RLock()
+	labels := make([]BuildLabel, len(target.dependencies))
+	for i, dep := range target.dependencies {
+		labels[i] = dep.Label
+	}
+	target.mutex.RUnlock()
+	ret := make(BuildTargets, 0, len(labels))
+	for _, l := range labels {
+		depTarget := graph.TargetOrDie(l)
+		for _, provided := range depTarget.ProvideFor(target) {
+			dep := graph.TargetOrDie(provided)
+			if dep.Label.Parent() != target.Label {
+				ret = append(ret, dep)
+			} else {
+				ret = append(ret, dep.ExternalDependencies(graph)...)
+			}
+		}
+	}
+	sort.Sort(ret)
+	return ret
+}
+
 // BuildDependencies returns the build-time dependency labels of this target (i.e. not run-time dependencies, data, internal nor source).
 func (target *BuildTarget) BuildDependencyLabels() iter.Seq[BuildLabel] {
 	return func(yield func(BuildLabel) bool) {
@@ -803,22 +829,24 @@ func (target *BuildTarget) DeclaredSourceNames() []string {
 	return ret
 }
 
-// ResolveDependencySubrepo returns a dependency from the target matching the given label, which might or might not have a subrepo
-func (target *BuildTarget) ResolveDependencySubrepo(label BuildLabel) BuildLabel {
+// ResolveDependencySubrepo qualifies label with the target's subrepo if needed, returning the
+// resolved label and whether the target actually declares a dependency on it. This handles labels
+// (e.g. from command replacements like $(location :x)) that may be missing the subrepo the target
+// itself was built in, as happens when cross-compiling.
+func (target *BuildTarget) ResolveDependencySubrepo(label BuildLabel) (BuildLabel, bool) {
 	target.mutex.RLock()
 	defer target.mutex.RUnlock()
-	for _, dep := range target.dependencies {
-		if dep.Label == label {
-			return label
-		}
+	if target.dependencyInfo(label) != nil {
+		return label, true
 	}
 	if target.Label.Subrepo != "" && label.Subrepo == "" {
 		// Can implicitly use the target's subrepo.
 		label.Subrepo = target.Label.Subrepo
-		return target.ResolveDependencySubrepo(label)
+		if target.dependencyInfo(label) != nil {
+			return label, true
+		}
 	}
-	// TODO(peter): Panicking here is not very nice, how should we ideally report this (or do we assume it doesn't happen?)
-	panic(fmt.Errorf("target %s has no dependency %s", target, label))
+	return label, false
 }
 
 func (target *BuildTarget) filegroupOutputs(graph *BuildGraph, srcs []BuildInput) []string {

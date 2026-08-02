@@ -252,7 +252,8 @@ func replaceSequenceLabel(state *BuildState, target *BuildTarget, label BuildLab
 	}
 	// TODO(jpoole): This doesn't handle tools when cross compiling. ///freebsd_amd64//tools:tool
 	// will not match the tool //tools:tool
-	if !target.HasDependency(label) {
+	label, ok := target.ResolveDependencySubrepo(label)
+	if !ok {
 		panic(fmt.Sprintf("Rule %s can't use %s; doesn't depend on target %s", target.Label, in, label))
 	}
 	deps := state.Graph.TargetOrDie(label).ProvideFor(target)
