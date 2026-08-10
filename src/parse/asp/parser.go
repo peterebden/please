@@ -110,7 +110,7 @@ func (p *Parser) RegisterPreloads(labels []core.BuildLabel) {
 // ParseReader parses the contents of the given ReadSeeker as a BUILD file.
 // The first return value is true if parsing succeeds - if the error is still non-nil
 // that indicates that interpretation failed.
-func (p *Parser) ParseReader(pkg *core.Package, r io.ReadSeeker, forLabel, dependent *core.BuildLabel) (bool, error) {
+func (p *Parser) ParseReader(ctx context.Context, pkg *core.Package, r io.ReadSeeker, forLabel, dependent *core.BuildLabel) (bool, error) {
 	p.limiter.Acquire()
 	defer p.limiter.Release()
 
@@ -118,7 +118,7 @@ func (p *Parser) ParseReader(pkg *core.Package, r io.ReadSeeker, forLabel, depen
 	if err != nil {
 		return false, err
 	}
-	_, err = p.interpreter.interpretAll(context.Background(), pkg, forLabel, dependent, stmts)
+	_, err = p.interpreter.interpretAll(ctx, pkg, forLabel, dependent, stmts)
 	return true, err
 }
 

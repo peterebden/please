@@ -72,8 +72,8 @@ func (p *aspParser) ParseFile(ctx context.Context, pkg *core.Package, forLabel, 
 	return p.parser.ParseFile(ctx, pkg, forLabel, dependent, fs, filename)
 }
 
-func (p *aspParser) ParseReader(pkg *core.Package, reader io.ReadSeeker, forLabel, dependent *core.BuildLabel) error {
-	_, err := p.parser.ParseReader(pkg, reader, forLabel, dependent)
+func (p *aspParser) ParseReader(ctx context.Context, pkg *core.Package, reader io.ReadSeeker, forLabel, dependent *core.BuildLabel) error {
+	_, err := p.parser.ParseReader(ctx, pkg, reader, forLabel, dependent)
 	return err
 }
 
@@ -93,9 +93,10 @@ func (p *aspParser) RunPostBuildFunction(state *core.BuildState, target *core.Bu
 // runBuildFunction runs either the pre- or post-build function.
 func (p *aspParser) runBuildFunction(state *core.BuildState, target *core.BuildTarget, callbackType string, f func() error) error {
 	state.LogBuildResult(target, core.PackageParsing, fmt.Sprintf("Running %s-build function for %s", callbackType, target.Label))
-	if _, err := state.Parse(target.Label, target.Label); err != nil {
-		return err
-	}
+	// TODO(peterebden): What is this here for? Why do we need to parse again - by definition we should already have done so
+	// if _, err := state.Parse(target.Label, target.Label); err != nil {
+	// 	return err
+	// }
 	if err := f(); err != nil {
 		state.LogBuildError(target.Label, core.ParseFailed, err, "Failed %s-build function for %s", callbackType, target.Label)
 		return err

@@ -72,7 +72,7 @@ type Parser interface {
 	// ParseFile parses a single BUILD file into the given package.
 	ParseFile(ctx context.Context, pkg *Package, forLabel, dependent *BuildLabel, fs iofs.FS, filename string) error
 	// ParseReader parses a single BUILD file into the given package.
-	ParseReader(pkg *Package, reader io.ReadSeeker, forLabel, dependent *BuildLabel) error
+	ParseReader(ctx context.Context, pkg *Package, reader io.ReadSeeker, forLabel, dependent *BuildLabel) error
 	// RunPreBuildFunction runs a pre-build function for a target.
 	RunPreBuildFunction(state *BuildState, target *BuildTarget) error
 	// RunPostBuildFunction runs a post-build function for a target.

@@ -118,7 +118,7 @@ func (fake *fakeParser) Init(state *core.BuildState) {
 }
 
 // ParseReader stub
-func (fake *fakeParser) ParseReader(pkg *core.Package, r io.ReadSeeker, label, dependent *core.BuildLabel) error {
+func (fake *fakeParser) ParseReader(_ context.Context, pkg *core.Package, r io.ReadSeeker, label, dependent *core.BuildLabel) error {
 	return nil
 }
 

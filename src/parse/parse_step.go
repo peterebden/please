@@ -37,7 +37,7 @@ func Parse(ctx context.Context, state *core.BuildState, label, dependent core.Bu
 
 	if subrepo != nil && subrepo.Target != nil {
 		// We have got the definition of the subrepo, but it depends on something, make sure that has been built.
-		if _, err := state.Build(subrepo.Target.Label, dependent); err != nil {
+		if _, err := state.Build(ctx, subrepo.Target.Label, dependent); err != nil {
 			return nil, err
 		}
 		if err := subrepo.State.Initialise(subrepo); err != nil {
@@ -92,7 +92,7 @@ func parsePackage(ctx context.Context, state *core.BuildState, label, dependent 
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate internal package: %w", err)
 		}
-		if err := state.Parser.ParseReader(pkg, strings.NewReader(pkgStr), &label, &dependent); err != nil {
+		if err := state.Parser.ParseReader(ctx, pkg, strings.NewReader(pkgStr), &label, &dependent); err != nil {
 			return nil, fmt.Errorf("failed to parse internal package: %w", err)
 		}
 	} else {
