@@ -1,6 +1,7 @@
 package parse
 
 import (
+	"context"
 	"fmt"
 	"io"
 	iofs "io/fs"
@@ -67,8 +68,8 @@ func newAspParser(state *core.BuildState) *asp.Parser {
 	return p
 }
 
-func (p *aspParser) ParseFile(pkg *core.Package, forLabel, dependent *core.BuildLabel, fs iofs.FS, filename string) error {
-	return p.parser.ParseFile(pkg, forLabel, dependent, fs, filename)
+func (p *aspParser) ParseFile(ctx context.Context, pkg *core.Package, forLabel, dependent *core.BuildLabel, fs iofs.FS, filename string) error {
+	return p.parser.ParseFile(ctx, pkg, forLabel, dependent, fs, filename)
 }
 
 func (p *aspParser) ParseReader(pkg *core.Package, reader io.ReadSeeker, forLabel, dependent *core.BuildLabel) error {

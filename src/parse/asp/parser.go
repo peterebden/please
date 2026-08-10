@@ -5,6 +5,7 @@ package asp
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	iofs "io/fs"
@@ -73,7 +74,7 @@ func (p *Parser) MustLoadBuiltins(filename string, contents []byte) {
 // ParseFile parses the contents of a single file in the BUILD language.
 // It returns true if the call was deferred at some point awaiting  target to build,
 // along with any error encountered.
-func (p *Parser) ParseFile(pkg *core.Package, label, dependent *core.BuildLabel, fs iofs.FS, filename string) error {
+func (p *Parser) ParseFile(ctx context.Context, pkg *core.Package, label, dependent *core.BuildLabel, fs iofs.FS, filename string) error {
 	p.limiter.Acquire()
 	defer p.limiter.Release()
 
@@ -81,7 +82,7 @@ func (p *Parser) ParseFile(pkg *core.Package, label, dependent *core.BuildLabel,
 	if err != nil {
 		return err
 	}
-	_, err = p.interpreter.interpretAll(pkg, label, dependent, statements)
+	_, err = p.interpreter.interpretAll(ctx, pkg, label, dependent, statements)
 	if err != nil {
 		f, _ := p.open(fs, filename)
 		p.annotate(err, f)
@@ -117,7 +118,7 @@ func (p *Parser) ParseReader(pkg *core.Package, r io.ReadSeeker, forLabel, depen
 	if err != nil {
 		return false, err
 	}
-	_, err = p.interpreter.interpretAll(pkg, forLabel, dependent, stmts)
+	_, err = p.interpreter.interpretAll(context.Background(), pkg, forLabel, dependent, stmts)
 	return true, err
 }
 

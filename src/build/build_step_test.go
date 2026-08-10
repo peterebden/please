@@ -8,6 +8,7 @@
 package build
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -610,7 +611,7 @@ type fakeParser struct {
 }
 
 // ParseFile stub
-func (fake *fakeParser) ParseFile(pkg *core.Package, label, dependent *core.BuildLabel, fs iofs.FS, filename string) error {
+func (fake *fakeParser) ParseFile(_ context.Context, pkg *core.Package, label, dependent *core.BuildLabel, fs iofs.FS, filename string) error {
 	return nil
 }
 
