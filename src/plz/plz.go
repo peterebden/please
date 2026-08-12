@@ -57,9 +57,7 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 		metrics.Push(state.Config.Metrics, state.Config.IsRemoteExecution())
 	}()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	state.Cancel = cancel
-
+	ctx, cancel := context.WithCancelCause(context.Background())
 	r := runner{
 		state:    state,
 		arch:     arch,
@@ -78,6 +76,8 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 	g, ctx := r.group(ctx)
 	r.tasks = g
 	r.parser = parse.InitParser(state, r.Parse, r.BuildAndDownload)
+	results := state.Results()
+	go checkForCycles(state, results, cancel)
 
 	if state.Config.Bazel.Compatibility && fs.FileExists("WORKSPACE") {
 		// We have to parse the WORKSPACE file before anything else to understand subrepos.

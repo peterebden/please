@@ -32,9 +32,6 @@ import (
 // startTime is as close as we can conveniently get to process start time.
 var startTime = time.Now()
 
-// cycleCheckDuration is the length of time we allow inactivity for before we trigger cycle detection.
-const cycleCheckDuration = 5 * time.Second
-
 // resultsChanSize is the buffer size of the channel we report build results on.
 const resultsChanSize = 1000
 
@@ -221,9 +218,6 @@ type BuildState struct {
 	// NeedDebugDeps is true if we're doing a `plz debug` and we need to build the debug tools and data
 	NeedDebugDeps bool
 
-	// Cancel is a cancel function called when the state detects a cycle.
-	Cancel func()
-
 	// initOnce is used to control loading the subrepo .plzconfig
 	initOnce *sync.Once
 }
@@ -318,8 +312,7 @@ func (state *BuildState) Initialise(subrepo *Subrepo) (err error) {
 // A stateProgress records various points of progress for a State.
 // This is split out from above so we can share it between multiple instances.
 type stateProgress struct {
-	mutex      sync.Mutex
-	resultOnce sync.Once
+	mutex sync.Mutex
 	// The set of known states
 	allStates []*BuildState
 	// Targets that we were originally requested to build
@@ -330,10 +323,8 @@ type stateProgress struct {
 	buildFailed atomic.Bool
 	// True if >= 1 target has failed test cases
 	testFailed atomic.Bool
-	// Stream of results from the build
-	results chan *BuildResult
-	// Internal result stream, used to intermediate them for the cycle checker.
-	internalResults chan *BuildResult
+	// Streams of results from the build
+	results []chan *BuildResult
 	// The cycle checker itself.
 	cycleDetector cycleDetector
 }
@@ -366,18 +357,12 @@ type lockedStats struct {
 
 // CloseResults closes the result channels.
 func (state *BuildState) CloseResults() {
-	state.progress.cycleDetector.Stop()
 	state.progress.mutex.Lock()
 	defer state.progress.mutex.Unlock()
-	// N.B. We create the channel if nobody has asked for it yet, rather than doing nothing; otherwise
-	//      anyone calling Results() after this would get a fresh channel that is never closed and would
-	//      wait on it forever.
-	if state.progress.results == nil {
-		state.progress.results = make(chan *BuildResult, resultsChanSize)
+	for _, ch := range state.progress.results {
+		close(ch)
 	}
-	state.progress.resultOnce.Do(func() {
-		close(state.progress.results)
-	})
+	state.progress.results = nil
 }
 
 // AddOriginalTarget adds an original target to this state
@@ -526,7 +511,9 @@ func (state *BuildState) logResult(result *BuildResult) {
 		return
 	}
 	result.Time = time.Now()
-	state.progress.internalResults <- result
+	for _, ch := range state.progress.results {
+		ch <- result
+	}
 	if result.Status.IsFailure() {
 		state.progress.failed.Store(true)
 		switch result.Status {
@@ -538,76 +525,19 @@ func (state *BuildState) logResult(result *BuildResult) {
 	}
 }
 
-// forwardResults runs indefinitely, forwarding results from the internal
-// channel to the external one. On the way it checks if we need to do
-// cycle detection.
-func (state *BuildState) forwardResults() {
-	defer func() {
-		if r := recover(); r != nil {
-			// Ensure we don't get a "send on closed channel" when the
-			// outward results channel is closed.
-			log.Debug("%s", r)
-		}
-	}()
-	activeTargets := map[*BuildTarget]struct{}{}
-	// Persist this one timer throughout so we don't generate bazillions of them.
-	t := time.NewTimer(cycleCheckDuration)
-	t.Stop()
-	var result *BuildResult
-	for {
-		if len(activeTargets) == 0 {
-			t.Reset(cycleCheckDuration)
-			select {
-			case result = <-state.progress.internalResults:
-				// This has to be properly managed to prevent hangs.
-				if !t.Stop() {
-					<-t.C
-				}
-			case <-t.C:
-				go state.checkForCycles()
-				go dumpGoroutineInfo()
-				// Still need to get a result!
-				result = <-state.progress.internalResults
-			}
-		} else {
-			result = <-state.progress.internalResults
-		}
-		if target := result.target; target != nil {
-			if result.Status.IsActive() {
-				activeTargets[target] = struct{}{}
-			} else {
-				delete(activeTargets, target)
-			}
-		}
-		state.progress.mutex.Lock()
-		if state.progress.results != nil {
-			state.progress.results <- result
-		}
-		state.progress.mutex.Unlock()
-	}
-}
-
-// checkForCycles is run to detect a cycle in the graph. It converts any returned error into an async error.
-func (state *BuildState) checkForCycles() {
-	if err := state.progress.cycleDetector.Check(); err != nil {
-		state.LogBuildError(err.Cycle[0].Label, TargetBuildFailed, err, "")
-		state.Cancel()
-	}
-}
-
 // Failures returns anything that has failed about the current build.
 func (state *BuildState) Failures() (anything, build, test bool) {
 	return state.progress.failed.Load(), state.progress.buildFailed.Load(), state.progress.testFailed.Load()
 }
 
 // Results returns a channel on which the caller can listen for results.
+// After calling this, the caller is honour-bound to consume the channel, or eventually things will block.
 func (state *BuildState) Results() <-chan *BuildResult {
 	state.progress.mutex.Lock()
 	defer state.progress.mutex.Unlock()
-	if state.progress.results == nil {
-		state.progress.results = make(chan *BuildResult, resultsChanSize)
-	}
-	return state.progress.results
+	ch := make(chan *BuildResult, resultsChanSize)
+	state.progress.results = append(state.progress.results, ch)
+	return ch
 }
 
 // ExpandOriginalLabels expands any pseudo-labels (ie. :all, ... has already been resolved to a bunch :all targets)
