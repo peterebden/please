@@ -950,8 +950,6 @@ func NewBuildState(config *Configuration) *BuildState {
 		Arch:            cli.HostArch(),
 		stats:           &lockedStats{},
 		progress: &stateProgress{
-			internalResults: make(chan *BuildResult, 1000),
-			cycleDetector:   cycleDetector{graph: graph},
 			originalTargets: NewTargetSet(),
 		},
 		initOnce: new(sync.Once),
@@ -963,7 +961,6 @@ func NewBuildState(config *Configuration) *BuildState {
 	for _, exp := range config.Parse.ExperimentalDir {
 		state.experimentalLabels = append(state.experimentalLabels, BuildLabel{PackageName: exp, Name: "..."})
 	}
-	go state.forwardResults()
 	return state
 }
 
@@ -1040,11 +1037,4 @@ func (s BuildResultStatus) IsFailure() bool {
 // IsActive returns true if this status represents a target that is not yet finished.
 func (s BuildResultStatus) IsActive() bool {
 	return s == PackageParsing || s == TargetBuilding || s == TargetTesting
-}
-
-// dumpGoroutineInfo logs out the goroutine stacks when we believe we might have hung.
-func dumpGoroutineInfo() {
-	var buf bytes.Buffer
-	pprof.Lookup("goroutine").WriteTo(&buf, 1)
-	log.Debug("Current stacks: %s", buf.String())
 }

@@ -1,8 +1,10 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"runtime/pprof"
 	"strings"
 
 	"github.com/thought-machine/please/src/core"
@@ -12,16 +14,12 @@ import (
 const cycleCheckDuration = 5 * time.Second
 
 type cycleDetector struct {
-	graph   *core.BuildGraph
-	stopped bool
+	graph *core.BuildGraph
 }
 
 // Check runs a single check of the build graph to see if any cycles can be detected.
 // If it finds one an errCycle is returned.
-func (c *cycleDetector) Check() *errCycle {
-	if c.stopped {
-		return nil
-	}
+func (c *cycleDetector) Check(cancel context.CancelCauseFunc) *errCycle {
 	log.Debug("Running cycle detection...")
 	complete := map[*core.BuildTarget]struct{}{}
 	partial := map[*core.BuildTarget]struct{}{}
@@ -58,10 +56,6 @@ func (c *cycleDetector) Check() *errCycle {
 	}
 
 	for _, target := range c.graph.AllTargets() {
-		if c.stopped {
-			log.Debug("Cycle detection terminated")
-			return nil
-		}
 		if _, present := complete[target]; !present {
 			if cycle, _ := visit(target); cycle != nil {
 				log.Debug("Cycle detection complete, cycle found: %s", cycle)
@@ -70,12 +64,11 @@ func (c *cycleDetector) Check() *errCycle {
 		}
 	}
 	log.Debug("Cycle detection complete, no cycles found")
+	// Dump the goroutine info in case that helps to shed light
+	var buf bytes.Buffer
+	pprof.Lookup("goroutine").WriteTo(&buf, 1)
+	log.Debug("Current stacks: %s", buf.String())
 	return nil
-}
-
-// Stop stops any existing run of the cycle detector.
-func (c *cycleDetector) Stop() {
-	c.stopped = true
 }
 
 // An errCycle is emitted when a graph cycle is detected.
@@ -94,34 +87,34 @@ func (err *errCycle) Error() string {
 
 // checkForCycles consumes a stream of build results and triggers cycle detection when appropriate
 func checkForCycles(state *core.BuildState, results <-chan *core.BuildResult, cancel context.CancelCauseFunc) {
-	activeTargets := map[*core.BuildTarget]struct{}{}
+	checker := cycleDetector{graph: state.Graph}
+	active := map[*core.BuildTarget]struct{}{}
 	t := time.NewTimer(cycleCheckDuration)
-	t.Stop()
-	var result *BuildResult
+	defer t.Stop()
 	for {
-		if len(activeTargets) == 0 {
+		select {
+		case result, ok := <-results:
+			if !ok {
+				return // results channel closed means the build is complete
+			}
 			t.Reset(cycleCheckDuration)
-			select {
-			case result = <-results:
-				// This has to be properly managed to prevent hangs.
-				if !t.Stop() {
-					<-t.C
+			if target := result.target; target != nil {
+				if result.Status.IsActive() {
+					active[target] = struct{}{}
+				} else {
+					delete(active, target)
 				}
-			case <-t.C:
-				go state.checkForCycles()
-				go dumpGoroutineInfo()
-				// Still need to get a result!
-				result = <-state.progress.internalResults
 			}
-		} else {
-			result = <-state.progress.internalResults
-		}
-		if target := result.target; target != nil {
-			if result.Status.IsActive() {
-				activeTargets[target] = struct{}{}
-			} else {
-				delete(activeTargets, target)
+		case <-t.C:
+			t.Reset(cycleCheckDuration)
+			if len(active) > 0 {
+				continue
 			}
+			go func() {
+				if err := checker.Check(cancel); err != nil {
+					cancel(err)
+				}
+			}()
 		}
 	}
 }
