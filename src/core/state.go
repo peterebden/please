@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -14,7 +13,6 @@ import (
 	iofs "io/fs"
 	"iter"
 	"path/filepath"
-	"runtime/pprof"
 	"sort"
 	"strings"
 	"sync"
@@ -325,8 +323,6 @@ type stateProgress struct {
 	testFailed atomic.Bool
 	// Streams of results from the build
 	results []chan *BuildResult
-	// The cycle checker itself.
-	cycleDetector cycleDetector
 }
 
 // SystemStats stores information about the system.
@@ -457,7 +453,7 @@ func (state *BuildState) LogParseResult(label BuildLabel, status BuildResultStat
 func (state *BuildState) LogBuildResult(target *BuildTarget, status BuildResultStatus, description string) {
 	state.logResult(&BuildResult{
 		Label:       target.Label,
-		target:      target,
+		Target:      target,
 		Status:      status,
 		Err:         nil,
 		Description: description,
@@ -472,7 +468,7 @@ func (state *BuildState) LogTestRunning(target *BuildTarget, run int, status Bui
 	}
 	state.logResult(&BuildResult{
 		Label:       target.Label,
-		target:      target,
+		Target:      target,
 		Run:         run,
 		Status:      status,
 		Description: message,
@@ -483,7 +479,7 @@ func (state *BuildState) LogTestRunning(target *BuildTarget, run int, status Bui
 func (state *BuildState) LogTestResult(target *BuildTarget, run int, status BuildResultStatus, results *TestSuite, coverage *TestCoverage, err error, format string, args ...interface{}) {
 	state.logResult(&BuildResult{
 		Label:       target.Label,
-		target:      target,
+		Target:      target,
 		Run:         run,
 		Status:      status,
 		Err:         err,
@@ -978,7 +974,7 @@ type BuildResult struct {
 	// Target which has just changed
 	Label BuildLabel
 	// Target which has changed. Nil if it's a parse action.
-	target *BuildTarget
+	Target *BuildTarget
 	// Test run index. 0 if not a test.
 	Run int
 	// Its current status

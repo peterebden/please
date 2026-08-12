@@ -57,7 +57,7 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 		metrics.Push(state.Config.Metrics, state.Config.IsRemoteExecution())
 	}()
 
-	ctx, cancel := context.WithCancelCause(context.Background())
+	topctx, cancel := context.WithCancelCause(context.Background())
 	r := runner{
 		state:    state,
 		arch:     arch,
@@ -73,7 +73,7 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 		remoteLimiter: make(limiter, state.Config.NumRemoteExecutors()),
 		anyRemote:     state.Config.NumRemoteExecutors() > 0,
 	}
-	g, ctx := r.group(ctx)
+	g, ctx := r.group(topctx)
 	r.tasks = g
 	r.parser = parse.InitParser(state, r.Parse, r.BuildAndDownload)
 	results := state.Results()
@@ -95,10 +95,8 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 		if err := g.Wait(); err != nil {
 			return err
 		}
-		// Reset the group & context for next time
-		ctx, cancel = context.WithCancel(context.Background())
-		g, ctx = r.group(ctx)
-		state.Cancel = cancel
+		// Reset the group & context for next time (the context is now expired because the group is done)
+		g, ctx = r.group(topctx)
 		r.tasks = g
 	}
 	r.FindOriginalTaskSet(ctx, targets, r.state.NeedTests, r.state.NeedBuild)

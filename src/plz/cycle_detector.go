@@ -1,4 +1,4 @@
-package core
+package plz
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"runtime/pprof"
 	"strings"
+	"time"
 
 	"github.com/thought-machine/please/src/core"
 )
@@ -19,7 +20,7 @@ type cycleDetector struct {
 
 // Check runs a single check of the build graph to see if any cycles can be detected.
 // If it finds one an errCycle is returned.
-func (c *cycleDetector) Check(cancel context.CancelCauseFunc) *errCycle {
+func (c *cycleDetector) Check() error {
 	log.Debug("Running cycle detection...")
 	complete := map[*core.BuildTarget]struct{}{}
 	partial := map[*core.BuildTarget]struct{}{}
@@ -31,9 +32,7 @@ func (c *cycleDetector) Check(cancel context.CancelCauseFunc) *errCycle {
 	// cycle is complete or not (if not the caller will need to add its node to it as well).
 	var visit func(target *core.BuildTarget) ([]*core.BuildTarget, bool)
 	visit = func(target *core.BuildTarget) ([]*core.BuildTarget, bool) {
-		if c.stopped {
-			return nil, false
-		} else if _, present := complete[target]; present {
+		if _, present := complete[target]; present {
 			return nil, false
 		} else if _, present := partial[target]; present {
 			return []*core.BuildTarget{target}, false
@@ -98,7 +97,7 @@ func checkForCycles(state *core.BuildState, results <-chan *core.BuildResult, ca
 				return // results channel closed means the build is complete
 			}
 			t.Reset(cycleCheckDuration)
-			if target := result.target; target != nil {
+			if target := result.Target; target != nil {
 				if result.Status.IsActive() {
 					active[target] = struct{}{}
 				} else {
@@ -111,7 +110,7 @@ func checkForCycles(state *core.BuildState, results <-chan *core.BuildResult, ca
 				continue
 			}
 			go func() {
-				if err := checker.Check(cancel); err != nil {
+				if err := checker.Check(); err != nil {
 					cancel(err)
 				}
 			}()
