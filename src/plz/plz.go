@@ -43,8 +43,6 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 		go state.UpdateResources()
 	}
 
-	parser := parse.InitParser(state)
-
 	// This must happen however we exit; anything reading state.Results() (e.g. the display)
 	// waits for that channel to be closed, so it would hang forever if we returned an error first.
 	defer func() {
@@ -64,7 +62,6 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 
 	r := runner{
 		state:    state,
-		parser:   parser,
 		arch:     arch,
 		progress: progress,
 		buildOnce: cmap.NewErrMap[core.BuildLabel, *core.BuildTarget](cmap.DefaultShardCount, func(l core.BuildLabel) uint64 {
@@ -80,16 +77,7 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 	}
 	g, ctx := r.group(ctx)
 	r.tasks = g
-
-	state.Build = func(ctx context.Context, label, dependent core.BuildLabel) (*core.BuildTarget, error) {
-		target, err := r.Build(ctx, label, dependent)
-		if err != nil {
-			return nil, err
-		}
-		// Anything calling this will likely want this thing to end up being downloaded (it's mostly for subincludes)
-		return target, state.EnsureDownloaded(target)
-	}
-	state.Parse = r.Parse
+	r.parser = parse.InitParser(state, r.Parse, r.BuildAndDownload)
 
 	if state.Config.Bazel.Compatibility && fs.FileExists("WORKSPACE") {
 		// We have to parse the WORKSPACE file before anything else to understand subrepos.
@@ -126,7 +114,7 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 	return g.Wait()
 }
 
-// RunHost is a convenience function that uses the host architecture, the given state's
+// RunHostAsync is a convenience function that uses the host architecture, the given state's
 // configuration and no pre targets. It is otherwise identical to Run.
 func RunHost(targets []core.BuildLabel, state *core.BuildState) {
 	Run(targets, nil, state, &Progress{}, cli.HostArch())
@@ -526,6 +514,15 @@ func (r *runner) Build(ctx context.Context, label, dependent core.BuildLabel) (*
 		defer r.progress.numDone.Add(1)
 		return target, r.buildOne(ctx, target)
 	})
+}
+
+func (r *runner) BuildAndDownload(ctx context.Context, label, dependent core.BuildLabel) (*core.BuildTarget, error) {
+	target, err := r.Build(ctx, label, dependent)
+	if err != nil {
+		return nil, err
+	}
+	// Anything calling this will likely want this thing to end up being downloaded (it's mostly for subincludes)
+	return target, r.state.EnsureDownloaded(target)
 }
 
 // testOne tests one single target

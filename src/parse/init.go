@@ -18,9 +18,9 @@ import (
 )
 
 // InitParser initialises the parser engine.
-func InitParser(state *core.BuildState) *asp.Parser {
-	p := newAspParser(state)
-	state.Parser = &aspParser{parser: p}
+func InitParser(state *core.BuildState, parse asp.ParseFunc, build asp.BuildFunc) *asp.Parser {
+	p := newAspParser(state, parse, build)
+	state.Parser = &aspParser{parser: p, parse: parse}
 	return p
 }
 
@@ -40,11 +40,12 @@ func GetAspParser(state *core.BuildState) *asp.Parser {
 // aspParser implements the core.Parser interface around our parser package.
 type aspParser struct {
 	parser *asp.Parser
+	parse  asp.ParseFunc
 }
 
 // newAspParser returns a asp.Parser object with all the builtins loaded
-func newAspParser(state *core.BuildState) *asp.Parser {
-	p := asp.NewParser(state)
+func newAspParser(state *core.BuildState, parse asp.ParseFunc, build asp.BuildFunc) *asp.Parser {
+	p := asp.NewParser(state, parse, build)
 	log.Debug("Loading built-in build rules...")
 	dir, _ := rules.AllAssets()
 	sort.Strings(dir)
@@ -98,7 +99,7 @@ func (p *aspParser) runBuildFunction(state *core.BuildState, target *core.BuildT
 	// be picked up and built before the file that defines it has been fully interpreted - but the
 	// callback both reads the package out of the graph and mutates it, so it can't run until then.
 	// There's no parse in flight for us to inherit a context from, hence Background.
-	if _, err := state.Parse(context.Background(), target.Label, target.Label); err != nil {
+	if _, err := p.parse(context.Background(), target.Label, target.Label); err != nil {
 		return err
 	}
 	if err := f(); err != nil {
@@ -130,7 +131,7 @@ func createBazelSubrepo(state *core.BuildState) {
 
 // BuildRuleArgOrder returns a map of the arguments to build rule and the order they appear in the source file
 func BuildRuleArgOrder(state *core.BuildState) map[string]int {
-	p := asp.NewParser(state)
+	p := asp.NewParser(state, nil, nil)
 	b, _ := rules.ReadAsset("builtins.build_defs")
 	stmts, _ := p.ParseData(b, "builtins.build_defs")
 	m := map[string]int{}

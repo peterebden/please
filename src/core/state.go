@@ -221,13 +221,6 @@ type BuildState struct {
 	// NeedDebugDeps is true if we're doing a `plz debug` and we need to build the debug tools and data
 	NeedDebugDeps bool
 
-	// Build is a callback to build a single target. It's set from outside here.
-	// TODO(peter): can we find a way of moving these off this struct? it feels weird here
-	// The second label is the dependent, i.e. whatever is asking for this to be built.
-	Build func(ctx context.Context, label, dependent BuildLabel) (*BuildTarget, error)
-	// Parse is a callback to parse a single package. It's also set from outside.
-	// The second label is the dependent, i.e. whatever is asking for this to be parsed.
-	Parse func(ctx context.Context, label, dependent BuildLabel) (*Package, error)
 	// Cancel is a cancel function called when the state detects a cycle.
 	Cancel func()
 

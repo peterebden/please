@@ -24,6 +24,9 @@ type semaphore chan struct{}
 func (s semaphore) Acquire() { s <- struct{}{} }
 func (s semaphore) Release() { <-s }
 
+type ParseFunc func(context.Context, core.BuildLabel, core.BuildLabel) (*core.Package, error)
+type BuildFunc func(context.Context, core.BuildLabel, core.BuildLabel) (*core.BuildTarget, error)
+
 // A Parser implements parsing of BUILD files.
 type Parser struct {
 	interpreter *interpreter
@@ -35,9 +38,9 @@ type Parser struct {
 }
 
 // NewParser creates a new parser instance. One is normally sufficient for a process lifetime.
-func NewParser(state *core.BuildState) *Parser {
+func NewParser(state *core.BuildState, parse ParseFunc, build BuildFunc) *Parser {
 	p := newParser()
-	p.interpreter = newInterpreter(state, p)
+	p.interpreter = newInterpreter(state, p, parse, build)
 	p.limiter = p.interpreter.limiter
 	return p
 }
