@@ -53,6 +53,12 @@ func newParser() *Parser {
 	}
 }
 
+// SetCallbacks sets the callback functions on an existing parser instance.
+func (p *Parser) SetCallbacks(parse ParseFunc, build BuildFunc) {
+	p.interpreter.parse = parse
+	p.interpreter.build = build
+}
+
 // LoadBuiltins instructs the parser to load rules from this file as built-ins.
 // Optionally the file contents can be supplied directly.
 func (p *Parser) LoadBuiltins(filename string, contents []byte) error {
