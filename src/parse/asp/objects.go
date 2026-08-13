@@ -700,11 +700,11 @@ func (f *pyFunc) Call(s *scope, c *Call) pyObject {
 	}
 	// N.B. The scope hangs off the one the function was defined in, so it sees that file's globals, but
 	//      anything about what we are currently doing comes from the calling scope - including its context.
-	s2 := f.scope.newScope(s.ctx, s.pkg, f.scope.filename, len(f.args)+1)
-	s2.config = s.config
-	s2.Set("CONFIG", s.config) // This needs to be copied across too :(
-	s2.Callback = s.Callback
-	s2.parsingFor = s.parsingFor
+	cs := f.scope.newScope(s.ctx, s.pkg, f.scope.filename, len(f.args)+1)
+	cs.config = s.config
+	cs.Set("CONFIG", s.config) // This needs to be copied across too :(
+	cs.Callback = s.Callback
+	cs.parsingFor = s.parsingFor
 	// Handle implicit 'self' parameter for bound functions.
 	args := c.Arguments
 	if f.self != nil {

@@ -1185,12 +1185,15 @@ func (s *scope) getOrNewMetadata(pkg *core.Package) scopeMetadata {
 		return meta
 	}
 
-	meta, _ = s.interpreter.packageMetadata.AddOrGet(pkg.Label(), func() scopeMetadata {
-		return &trackingScopeMetadata{
-			// symbolOrigins is lazy initialized in [setSymbolOrigin]
-			symbolStack: []trackedSymbol{},
-		}
-	})
+	label := pkg.Label()
+	if meta := s.interpreter.packageMetadata.Get(label); meta != nil {
+		return meta
+	}
+	meta = &trackingScopeMetadata{
+		// symbolOrigins is lazy initialized in [setSymbolOrigin]
+		symbolStack: []trackedSymbol{},
+	}
+	s.interpreter.packageMetadata.Set(label, meta)
 	return meta
 }
 

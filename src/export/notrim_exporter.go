@@ -40,8 +40,9 @@ func (nte *noTrimExporter) exportPreloaded() {
 
 // exportTarget implements [exporterImpl].
 func (nte *noTrimExporter) exportTarget(target *core.BuildTarget) {
-	pkg := nte.getOrParsePackage(target.Label)
+	pkg := nte.state.Graph.PackageByLabel(target.Label)
 	if pkg == nil {
+		// TODO(peterebden,DuBento): Can this happen? How can we get here with a parsed build target but no corresponding label?
 		log.Errorf("Unable to lookup package %s", target.Label)
 		return
 	}
@@ -67,7 +68,7 @@ func (nte *noTrimExporter) exportTarget(target *core.BuildTarget) {
 // writePackageFiles implements [exporterImpl].
 func (nte *noTrimExporter) writePackageFiles() {
 	for pkgLabel := range nte.exportedPackages {
-		pkg := nte.getOrParsePackage(pkgLabel)
+		pkg := nte.state.Graph.PackageByLabel(pkgLabel)
 		if pkg == nil {
 			log.Errorf("Unable to lookup package %s", pkgLabel)
 			continue

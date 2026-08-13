@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/thought-machine/please/src/cli"
 	"github.com/thought-machine/please/src/cli/logging"
 	"github.com/thought-machine/please/src/core"
 	"github.com/thought-machine/please/src/fs"
-	"github.com/thought-machine/please/src/parse"
 )
 
 var log = logging.Log
@@ -31,117 +31,6 @@ func Repo(state *core.BuildState, dir string, noTrim bool, targets []core.BuildL
 	}
 
 	e.run(targets)
-}
-
-func (e *export) exportPlzConf() {
-	profiles, err := filepath.Glob(".plzconfig*")
-	if err != nil {
-		log.Fatalf("failed to glob .plzconfig files: %v", err)
-	}
-	for _, file := range profiles {
-		path := filepath.Join(e.targetDir, file)
-		if err := os.RemoveAll(path); err != nil {
-			log.Fatalf("failed to copy .plzconfig file %s: %v", file, err)
-		}
-		if err := fs.CopyFile(file, path, 0); err != nil {
-			log.Fatalf("failed to copy .plzconfig file %s: %v", file, err)
-		}
-	}
-}
-
-// exportSources exports any source files (srcs and data) for the rule
-func (e *export) exportSources(target *core.BuildTarget) {
-	for _, src := range append(target.AllSources(), target.AllData()...) {
-		if _, ok := src.Label(); !ok { // We'll handle these dependencies later
-			for _, p := range src.FullPaths(e.state.Graph) {
-				if !filepath.IsAbs(p) { // Don't copy system file deps.
-					if err := fs.RecursiveCopy(p, filepath.Join(e.targetDir, p), 0); err != nil {
-						log.Fatalf("Error copying file: %s\n", err)
-					}
-				}
-			}
-		}
-	}
-}
-
-var ignoreDirectories = map[string]bool{
-	"plz-out": true,
-	".git":    true,
-	".svn":    true,
-	".hg":     true,
-}
-
-// exportPackage exports the package BUILD file containing the given target and all sources
-func (e *export) exportPackage(target *core.BuildTarget) {
-	pkgName := target.Label.PackageName
-	if pkgName == parse.InternalPackageName {
-		return
-	}
-	if e.exportedPackages[pkgName] {
-		return
-	}
-	e.exportedPackages[pkgName] = true
-
-	pkgDir := filepath.Clean(pkgName)
-
-	err := filepath.WalkDir(pkgDir, func(path string, d iofs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if path != pkgDir && fs.IsPackage(e.state.Config.Parse.BuildFileName, path) {
-				return filepath.SkipDir // We want to stop when we find another package in our dir tree
-			}
-			if ignoreDirectories[d.Name()] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !d.Type().IsRegular() {
-			return nil // Ignore symlinks, which are almost certainly generated sources.
-		}
-		dest := filepath.Join(e.targetDir, path)
-		if err := fs.EnsureDir(dest); err != nil {
-			return err
-		}
-		return fs.CopyFile(path, dest, 0)
-	})
-	if err != nil {
-		log.Fatalf("failed to export package %s for %s: %v", pkgName, target.Label, err)
-	}
-}
-
-// export implements the logic of ToDir, but prevents repeating targets.
-func (e *export) export(target *core.BuildTarget) {
-	if e.exportedTargets[target.Label] {
-		return
-	}
-	// We want to export the package that made this subrepo available, but we still need to walk the target deps
-	// as it may depend on other subrepos or first party targets
-	if target.Subrepo != nil {
-		e.export(target.Subrepo.Target)
-	} else if e.noTrim {
-		// Export the whole package, rather than trying to trim the package down to only the targets we need
-		e.exportPackage(target)
-	} else {
-		e.exportSources(target)
-	}
-
-	e.exportedTargets[target.Label] = true
-	deps, unresolved := target.Dependencies(e.state.Graph)
-	if len(unresolved) > 0 {
-		// Carrying on would silently produce an exported repo that doesn't build.
-		log.Fatalf("Can't export %s; dependencies not in build graph: %s", target.Label, unresolved)
-	}
-	for _, dep := range deps {
-		e.export(dep)
-	}
-	for _, subinclude := range e.state.Graph.PackageOrDie(target.Label).AllSubincludes(e.state.Graph) {
-		e.export(e.state.Graph.TargetOrDie(subinclude))
-	}
-	if parent := target.Parent(e.state.Graph); parent != nil && parent != target {
-		e.export(parent)
-	}
 }
 
 // Outputs exports the build artifacts (output files) produced by building the specified
@@ -293,7 +182,7 @@ func (be *baseExporter) exportTargets(labels core.BuildLabels) {
 		if be.exportedTargets[l] {
 			continue
 		}
-		target := be.getOrParseTarget(l)
+		target := be.state.Graph.Target(l)
 		if target == nil {
 			log.Errorf("Unable to lookup target %s", l)
 			continue
@@ -305,7 +194,7 @@ func (be *baseExporter) exportTargets(labels core.BuildLabels) {
 // exportDependencies exports dependencies of a target.
 func (be *baseExporter) exportDependencies(target *core.BuildTarget) {
 	deps := target.DeclaredDependencies()
-	be.exportTargets(deps)
+	be.exportTargets(slices.Collect(deps))
 }
 
 // exportSources exports all files required by the target.
@@ -335,33 +224,6 @@ func (be *baseExporter) exportFiles(paths []string) {
 			log.Warningf("Error copying file, skipping...: %s", err)
 		}
 	}
-}
-
-// getOrParseTarget attempts to lookup a target in the build graph. If the target has not
-// been parsed yet, it dynamically requests the package be parsed and blocks until the target is resolved.
-//
-// This occurs during the exports when walking dependencies of adjacent targets which were not
-// explicitly activated or resolved during the initial build/parse phase.
-//
-// This requires the background parser worker threads to be kept alive as daemons (controlled by the
-// "KeepParserRunning" build state option).
-func (be *baseExporter) getOrParseTarget(label core.BuildLabel) *core.BuildTarget {
-	target := be.state.Graph.Target(label)
-	if target == nil {
-		log.Infof("Target %v not found in graph. Attempting to parse...", label)
-		parse.Parse(be.state, label, core.OriginalTarget, core.ParseModeNormal)
-		target = be.state.Graph.Target(label)
-	}
-	return target
-}
-
-// getOrParsePackage attempts to lookup a package in the build graph. If the package has not
-// been parsed yet, it dynamically requests the package be parsed and blocks until resolved.
-//
-// This requires the background parser worker threads to be kept alive as daemons (controlled by the
-// "KeepParserRunning" build state option).
-func (be *baseExporter) getOrParsePackage(label core.BuildLabel) *core.Package {
-	return be.state.WaitForPackage(label, core.OriginalTarget, core.ParseModeNormal)
 }
 
 // checkAndSetVisited is a helper to ensure we only visit the same target once.
