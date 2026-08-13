@@ -217,13 +217,6 @@ type BuildState struct {
 	NeedDebugDeps bool
 	// ParseMetadata is true if we want to store build file metadata
 	ParseMetadata bool
-	// KeepParserRunning prevents closing task workers (parse and build channels) to support later
-	// calls to the parser. This is needed to support the export operation since the export logic will
-	// attempt to export targets that have not been parsed during the normal build phase. An example
-	// is when exporting dependencies of targets that are not explicitly used but adjacent/related.
-	KeepParserRunning bool
-	// WaitForDisplay is a function that blocks until the display thread has finished.
-	WaitForDisplay func()
 
 	// initOnce is used to control loading the subrepo .plzconfig
 	initOnce *sync.Once
@@ -373,22 +366,6 @@ func (state *BuildState) CloseResults() {
 // AddOriginalTarget adds an original target to this state
 func (state *BuildState) AddOriginalTarget(label BuildLabel) {
 	state.progress.originalTargets.Add(label)
-}
-
-// Cleanup cleans up and shuts down the build state.
-func (state *BuildState) Cleanup() {
-	state.CloseResults()
-
-	if state.WaitForDisplay != nil {
-		state.WaitForDisplay()
-	}
-
-	if state.Cache != nil {
-		state.Cache.Shutdown()
-	}
-	if state.RemoteClient != nil {
-		state.RemoteClient.Disconnect()
-	}
 }
 
 // IsOriginalTarget returns true if a target is an original target, ie. one specified on the command line.

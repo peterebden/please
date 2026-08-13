@@ -784,9 +784,7 @@ var buildFunctions = map[string]func() int{
 		return 0
 	},
 	"export": func() int {
-		success, state := runBuild(opts.Export.Args.Targets, buildOpts{ParseMetadata: true, KeepParserRunning: true})
-		// Required cleanup due to running parser in background
-		defer state.Cleanup()
+		success, state := runBuild(opts.Export.Args.Targets, buildOpts{ParseMetadata: true})
 
 		if success {
 			export.Repo(state, opts.Export.Output, opts.Export.NoTrim, state.ExpandOriginalLabels())
@@ -1201,7 +1199,6 @@ func Please(targets []core.BuildLabel, config *core.Configuration, buildOpts bui
 	state.NeedBuild = buildOpts.Build
 	state.NeedTests = buildOpts.Test
 	state.ParseMetadata = buildOpts.ParseMetadata
-	state.KeepParserRunning = buildOpts.KeepParserRunning
 	state.NeedDebugDeps = debug
 
 	// What outputs get downloaded in remote execution.
@@ -1359,10 +1356,6 @@ type buildOpts struct {
 	Test          bool
 	IsQuery       bool
 	ParseMetadata bool
-	// Keep the workers running in the background for inline parsing during specific operations (e.g.
-	// export). Note: when running background workers we need to explicit call CleanUp at the end of
-	// the CLI operation.
-	KeepParserRunning bool
 }
 
 // Runs the actual build
