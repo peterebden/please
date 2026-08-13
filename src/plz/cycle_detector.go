@@ -20,7 +20,7 @@ type cycleDetector struct {
 
 // Check runs a single check of the build graph to see if any cycles can be detected.
 // If it finds one an errCycle is returned.
-func (c *cycleDetector) Check() error {
+func (c *cycleDetector) Check() *errCycle {
 	log.Debug("Running cycle detection...")
 	complete := map[*core.BuildTarget]struct{}{}
 	partial := map[*core.BuildTarget]struct{}{}
@@ -111,6 +111,7 @@ func checkForCycles(state *core.BuildState, results <-chan *core.BuildResult, ca
 			}
 			go func() {
 				if err := checker.Check(); err != nil {
+					state.LogBuildError(err.Cycle[0].Label, core.TargetBuildFailed, err, "%s", err)
 					cancel(err)
 				}
 			}()
