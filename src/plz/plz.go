@@ -77,7 +77,7 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 	}
 	g, ctx := r.group(ctx)
 	r.tasks = g
-	r.parser = parse.InitParser(state, r.Parse, r.BuildAndDownload)
+	r.parser = parse.InitParser(state, &r)
 
 	if state.Config.Bazel.Compatibility && fs.FileExists("WORKSPACE") {
 		// We have to parse the WORKSPACE file before anything else to understand subrepos.
