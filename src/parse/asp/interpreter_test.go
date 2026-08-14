@@ -615,12 +615,12 @@ func TestJSON(t *testing.T) {
 	confBase := &pyConfigBase{dict: dict}
 	config := &pyConfig{base: confBase, overlay: pyDict{"baz": pyInt(6)}}
 
-	s.locals["some_list"] = list
-	s.locals["some_frozen_list"] = list.Freeze()
-	s.locals["some_dict"] = dict
-	s.locals["some_frozen_dict"] = dict.Freeze()
-	s.locals["some_config"] = config
-	s.locals["some_frozen_config"] = config.Freeze()
+	s.Set("some_list", list)
+	s.Set("some_frozen_list", list.Freeze())
+	s.Set("some_dict", dict)
+	s.Set("some_frozen_dict", dict.Freeze())
+	s.Set("some_config", config)
+	s.Set("some_frozen_config", config.Freeze())
 
 	s.interpretStatements(statements)
 

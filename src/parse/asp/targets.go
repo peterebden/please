@@ -282,7 +282,14 @@ func populateTarget(s *scope, t *core.BuildTarget, args []pyObject) {
 	addMaybeNamed(s, "data", args[dataBuildRuleArgIdx], t.AddDatum, t.AddNamedDatum, false, false)
 	addMaybeNamedOutput(s, "outs", args[outsBuildRuleArgIdx], t.AddOutput, t.AddNamedOutput, t, false)
 	addMaybeNamedOutput(s, "optional_outs", args[optionalOutsBuildRuleArgIdx], t.AddOptionalOutput, nil, t, true)
-	t.HintDependencies(depLen(args[depsBuildRuleArgIdx]) + depLen(args[exportedDepsBuildRuleArgIdx]) + depLen(args[internalDepsBuildRuleArgIdx]))
+	t.HintDependencies(
+		depLen(args[depsBuildRuleArgIdx]) +
+		depLen(args[exportedDepsBuildRuleArgIdx]) +
+		depLen(args[internalDepsBuildRuleArgIdx]) +
+		depLen(args[runtimeDepsBuildRuleArgIdx]) +
+		depLen(args[srcsBuildRuleArgIdx]) +
+		depLen(args[toolsBuildRuleArgIdx]) +
+		depLen(args[systemSrcsBuildRuleArgIdx]))
 	addDependencies(s, "deps", args[depsBuildRuleArgIdx], t, false, false, false)
 	addDependencies(s, "exported_deps", args[exportedDepsBuildRuleArgIdx], t, true, false, false)
 	addDependencies(s, "internal_deps", args[internalDepsBuildRuleArgIdx], t, false, true, false)
@@ -322,10 +329,18 @@ func populateTarget(s *scope, t *core.BuildTarget, args []pyObject) {
 	}
 }
 
-// depLen returns the length of a (potential) list
+// depLen returns the length of a (potential) list or dict of lists
 func depLen(obj pyObject) int {
 	if l, ok := asList(obj); ok {
 		return len(l)
+	} else if d, ok := asDict(obj); ok {
+		var n int
+		for _, v := range d {
+			if l, ok := asList(v); ok {
+				n += len(l)
+			}
+		}
+		return n
 	}
 	return 0
 }

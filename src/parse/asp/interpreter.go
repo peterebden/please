@@ -103,7 +103,7 @@ func (i *interpreter) LoadBuiltins(filename string, contents []byte, statements 
 	case "config_rules.build_defs":
 		defer setNativeCode(s, "select", selectFunc)
 	}
-	defer i.scope.SetAll(s.Freeze(), true)
+	defer func() { i.scope.SetAll(s.Freeze(), true) }()
 	if statements != nil {
 		_, err := i.interpretStatements(s, statements)
 		return err
@@ -437,10 +437,12 @@ func (s *scope) newScope(ctx context.Context, pkg *core.Package, filename string
 		pkg:         pkg,
 		parsingFor:  s.parsingFor,
 		parent:      s,
-		locals:      make(pyDict, hint),
 		config:      s.config,
 		Callback:    s.Callback,
 		Preload:     s.Preload,
+	}
+	if hint > 0 {
+		s2.locals = make(pyDict, hint)
 	}
 	if pkg != nil && pkg.Subrepo != nil && pkg.Subrepo.State != nil {
 		s2.state = pkg.Subrepo.State
@@ -489,12 +491,21 @@ func (s *scope) LocalLookup(name string) pyObject {
 
 // Set sets the given variable in this scope.
 func (s *scope) Set(name string, value pyObject) {
+	if s.locals == nil {
+		s.locals = make(pyDict)
+	}
 	s.locals[name] = value
 }
 
 // SetAll sets all contents of the given dict in this scope.
 // Optionally it can filter to just public objects (i.e. those not prefixed with an underscore)
 func (s *scope) SetAll(d pyDict, publicOnly bool) {
+	if len(d) == 0 {
+		return
+	}
+	if s.locals == nil {
+		s.locals = make(pyDict, len(d))
+	}
 	for k, v := range d {
 		if k == "CONFIG" {
 			// Special case; need to merge config entries rather than overwriting the entire object.
@@ -851,13 +862,15 @@ func (s *scope) interpretFString(f *FString) pyObject {
 	}
 	var b strings.Builder
 	size := len(f.Suffix)
-	for _, v := range f.Vars {
-		size += len(v.Prefix) + len(stringVar(v))
+	strs := make([]string, len(f.Vars))
+	for i, v := range f.Vars {
+		strs[i] = stringVar(v)
+		size += len(v.Prefix) + len(strs[i])
 	}
 	b.Grow(size)
-	for _, v := range f.Vars {
+	for i, v := range f.Vars {
 		b.WriteString(v.Prefix)
-		b.WriteString(stringVar(v))
+		b.WriteString(strs[i])
 	}
 	b.WriteString(f.Suffix)
 	return pyString(b.String())
