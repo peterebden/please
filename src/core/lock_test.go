@@ -42,20 +42,21 @@ func TestAcquireSharedRepoRoot(t *testing.T) {
 
 	assert.IsType(t, &os.File{}, repoLockFile)
 
+	// We don't record the pid under a shared lock; other holders would be racing to write it too.
 	contents, err := os.ReadFile(repoLockFile.Name())
-	assert.Equal(t, strconv.Itoa(os.Getpid()), string(contents))
 	assert.NoError(t, err)
+	assert.Empty(t, string(contents))
 }
 
 func TestAcquireExclusiveRepoRoot(t *testing.T) {
-	AcquireSharedRepoLock()
+	AcquireExclusiveRepoLock()
 	defer ReleaseRepoLock()
 
 	assert.IsType(t, &os.File{}, repoLockFile)
 
 	contents, err := os.ReadFile(repoLockFile.Name())
-	assert.Equal(t, strconv.Itoa(os.Getpid()), string(contents))
 	assert.NoError(t, err)
+	assert.Equal(t, strconv.Itoa(os.Getpid()), string(contents))
 }
 
 func TestAcquireRepoRootOverride(t *testing.T) {
