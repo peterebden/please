@@ -729,3 +729,11 @@ go_repo(
     module = "go.opentelemetry.io/auto/sdk",
     version = "v1.2.1",
 )
+
+# Exposed so //test/build_defs:plugin_versions_match_repo_test can check that the e2e test repos
+# build with the same Go toolchain as this repo.
+filegroup(
+    name = "build_file",
+    srcs = ["BUILD"],
+    visibility = ["//test/build_defs:all"],
+)

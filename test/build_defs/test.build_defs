@@ -31,6 +31,9 @@ def please_repo_e2e_test(
         plz_command += "; [ ! $? -eq 0 ]"
 
     test_cmd = [
+        # Runs first so a stale pin is reported as itself, rather than as whatever confusing failure
+        # an unexpected plugin version causes further down.
+        "$TOOLS_VERSION_CHECKER -versions $DATA_PLUGIN_VERSIONS -repo $DATA_REPO",
         "cp $DATA_BASE_CONFIG $DATA_REPO",
     ]
 
@@ -65,9 +68,11 @@ def please_repo_e2e_test(
 
     data["REPO"] = [repo]
     data["BASE_CONFIG"] = ["//test/build_defs:base_config"]
+    data["PLUGIN_VERSIONS"] = ["//test/build_defs:plugin_versions"]
 
     tools["PLEASE"] = ["//package:installed_files|please"]
     tools["CONTENT_CHECKER"] = ["//test/build_defs:content_checker"]
+    tools["VERSION_CHECKER"] = ["//test/build_defs:plugin_version_checker"]
 
     return gentest(
         name = name,

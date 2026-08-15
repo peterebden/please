@@ -1,0 +1,33 @@
+{
+  "_comment": [
+    "Canonical plugin revisions and Go toolchain version for the e2e test repos.",
+    "Every please_repo_e2e_test / please_export_e2e_test checks its own repo against this, so a new",
+    "test repo is covered automatically rather than quietly keeping whatever version it was copied",
+    "from. //test/build_defs:plugin_versions_match_repo_test keeps this file honest against the",
+    "versions the please repo itself builds with.",
+    "Don't edit this by hand for a plugin the please repo also uses: bump //plugins:BUILD (or",
+    "//third_party/go:BUILD for the toolchain) and run `plz run //test/build_defs:fix_plugin_versions`,",
+    "which rewrites this file and every test repo to match. For plugins only the test repos use,",
+    "edit the revision here and run the same command to push it out."
+  ],
+
+  "plugins": {
+    "go-rules": "v1.31.1",
+    "shell-rules": "v0.2.1",
+    "go-proto": "v0.3.0",
+    "proto": "064ff35796b681b33a0667e85a5b1a1d54b64f64",
+    "pleasings": "9b03499b58111c555ee45ed92e2fccc32d842160"
+  },
+
+  "go_toolchain": "1.26.5",
+
+  "_local_comment": [
+    "Plugins served from somewhere in this repo rather than from please-build, so their revisions",
+    "are fixtures with no upstream to track. Listed explicitly so that a plugin which is neither",
+    "here nor in 'plugins' is reported rather than silently skipped."
+  ],
+  "local": [
+    "foo",
+    "config_field_value"
+  ]
+}

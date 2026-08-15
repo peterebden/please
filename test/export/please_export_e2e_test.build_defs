@@ -36,7 +36,12 @@ def please_export_e2e_test(
 
     targets = " ".join(export_targets)
 
-    test_cmd = []
+    # Both repos get checked: the expected repo is a golden master of the exported source repo, so
+    # its pins have to move in step with the source repo's anyway.
+    test_cmd = [
+        "$TOOLS_VERSION_CHECKER -versions $DATA_PLUGIN_VERSIONS -repo $DATA_SOURCE_REPO",
+        "$TOOLS_VERSION_CHECKER -versions $DATA_PLUGIN_VERSIONS -repo $DATA_EXPECTED_REPO",
+    ]
     if enforce_different_repos:
         test_cmd += [
             # Enforce source_repo and expected_repo differences
@@ -62,8 +67,10 @@ def please_export_e2e_test(
 
     data["SOURCE_REPO"] = [source_repo]
     data["EXPECTED_REPO"] = [expected_repo]
+    data["PLUGIN_VERSIONS"] = ["//test/build_defs:plugin_versions"]
 
     tools["PLEASE"] = ["//package:installed_files|please"]
+    tools["VERSION_CHECKER"] = ["//test/build_defs:plugin_version_checker"]
 
     return gentest(
         name = name,
