@@ -81,7 +81,7 @@ func AcquireExclusiveFileLock(filePath string) (*os.File, error) {
 // AcquireSharedFileLock opens a file to acquire a shared lock.
 // Multiple of these can be held at once, but not concurrently with an exclusive lock (ala a RWMutex or similar).
 func AcquireSharedFileLock(filePath string) (*os.File, error) {
-	return acquireOpenFileLock(filePath, syscall.LOCK_EX)
+	return acquireOpenFileLock(filePath, syscall.LOCK_SH)
 }
 
 // Base function that allows to set up different lock modes and facilitate testing.
