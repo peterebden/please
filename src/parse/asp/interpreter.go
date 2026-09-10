@@ -236,9 +236,14 @@ func (i *interpreter) interpretStatements(s *scope, statements []*Statement) (re
 // Subinclude returns the global values corresponding to subincluding the given file.
 func (i *interpreter) Subinclude(pkgScope *scope, path string, label core.BuildLabel, preload bool) pyDict {
 	key := filepath.Join(path, pkgScope.state.CurrentSubrepo)
-	globals, err := i.subincludes.GetOrSet(key, func() (pyDict, error) {
-		pprof.SetGoroutineLabels(pprof.WithLabels(pkgScope.ctx, pprof.Labels("subinclude", path)))
-		defer pprof.SetGoroutineLabels(pkgScope.ctx)
+	ctx := pkgScope.ctx
+	globals, err := i.subincludes.GetOrSetCtx(ctx, key, func() (pyDict, error) {
+		if hasSubinclude(ctx, path) {
+			return nil, fmt.Errorf("Subinclude cycle detected: %s", strings.Join(append(allSubincludes(ctx), path), "\n -> "))
+		}
+		ctx = withSubinclude(ctx, path)
+		pprof.SetGoroutineLabels(pprof.WithLabels(ctx, pprof.Labels("subincludes", strings.Join(allSubincludes(ctx), " -> "))))
+		defer pprof.SetGoroutineLabels(ctx)
 		stmts, err := i.parseSubinclude(path)
 		if err != nil {
 			return nil, err
@@ -246,12 +251,12 @@ func (i *interpreter) Subinclude(pkgScope *scope, path string, label core.BuildL
 
 		// N.B. This hangs off the interpreter's root scope so it sees the builtins rather than the
 		//      caller's locals, but the work belongs to the caller's chain, so it takes their context.
-		s := i.scope.newScope(pkgScope.ctx, nil, path, 0)
+		s := i.scope.newScope(ctx, nil, path, 0)
 		s.Preload = preload
 		// Whether this file gets preloads applied to it. Not if it is itself a preload, and not if we're
 		// resolving preloads at all - they aren't available yet, and reaching for one here would wait on
 		// a subinclude that the resolution we're part of is itself waiting to finish.
-		applyPreloads := !preload && !core.IsPreloading(pkgScope.ctx)
+		applyPreloads := !preload && !core.IsPreloading(ctx)
 
 		s.state = pkgScope.state
 		// Scope needs a local version of CONFIG

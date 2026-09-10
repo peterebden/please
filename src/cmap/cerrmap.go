@@ -2,6 +2,8 @@ package cmap
 
 import (
 	"context"
+	"fmt"
+	"runtime/pprof"
 )
 
 // A Limiter is the interface that we use to release/acquire workers while waiting.
@@ -91,6 +93,10 @@ func (m *ErrMap[K, V]) GetOrSetCtx(ctx context.Context, key K, f func() (V, erro
 			m.l.Release()
 			defer m.l.Acquire()
 		}
+
+		pprof.SetGoroutineLabels(pprof.WithLabels(ctx, pprof.Labels("cerrmap_wait", fmt.Sprintf("%v", key))))
+		defer pprof.SetGoroutineLabels(ctx)
+
 		select {
 		case <-wait:
 			return m.Get(key)
