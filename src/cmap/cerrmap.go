@@ -57,7 +57,7 @@ func (m *ErrMap[K, V]) Get(key K) (V, error) {
 // GetOrSet returns the value if set, or an error if one has been set.
 // If nothing has been set for the key, it runs the given function to generate the value and then sets it.
 func (m *ErrMap[K, V]) GetOrSet(key K, f func() (V, error)) (V, error) {
-	v, wait, first := m.m.getOrWait(key)
+	v, wait, first := m.m.GetOrWait(key)
 	if v.Err != nil {
 		return v.Val, v.Err
 	} else if first {
@@ -78,7 +78,7 @@ func (m *ErrMap[K, V]) GetOrSet(key K, f func() (V, error)) (V, error) {
 
 // GetOrSetCtx is like GetOrSet but accepts a context that can be cancelled.
 func (m *ErrMap[K, V]) GetOrSetCtx(ctx context.Context, key K, f func() (V, error)) (V, error) {
-	v, wait, first := m.m.getOrWait(key)
+	v, wait, first := m.m.GetOrWait(key)
 	if v.Err != nil {
 		return v.Val, v.Err
 	} else if first {
@@ -94,6 +94,35 @@ func (m *ErrMap[K, V]) GetOrSetCtx(ctx context.Context, key K, f func() (V, erro
 		select {
 		case <-wait:
 			return m.Get(key)
+		case <-ctx.Done():
+			var v V
+			return v, ctx.Err()
+		}
+	}
+	return v.Val, v.Err
+}
+
+// GetOrSetUntil is like GetOrSetCtx but also stops if the given channel returns a value.
+func (m *ErrMap[K, V]) GetOrSetUntil(ctx context.Context, key K, f func() (V, error), stop <-chan struct{}) (V, error) {
+	v, wait, first := m.m.GetOrWait(key)
+	if v.Err != nil {
+		return v.Val, v.Err
+	} else if first {
+		val, err := f()
+		m.m.Set(key, errV[V]{Val: val, Err: err})
+		return val, err
+	} else if wait != nil {
+		if m.l != nil {
+			// Release the limiter for the duration we're waiting
+			m.l.Release()
+			defer m.l.Acquire()
+		}
+		select {
+		case <-wait:
+			return m.Get(key)
+		case <-stop:
+			var v V
+			return v, nil
 		case <-ctx.Done():
 			var v V
 			return v, ctx.Err()

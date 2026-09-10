@@ -136,17 +136,17 @@ type runner struct {
 // The dependent is whatever is asking for this to be parsed; it's used to produce better error
 // messages, and to detect a package that is asking to parse itself.
 func (r *runner) Parse(ctx context.Context, label, dependent core.BuildLabel) (*core.Package, error) {
-	return r.parse(ctx, label, dependent, false)
+	return r.parse(ctx, label, dependent, false, nil)
 }
 
 // tryParse is like Parse but doesn't report failures. It's used where a failure isn't necessarily an
 // error, i.e. when we're speculatively looking for the package that might define a subrepo; the caller
 // is responsible for reporting anything it can't handle itself.
 func (r *runner) tryParse(ctx context.Context, label, dependent core.BuildLabel) (*core.Package, error) {
-	return r.parse(ctx, label, dependent, true)
+	return r.parse(ctx, label, dependent, true, nil)
 }
 
-func (r *runner) parse(ctx context.Context, label, dependent core.BuildLabel, quiet bool) (*core.Package, error) {
+func (r *runner) parse(ctx context.Context, label, dependent core.BuildLabel, quiet bool, stop <-chan struct{}) (*core.Package, error) {
 	// Work out which repo this package belongs to, and make sure that repo's preloaded subincludes are
 	// resolved, before we claim the package below.
 	// Both of these can need to parse other packages - and preload resolution routinely parses packages in
@@ -170,7 +170,7 @@ func (r *runner) parse(ctx context.Context, label, dependent core.BuildLabel, qu
 			r.state.LogBuildError(label, core.ParseFailed, err, "Failed to parse package")
 		}
 		return pkg, err
-	})
+	}, stop)
 }
 
 // repoFor returns the state and subrepo that the given label should be parsed against, defining the
@@ -359,12 +359,16 @@ func (r *runner) recursiveParse(ctx context.Context, label, dependent core.Build
 }
 
 func (r *runner) parseTarget(ctx context.Context, label, dependent core.BuildLabel) (*core.BuildTarget, error) {
-	if target := r.state.Graph.Target(label); target != nil {
+	target, wait := r.state.Graph.TargetOrWait(label)
+	if target != nil {
 		return target, nil
 	}
-	pkg, err := r.Parse(ctx, label, dependent)
+	pkg, err := r.parse(ctx, label, dependent, false, wait)
 	if err != nil {
 		return nil, err
+	} else if pkg == nil {
+		// The target got produced during someone else parsing, although the package isn't ready yet we didn't need the whole thing.
+		return r.state.Graph.Target(label), nil
 	}
 	if target := pkg.Target(label.Name); target != nil {
 		return target, nil

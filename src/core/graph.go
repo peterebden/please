@@ -50,6 +50,13 @@ func (graph *BuildGraph) Target(label BuildLabel) *BuildTarget {
 	return graph.targets.Get(label)
 }
 
+// TargetOrWait retrieves a target from the graph by label. If it doesn't exist yet, it returns a channel
+// that can be waited upon; it will be closed after AddTarget is called for the appropriate target.
+func (graph *BuildGraph) TargetOrWait(label BuildLabel) (*BuildTarget, <-chan struct{}) {
+	target, ch, _ := graph.targets.GetOrWait(label)
+	return target, ch
+}
+
 // TargetOrDie retrieves a target from the graph by label. Dies if the target doesn't exist.
 func (graph *BuildGraph) TargetOrDie(label BuildLabel) *BuildTarget {
 	target := graph.Target(label)
@@ -73,8 +80,9 @@ func (graph *BuildGraph) Package(name, subrepo string) *Package {
 
 // GetOrSetPackage retrieves a package from the graph.
 // If it doesn't exist, it calls the supplied function to create it.
-func (graph *BuildGraph) GetOrSetPackage(ctx context.Context, label BuildLabel, f func() (*Package, error)) (*Package, error) {
-	return graph.packages.GetOrSetCtx(ctx, packageKey{Name: label.PackageName, Subrepo: label.Subrepo}, f)
+// If the given channel returns a value, that will release the wait; at that point it may return a nil package (and no error).
+func (graph *BuildGraph) GetOrSetPackage(ctx context.Context, label BuildLabel, f func() (*Package, error), stop <-chan struct{}) (*Package, error) {
+	return graph.packages.GetOrSetUntil(ctx, packageKey{Name: label.PackageName, Subrepo: label.Subrepo}, f, stop)
 }
 
 // PackageOrDie retrieves a package by label, and dies if it can't be found.
