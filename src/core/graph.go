@@ -5,7 +5,6 @@
 package core
 
 import (
-	"context"
 	"maps"
 	"slices"
 	"sort"
@@ -78,11 +77,21 @@ func (graph *BuildGraph) Package(name, subrepo string) *Package {
 	return pkg
 }
 
-// GetOrSetPackage retrieves a package from the graph.
-// If it doesn't exist, it calls the supplied function to create it.
-// If the given channel returns a value, that will release the wait; at that point it may return a nil package (and no error).
-func (graph *BuildGraph) GetOrSetPackage(ctx context.Context, label BuildLabel, f func() (*Package, error), stop <-chan struct{}) (*Package, error) {
-	return graph.packages.GetOrSetUntil(ctx, packageKey{Name: label.PackageName, Subrepo: label.Subrepo}, f, stop)
+// PackageOrWait retrieves a package from the graph, or the error from parsing it if that failed.
+// If it hasn't been parsed yet, it returns a channel that is closed once it has been, plus whether this
+// caller is the first to ask for it.
+func (graph *BuildGraph) PackageOrWait(label BuildLabel) (*Package, <-chan struct{}, bool, error) {
+	return graph.packages.GetOrWait(packageKey{Name: label.PackageName, Subrepo: label.Subrepo})
+}
+
+// SetPackage records the result of parsing a package, releasing anything waiting on it.
+func (graph *BuildGraph) SetPackage(label BuildLabel, pkg *Package, err error) {
+	key := packageKey{Name: label.PackageName, Subrepo: label.Subrepo}
+	if err != nil {
+		graph.packages.SetError(key, err)
+		return
+	}
+	graph.packages.Set(key, pkg)
 }
 
 // PackageOrDie retrieves a package by label, and dies if it can't be found.

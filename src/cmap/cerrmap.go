@@ -108,33 +108,12 @@ func (m *ErrMap[K, V]) GetOrSetCtx(ctx context.Context, key K, f func() (V, erro
 	return v.Val, v.Err
 }
 
-// GetOrSetUntil is like GetOrSetCtx but also stops if the given channel returns a value.
-func (m *ErrMap[K, V]) GetOrSetUntil(ctx context.Context, key K, f func() (V, error), stop <-chan struct{}) (V, error) {
+// GetOrWait returns the value for a key, or an error if one has been recorded for it.
+// If neither is set yet, it returns a channel that is closed once the key is populated with a value or
+// an error, and an indication of whether the caller is the first to request it.
+func (m *ErrMap[K, V]) GetOrWait(key K) (V, <-chan struct{}, bool, error) {
 	v, wait, first := m.m.GetOrWait(key)
-	if v.Err != nil {
-		return v.Val, v.Err
-	} else if first {
-		val, err := f()
-		m.m.Set(key, errV[V]{Val: val, Err: err})
-		return val, err
-	} else if wait != nil {
-		if m.l != nil {
-			// Release the limiter for the duration we're waiting
-			m.l.Release()
-			defer m.l.Acquire()
-		}
-		select {
-		case <-wait:
-			return m.Get(key)
-		case <-stop:
-			var v V
-			return v, nil
-		case <-ctx.Done():
-			var v V
-			return v, ctx.Err()
-		}
-	}
-	return v.Val, v.Err
+	return v.Val, wait, first, v.Err
 }
 
 // Range calls f for each key-value pair in the map.

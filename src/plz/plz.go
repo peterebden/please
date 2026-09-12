@@ -74,7 +74,7 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 		anyRemote:     state.Config.NumRemoteExecutors() > 0,
 	}
 	g, ctx := r.group(topctx)
-	r.tasks = g
+	r.tasks, r.ctx = g, ctx
 	r.parser = parse.InitParser(state, &r)
 	results := state.Results()
 	go checkForCycles(state, results, cancel)
@@ -97,7 +97,7 @@ func Run(targets, preTargets []core.BuildLabel, state *core.BuildState, progress
 		}
 		// Reset the group & context for next time (the context is now expired because the group is done)
 		g, ctx = r.group(topctx)
-		r.tasks = g
+		r.tasks, r.ctx = g, ctx
 	}
 	r.QueueOriginalTaskSet(ctx, targets, r.state.NeedTests, r.state.NeedBuild)
 	if state.NeedDebugDeps {
@@ -120,6 +120,7 @@ func RunHost(targets []core.BuildLabel, state *core.BuildState) {
 
 type runner struct {
 	tasks         *errgroup.Group
+	ctx           context.Context //nolint:containedctx
 	state         *core.BuildState
 	parser        *asp.Parser
 	arch          cli.Arch
@@ -174,15 +175,53 @@ func (r *runner) parse(ctx context.Context, label, dependent core.BuildLabel, qu
 	if err := r.ensurePreloads(ctx, state); err != nil {
 		return nil, err
 	}
-	return r.state.Graph.GetOrSetPackage(ctx, label, func() (*core.Package, error) {
-		r.progress.numParsing.Add(1)
-		defer r.progress.numParsing.Add(-1)
-		pkg, err := parse.Parse(ctx, state, label, dependent, subrepo)
-		if err != nil && !quiet {
-			r.state.LogBuildError(label, core.ParseFailed, err, "Failed to parse package")
+	pkg, wait, first, err := r.state.Graph.PackageOrWait(label)
+	if wait == nil {
+		return pkg, err // Already parsed, successfully or otherwise.
+	}
+	if first {
+		// We are responsible for parsing this package.
+		if stop == nil {
+			// We want the whole thing so just parse it directly.
+			return r.parsePackage(ctx, state, label, dependent, subrepo, quiet)
 		}
+		// We are responsible for parsing this package, but we put it on another goroutine so we don't
+		// have to wait for the whole thing, we only wait for the part of it that we need - we might
+		// only want a single target from it, in which case we can return as soon as that is available.
+		// This is important to avoid deadlocks in some subtle cases.
+		pctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+		stopCancel := context.AfterFunc(r.ctx, cancel)
+		r.tasks.Go(func() error {
+			defer stopCancel()
+			defer cancel()
+			_, err := r.parsePackage(pctx, state, label, dependent, subrepo, quiet)
+			return err
+		})
+	}
+	select {
+	case <-wait:
+		pkg, _, _, err := r.state.Graph.PackageOrWait(label)
 		return pkg, err
-	}, stop)
+	case <-stop:
+		// What we were waiting for turned up; we don't need the rest of the package.
+		return nil, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// parsePackage parses a single package and records the result in the graph, releasing anything waiting
+// on it. All parses ultimately go through here in order to decouple them from callers who don't need to wait for
+// the full parse to complete - this avoids hangs in subtle cases involving subincludes.
+func (r *runner) parsePackage(ctx context.Context, state *core.BuildState, label, dependent core.BuildLabel, subrepo *core.Subrepo, quiet bool) (*core.Package, error) {
+	r.progress.numParsing.Add(1)
+	defer r.progress.numParsing.Add(-1)
+	pkg, err := parse.Parse(ctx, state, label, dependent, subrepo)
+	if err != nil && !quiet {
+		r.state.LogBuildError(label, core.ParseFailed, err, "Failed to parse package")
+	}
+	r.state.Graph.SetPackage(label, pkg, err)
+	return pkg, err
 }
 
 // repoFor returns the state and subrepo that the given label should be parsed against, defining the
