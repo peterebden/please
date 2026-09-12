@@ -132,6 +132,18 @@ type runner struct {
 	anyRemote     bool
 }
 
+// EnsureSubrepo makes sure a subrepo is available, blocking until it is, or returns an error if it could not be found.
+func (r *runner) EnsureSubrepo(ctx context.Context, subrepo string, defining, dependent core.BuildLabel) error {
+	s, wait := r.state.Graph.SubrepoOrWait(subrepo)
+	if s != nil {
+		return nil
+	}
+	if _, err := r.parse(ctx, defining, dependent, true, wait); err != nil && !errors.Is(err, parse.ErrMissingBuildFile) {
+		return err
+	}
+	return nil
+}
+
 // Parse parses for a target. It can be called more than once for the same build label.
 // The dependent is whatever is asking for this to be parsed; it's used to produce better error
 // messages, and to detect a package that is asking to parse itself.

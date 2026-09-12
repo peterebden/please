@@ -127,6 +127,13 @@ func (graph *BuildGraph) SubrepoOrDie(name string) *Subrepo {
 	return subrepo
 }
 
+// SubrepoOrWait retrieves a subrepo from the graph.
+// If it is not yet available, it returns a channel that can be waited upon.
+func (graph *BuildGraph) SubrepoOrWait(subrepo string) (*Subrepo, <-chan struct{}) {
+	s, wait, _ := graph.subrepos.GetOrWait(subrepo)
+	return s, wait
+}
+
 // AllTargets returns a consistently ordered slice of all the targets in the graph.
 func (graph *BuildGraph) AllTargets() BuildTargets {
 	targets := graph.targets.Values()
