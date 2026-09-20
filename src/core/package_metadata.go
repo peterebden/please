@@ -282,7 +282,7 @@ func (m *trackedPackageMetadata) FindPackageLevelRequirements() (BuildLabels, []
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
-	requiredSet := labelSet{}
+	requiredSet := map[BuildLabel]struct{}{}
 	filesSet := map[string]struct{}{}
 
 	// The intention is to find all the subincluded labels required by the package but not used to
@@ -293,7 +293,7 @@ func (m *trackedPackageMetadata) FindPackageLevelRequirements() (BuildLabels, []
 	for _, sm := range m.statements {
 		if len(sm.Targets) == 0 && !sm.IsSubincludeStatement {
 			for _, label := range sm.Subincludes {
-				requiredSet.Add(label)
+				requiredSet[label] = struct{}{}
 			}
 			for _, file := range sm.Files {
 				filesSet[file] = struct{}{}
