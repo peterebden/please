@@ -194,7 +194,7 @@ func (graph *BuildGraph) AddSubinclude(from, included BuildLabel) {
 }
 
 // Subincludes returns a sequence of all targets that are subincluded from a target.
-// This counts only subincludes that are themselves subincluding and not top-level ones in a package (those are stored on the packages themselves).
+// This counts only subincludes made from within another subinclude; a package's top-level ones are stored on the package itself.
 func (graph *BuildGraph) Subincludes(from BuildLabel) iter.Seq[BuildLabel] {
 	return slices.Values(graph.subincludes.Get(from))
 }

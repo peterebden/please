@@ -71,6 +71,7 @@ func (m *Map[K, V]) Contains(key K) bool {
 
 // Update performs an update on the given item in-place.
 // The given function is given the old value (which will be the zero value if it isn't present) and should return the new value.
+// The function should not attempt to modify the map further.
 func (m *Map[K, V]) Update(key K, update func(V) V) V {
 	return m.shards[m.hasher(key)&m.mask].Update(key, update)
 }
@@ -187,11 +188,11 @@ func (s *shard[K, V]) Update(key K, update func(V) V) V {
 	s.l.Lock()
 	defer s.l.Unlock()
 	v, present := s.m[key]
+	newv := update(v.Val)
+	s.m[key] = awaitableValue[V]{Val: newv}
 	if present && v.Wait != nil {
 		close(v.Wait)
 	}
-	newv := update(v.Val)
-	s.m[key] = awaitableValue[V]{Val: newv}
 	return newv
 }
 

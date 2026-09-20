@@ -105,7 +105,7 @@ func (nte *noTrimExporter) exportPackage(pkg *core.Package) {
 
 // exportSubincludes exports the subincluded targets.
 func (nte *noTrimExporter) exportSubincludes(pkg *core.Package) {
-	subincludes := pkg.Subincludes
+	subincludes := slices.Clone(pkg.Subincludes)
 	for _, sub := range subincludes {
 		for sub2 := range nte.transitiveSubincludes(sub) {
 			subincludes = append(subincludes, sub2)
