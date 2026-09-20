@@ -183,7 +183,7 @@ func (graph *BuildGraph) DependentTargets(from, to BuildLabel) []BuildLabel {
 	return []BuildLabel{to}
 }
 
-// AddSubinclude adds an edge from one subinclude to another.
+// AddSubinclude adds an edge from a label to another that it subincludes.
 func (graph *BuildGraph) AddSubinclude(from, included BuildLabel) {
 	graph.subincludes.Update(from, func(before []BuildLabel) []BuildLabel {
 		if !slices.Contains(before, included) {
@@ -194,7 +194,31 @@ func (graph *BuildGraph) AddSubinclude(from, included BuildLabel) {
 }
 
 // Subincludes returns a sequence of all targets that are subincluded from a target.
-// This counts only subincludes made from within another subinclude; a package's top-level ones are stored on the package itself.
 func (graph *BuildGraph) Subincludes(from BuildLabel) iter.Seq[BuildLabel] {
 	return slices.Values(graph.subincludes.Get(from))
+}
+
+// AllSubincludes yields every subinclude depended on from the given label, either directly or transitively.
+// Each one is yielded exactly once, and the label itself is never yielded.
+func (graph *BuildGraph) AllSubincludes(from BuildLabel) iter.Seq[BuildLabel] {
+	return func(yield func(BuildLabel) bool) {
+		seen := map[BuildLabel]struct{}{from: {}}
+		var f func(l BuildLabel) bool
+		f = func(l BuildLabel) bool {
+			for l2 := range graph.Subincludes(l) {
+				if _, present := seen[l2]; present {
+					continue
+				}
+				seen[l2] = struct{}{}
+				if !yield(l2) {
+					return false
+				}
+				if !f(l2) {
+					return false
+				}
+			}
+			return true
+		}
+		f(from)
+	}
 }

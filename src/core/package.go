@@ -24,8 +24,6 @@ type Package struct {
 	SubrepoName string
 	// Filename of the build file that defined this package
 	Filename string
-	// Subincluded build defs files that this package imported
-	Subincludes []BuildLabel
 	// If the package is in a subrepo, this is the subrepo it belongs to. It's nil if not.
 	Subrepo *Subrepo
 	// Targets contained within the package

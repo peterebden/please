@@ -34,7 +34,7 @@ func (nte *noTrimExporter) exportPreloaded() {
 	}
 
 	for _, target := range nte.state.Config.Parse.PreloadSubincludes {
-		targets := append(slices.Collect(nte.transitiveSubincludes(target)), target)
+		targets := append(slices.Collect(nte.state.Graph.AllSubincludes(target)), target)
 		nte.exportTargets(targets)
 	}
 }
@@ -105,11 +105,5 @@ func (nte *noTrimExporter) exportPackage(pkg *core.Package) {
 
 // exportSubincludes exports the subincluded targets.
 func (nte *noTrimExporter) exportSubincludes(pkg *core.Package) {
-	subincludes := slices.Clone(pkg.Subincludes)
-	for _, sub := range subincludes {
-		for sub2 := range nte.transitiveSubincludes(sub) {
-			subincludes = append(subincludes, sub2)
-		}
-	}
-	nte.exportTargets(subincludes)
+	nte.exportTargets(slices.Collect(nte.state.Graph.AllSubincludes(pkg.Label())))
 }

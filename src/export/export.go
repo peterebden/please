@@ -5,7 +5,6 @@ package export
 
 import (
 	"fmt"
-	"iter"
 	"os"
 	"path/filepath"
 	"slices"
@@ -273,28 +272,4 @@ func (be *baseExporter) checkAndSetVisited(target *core.BuildTarget) bool {
 	be.exportedTargets[target.Label] = true
 	be.targetCounter++
 	return true
-}
-
-// transitiveSubincludes returns a sequence of all recursive subincludes of the given target
-func (be *baseExporter) transitiveSubincludes(label core.BuildLabel) iter.Seq[core.BuildLabel] {
-	return func(yield func(core.BuildLabel) bool) {
-		seen := map[core.BuildLabel]struct{}{}
-		var f func(l core.BuildLabel) bool
-		f = func(l core.BuildLabel) bool {
-			if _, present := seen[l]; present {
-				return true
-			}
-			seen[l] = struct{}{}
-			for l2 := range be.state.Graph.Subincludes(l) {
-				if !yield(l2) {
-					return false
-				}
-				if !f(l2) {
-					return false
-				}
-			}
-			return true
-		}
-		f(label)
-	}
 }
