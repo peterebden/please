@@ -23,10 +23,8 @@ type BuildGraph struct {
 	packages *cmap.ErrMap[packageKey, *Package]
 	// Registered subrepos, as a map of their name to their root.
 	subrepos *cmap.Map[string, *Subrepo]
-	// Subincludes that are subincluded by other subincludes
-	subincludeSubincludes map[BuildLabel]labelSet
-	// Use a mutex as a LabelSet isn't atomic. We need to guard against inserting as well as mutating the value.
-	subincMux sync.Mutex
+	// Nested subincludes. Direct subincludes are on the package.
+	subincludes *cmap.Map[BuildLabel, []BuildLabel]
 }
 
 // AddTarget adds a new target to the graph.
@@ -169,10 +167,10 @@ func (graph *BuildGraph) AllPackages() iter.Seq[*Package] {
 // NewGraph constructs and returns a new BuildGraph.
 func NewGraph() *BuildGraph {
 	g := &BuildGraph{
-		targets:               cmap.New[BuildLabel, *BuildTarget](cmap.DefaultShardCount, HashBuildLabel),
-		packages:              cmap.NewErrMap[packageKey, *Package](cmap.DefaultShardCount, hashPackageKey, nil),
-		subrepos:              cmap.New[string, *Subrepo](cmap.SmallShardCount, cmap.XXHash),
-		subincludeSubincludes: map[BuildLabel]labelSet{},
+		targets:     cmap.New[BuildLabel, *BuildTarget](cmap.DefaultShardCount, HashBuildLabel),
+		packages:    cmap.NewErrMap[packageKey, *Package](cmap.DefaultShardCount, hashPackageKey, nil),
+		subrepos:    cmap.New[string, *Subrepo](cmap.SmallShardCount, cmap.XXHash),
+		subincludes: cmap.New[BuildLabel, []BuildLabel](cmap.DefaultShardCount, HashBuildLabel),
 	}
 	return g
 }
@@ -187,37 +185,18 @@ func (graph *BuildGraph) DependentTargets(from, to BuildLabel) []BuildLabel {
 	return []BuildLabel{to}
 }
 
-// TransitiveSubincludes returns all the subincludes made by a given subinclude
-func (graph *BuildGraph) TransitiveSubincludes(l BuildLabel) []BuildLabel {
-	graph.subincMux.Lock()
-	defer graph.subincMux.Unlock()
-
-	incs := labelSet{}
-	graph.findTransitiveSubincludes(l, incs)
-
-	ls := slices.Collect(maps.Keys(incs))
-	sort.Sort(BuildLabels(ls))
-	return ls
+// AddSubinclude adds an edge from one subinclude to another.
+func (graph *BuildGraph) AddSubinclude(from, included BuildLabel) {
+	graph.subincludes.Update(from, func(before []BuildLabel) []BuildLabel {
+		if !slices.Contains(before, included) {
+			return append(before, included)
+		}
+		return before
+	})
 }
 
-func (graph *BuildGraph) findTransitiveSubincludes(label BuildLabel, includes labelSet) {
-	if includes.Contains(label) {
-		return
-	}
-	includes.Add(label)
-	for l := range graph.subincludeSubincludes[label] {
-		graph.findTransitiveSubincludes(l, includes)
-	}
-}
-
-func (graph *BuildGraph) RegisterTransitiveSubinclude(from, to BuildLabel) {
-	graph.subincMux.Lock()
-	defer graph.subincMux.Unlock()
-
-	incs, ok := graph.subincludeSubincludes[from]
-	if !ok {
-		incs = labelSet{}
-		graph.subincludeSubincludes[from] = incs
-	}
-	incs.Add(to)
+// Subincludes returns all targets that are subincluded from a target.
+// This counts only subincludes that are themselves subincluding and not top-level ones in a package (those are stored on the packages themselves).
+func (graph *BuildGraph) Subincludes(from BuildLabel) []BuildLabel {
+	return graph.subincludes.Get(from)
 }
