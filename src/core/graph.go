@@ -198,8 +198,17 @@ func (graph *BuildGraph) Subincludes(from BuildLabel) iter.Seq[BuildLabel] {
 	return slices.Values(graph.subincludes.Get(from))
 }
 
+// SubincludeNodes returns every label that has had subincludes recorded against it.
+// These are packages as well as subinclude targets, and include packages that are still in the process of parsing.
+func (graph *BuildGraph) SubincludeNodes() []BuildLabel {
+	ret := []BuildLabel{}
+	for label := range graph.subincludes.Items() {
+		ret = append(ret, label)
+	}
+	return ret
+}
+
 // AllSubincludes yields every subinclude depended on from the given label, either directly or transitively.
-// Each one is yielded exactly once, and the label itself is never yielded.
 func (graph *BuildGraph) AllSubincludes(from BuildLabel) iter.Seq[BuildLabel] {
 	return func(yield func(BuildLabel) bool) {
 		seen := map[BuildLabel]struct{}{from: {}}
