@@ -43,7 +43,7 @@ func (e *trimmedExporter) exportPreloaded() {
 	}
 
 	for _, target := range e.state.GetPreloadedSubincludes() {
-		targets := append(e.state.Graph.TransitiveSubincludes(target), target)
+		targets := append(slices.Collect(e.transitiveSubincludes(target)), target)
 		for _, t := range targets {
 			e.preloadedSubincludes[t] = true
 		}
@@ -118,7 +118,7 @@ func (e *trimmedExporter) exportSubincludes(pkg *core.Package, target core.Build
 
 	allSubincludes := usedSubincludes
 	for _, sub := range usedSubincludes {
-		for _, trans := range e.state.Graph.TransitiveSubincludes(sub) {
+		for trans := range e.transitiveSubincludes(sub) {
 			if !slices.Contains(allSubincludes, trans) {
 				allSubincludes = append(allSubincludes, trans)
 			}
