@@ -6,10 +6,8 @@ package core
 
 import (
 	"iter"
-	"maps"
 	"slices"
 	"sort"
-	"sync"
 
 	"github.com/thought-machine/please/src/cmap"
 )
@@ -195,8 +193,8 @@ func (graph *BuildGraph) AddSubinclude(from, included BuildLabel) {
 	})
 }
 
-// Subincludes returns all targets that are subincluded from a target.
+// Subincludes returns a sequence of all targets that are subincluded from a target.
 // This counts only subincludes that are themselves subincluding and not top-level ones in a package (those are stored on the packages themselves).
-func (graph *BuildGraph) Subincludes(from BuildLabel) []BuildLabel {
-	return graph.subincludes.Get(from)
+func (graph *BuildGraph) Subincludes(from BuildLabel) iter.Seq[BuildLabel] {
+	return slices.Values(graph.subincludes.Get(from))
 }

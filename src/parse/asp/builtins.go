@@ -448,9 +448,9 @@ func subincludeTarget(s *scope, l core.BuildLabel) *core.BuildTarget {
 	if err != nil {
 		s.Error("Failed to build subincluded target: %w", err)
 	} else if s.pkg != nil {
-		s.pkg.RegisterSubinclude(l)
+		s.pkg.Subincludes = append(s.pkg.Subincludes, l)
 	} else if s.subincludeLabel != nil { // If this is nil, that indicates a preloadedSubinclude
-		s.state.Graph.RegisterTransitiveSubinclude(*s.subincludeLabel, l)
+		s.state.Graph.AddSubinclude(*s.subincludeLabel, l)
 	}
 	return t
 }
