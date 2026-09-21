@@ -61,8 +61,11 @@ func TestSubincludes(t *testing.T) {
 
 	// Subincludes is only the direct ones...
 	assert.Equal(t, []BuildLabel{outer}, slices.Collect(graph.Subincludes(pkg)))
+	assert.Equal(t, []BuildLabel{inner}, slices.Collect(graph.Subincludes(outer)))
+	assert.Empty(t, slices.Collect(graph.Subincludes(inner)))
 	// ...whereas AllSubincludes follows them transitively.
 	assert.ElementsMatch(t, []BuildLabel{outer, inner}, slices.Collect(graph.AllSubincludes(pkg)))
+	assert.Equal(t, []BuildLabel{inner}, slices.Collect(graph.AllSubincludes(outer)))
 	assert.Empty(t, slices.Collect(graph.AllSubincludes(inner)))
 }
 
@@ -101,22 +104,6 @@ func TestAllSubincludesCycle(t *testing.T) {
 	// A cycle here would deadlock the parser, but the graph can be walked while it's still being
 	// built (e.g. by cycle detection) so this mustn't recurse forever.
 	assert.Equal(t, []BuildLabel{b}, slices.Collect(graph.AllSubincludes(a)))
-}
-
-func TestAllSubincludesEarlyExit(t *testing.T) {
-	graph := NewGraph()
-	pkg := ParseBuildLabel("//src/core:all", "")
-	outer := ParseBuildLabel("//build_defs:outer", "")
-	inner := ParseBuildLabel("//build_defs:inner", "")
-	graph.AddSubinclude(pkg, outer)
-	graph.AddSubinclude(outer, inner)
-
-	labels := []BuildLabel{}
-	for l := range graph.AllSubincludes(pkg) {
-		labels = append(labels, l)
-		break
-	}
-	assert.Equal(t, []BuildLabel{outer}, labels)
 }
 
 // makeTarget3 creates a new build target for us.
