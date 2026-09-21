@@ -118,9 +118,9 @@ func (e *trimmedExporter) exportSubincludes(pkg *core.Package, target core.Build
 
 	allSubincludes := usedSubincludes
 	for _, sub := range usedSubincludes {
-		for trans := range e.state.Graph.AllSubincludes(sub) {
-			if !slices.Contains(allSubincludes, trans) {
-				allSubincludes = append(allSubincludes, trans)
+		for sub2 := range e.state.Graph.AllSubincludes(sub) {
+			if !slices.Contains(allSubincludes, sub2) {
+				allSubincludes = append(allSubincludes, sub2)
 			}
 		}
 	}

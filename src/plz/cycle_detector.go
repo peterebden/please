@@ -81,7 +81,7 @@ func (c *cycleDetector) roots() iter.Seq[core.BuildLabel] {
 				return
 			}
 		}
-		for _, l := range c.graph.SubincludeNodes() {
+		for l := range c.graph.SubincludeNodes() {
 			if !yield(l) {
 				return
 			}

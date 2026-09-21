@@ -21,7 +21,7 @@ type BuildGraph struct {
 	packages *cmap.ErrMap[packageKey, *Package]
 	// Registered subrepos, as a map of their name to their root.
 	subrepos *cmap.Map[string, *Subrepo]
-	// Nested subincludes. Direct subincludes are on the package.
+	// All things that subinclude anything else - either packages or build definitions that themselves subinclude other things.
 	subincludes *cmap.Map[BuildLabel, []BuildLabel]
 }
 
@@ -199,13 +199,15 @@ func (graph *BuildGraph) Subincludes(from BuildLabel) iter.Seq[BuildLabel] {
 }
 
 // SubincludeNodes returns every label that has had subincludes recorded against it.
-// These are packages as well as subinclude targets, and include packages that are still in the process of parsing.
-func (graph *BuildGraph) SubincludeNodes() []BuildLabel {
-	ret := []BuildLabel{}
-	for label := range graph.subincludes.Items() {
-		ret = append(ret, label)
+// These are packages as well as build definitions, and include packages that are still in the process of parsing.
+func (graph *BuildGraph) SubincludeNodes() iter.Seq[BuildLabel] {
+	return func(yield func(BuildLabel) bool) {
+		for label := range graph.subincludes.Items() {
+			if !yield(label) {
+				break
+			}
+		}
 	}
-	return ret
 }
 
 // AllSubincludes yields every subinclude depended on from the given label, either directly or transitively.
