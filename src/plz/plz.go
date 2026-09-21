@@ -486,17 +486,12 @@ func (r *runner) buildOne(ctx context.Context, target *core.BuildTarget) error {
 	return r.downloadRuntimeFiles(target)
 }
 
-// downloadRuntimeFiles downloads the files needed to run a target (i.e. its run-time & data
-// dependencies, transitively). It must run after those have been built, which is why it can't
-// live alongside the download of the target's own outputs in src/build; they build in parallel
-// with the target itself so they aren't ready when it finishes.
+// downloadRuntimeFiles downloads the files needed to run a target (i.e. itself and its run-time & data dependencies).
 func (r *runner) downloadRuntimeFiles(target *core.BuildTarget) error {
 	state := r.state.ForTarget(target)
 	if state.RemoteClient == nil || !state.ShouldDownload(target) {
 		return nil
 	}
-	// Hold a worker slot for this; it's remote I/O of much the same sort as the build itself,
-	// and without it the downloads for every original target would run unthrottled.
 	limiter := r.limiter(r.anyRemote)
 	limiter.Acquire()
 	defer limiter.Release()
