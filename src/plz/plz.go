@@ -501,30 +501,12 @@ func (r *runner) downloadRuntimeFiles(target *core.BuildTarget) error {
 	limiter.Acquire()
 	defer limiter.Release()
 
-	// N.B. DownloadInputsIfNeeded logs the target as building again, which it has already been
-	//      reported as finished once. We must therefore log a terminal result on every path out
-	//      of here, or it'll hold a slot in the display and show as building forever.
+	log.Debug("Downloading runtime files for %s", target)
 	if err := state.DownloadInputsIfNeeded(target, true); err != nil {
 		state.LogBuildError(target.Label, core.TargetBuildFailed, err, "Failed to download runtime files for %s: %s", target.Label, err)
 		return err
 	}
-	logAlreadyBuilt(state, target)
 	return nil
-}
-
-// logAlreadyBuilt re-logs the result that src/build logged for a target, after we've put it
-// back into an active state in order to download its runtime files.
-func logAlreadyBuilt(state *core.BuildState, target *core.BuildTarget) {
-	switch target.State() {
-	case core.ReusedRemotely:
-		state.LogBuildResult(target, core.TargetBuilt, "Reused existing action")
-	case core.BuiltRemotely:
-		state.LogBuildResult(target, core.TargetBuilt, "Built remotely")
-	case core.Unchanged, core.Reused:
-		state.LogBuildResult(target, core.TargetCached, "Unchanged")
-	default:
-		state.LogBuildResult(target, core.TargetBuilt, "Built")
-	}
 }
 
 // buildTargetAndDeps builds a single target and all of its dependencies.
