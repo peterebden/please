@@ -291,7 +291,7 @@ func (r *runner) registerPreloads(ctx context.Context, state *core.BuildState) e
 		}
 		// Queue them up asynchronously to feed the queues as quickly as possible
 		g.Go(func() error {
-			if _, err := r.Build(gctx, inc, core.OriginalTarget); err != nil {
+			if _, err := r.BuildAndDownload(gctx, inc, core.OriginalTarget); err != nil {
 				return err
 			}
 			return r.parser.PreloadSubinclude(gctx, inc)
