@@ -66,7 +66,7 @@ func (m *ErrMap[K, V]) GetOrSet(key K, f func() (V, error)) (V, error) {
 	} else if first {
 		defer func() {
 			if r := recover(); r != nil {
-				m.m.Set(key, errV[V]{Err: fmt.Errorf("%s", r)})
+				m.m.Set(key, errV[V]{Err: panicToErr(r)})
 			}
 		}()
 		val, err := f()
@@ -84,6 +84,14 @@ func (m *ErrMap[K, V]) GetOrSet(key K, f func() (V, error)) (V, error) {
 	return v.Val, v.Err
 }
 
+// panicToErr converts a recovered panic value into an error, retaining its type if it already is an error.
+func panicToErr(r any) error {
+	if e, ok := r.(error); ok {
+		return e
+	}
+	return fmt.Errorf("%v", r)
+}
+
 // GetOrSetCtx is like GetOrSet but accepts a context that can be cancelled.
 // If the called function panics, the panic will be recovered and treated as though it returned an error.
 func (m *ErrMap[K, V]) GetOrSetCtx(ctx context.Context, key K, f func() (V, error)) (V, error) {
@@ -93,7 +101,7 @@ func (m *ErrMap[K, V]) GetOrSetCtx(ctx context.Context, key K, f func() (V, erro
 	} else if first {
 		defer func() {
 			if r := recover(); r != nil {
-				m.m.Set(key, errV[V]{Err: fmt.Errorf("%s", r)})
+				m.m.Set(key, errV[V]{Err: panicToErr(r)})
 			}
 		}()
 		val, err := f()
