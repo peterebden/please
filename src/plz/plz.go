@@ -179,6 +179,9 @@ func (r *runner) parse(ctx context.Context, label, dependent core.BuildLabel, qu
 		return nil, err
 	}
 	if err := r.ensurePreloads(ctx, state); err != nil {
+		if !quiet {
+			r.state.LogBuildError(label, core.ParseFailed, err, "Failed to resolve preloaded subincludes")
+		}
 		return nil, err
 	}
 	pkg, wait, first, err := r.state.Graph.PackageOrWait(label)
