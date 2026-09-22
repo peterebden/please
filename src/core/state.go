@@ -756,9 +756,15 @@ func (state *BuildState) GetPreloadedSubincludes() []BuildLabel {
 	done := map[BuildLabel]struct{}{}
 	includes := make([]BuildLabel, 0, len(state.Config.Parse.PreloadSubincludes)+len(state.RepoConfig.Parse.PreloadSubincludes))
 
-	is := append(state.Config.Parse.PreloadSubincludes, state.RepoConfig.Parse.PreloadSubincludes...)
+	for _, i := range state.Config.Parse.PreloadSubincludes {
+		if _, ok := done[i]; ok {
+			continue
+		}
 
-	for _, i := range is {
+		includes = append(includes, i)
+		done[i] = struct{}{}
+	}
+	for _, i := range state.RepoConfig.Parse.PreloadSubincludes {
 		if _, ok := done[i]; ok {
 			continue
 		}
