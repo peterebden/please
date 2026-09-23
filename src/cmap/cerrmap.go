@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"runtime/debug"
 )
 
 // A Limiter is the interface that we use to release/acquire workers while waiting.
@@ -90,7 +91,8 @@ func panicToErr(r any) error {
 	if e, ok := r.(error); ok {
 		return e
 	}
-	return fmt.Errorf("%v", r)
+	// Maintain the stack; if something panicked that wasn't an error we will probably want it for debugging.
+	return fmt.Errorf("%v\n%s", r, debug.Stack())
 }
 
 // GetOrSetCtx is like GetOrSet but accepts a context that can be cancelled.

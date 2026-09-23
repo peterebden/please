@@ -257,7 +257,7 @@ func (state *BuildState) Initialise(subrepo *Subrepo) (err error) {
 		// handled for us already in plz.go
 		if state.CurrentSubrepo != "" {
 			state.RepoConfig = &Configuration{}
-			if err := readSubrepoConfig(state.RepoConfig, subrepo); err != nil {
+			if err = readSubrepoConfig(state.RepoConfig, subrepo); err != nil {
 				return
 			}
 			if err = validateSubrepoNameAndPluginConfig(state.Config, state.RepoConfig, subrepo); err != nil {
