@@ -624,6 +624,8 @@ type pyFunc struct {
 	nativeCode func(*scope, []pyObject) pyObject
 	// If the function has been bound as a member function, this is the implicit self argument.
 	self pyObject
+	// A count of the number of local identifiers that are allocated by this function, used to size things later.
+	idents int32
 	// True if this function accepts non-keyword varargs (like the log functions, or zip()).
 	varargs bool
 	// True if this function accepts arbitrary keyword arguments (e.g. package(), str.format()).
@@ -647,6 +649,7 @@ func newPyFunc(parentScope *scope, def *FuncDef) pyObject {
 		code:       def.Statements,
 		kwargsonly: def.KeywordsOnly,
 		returnType: def.Return,
+		idents:     def.idents,
 	}
 	if def.Docstring != "" {
 		f.docstring = stringLiteral(def.Docstring)
@@ -700,7 +703,7 @@ func (f *pyFunc) Call(s *scope, c *Call) pyObject {
 	}
 	// N.B. The scope hangs off the one the function was defined in, so it sees that file's globals, but
 	//      anything about what we are currently doing comes from the calling scope - including its context.
-	cs := f.scope.newScope(s.ctx, s.pkg, f.scope.filename, len(f.args)+1)
+	cs := f.scope.newScope(s.ctx, s.pkg, f.scope.filename, int(f.idents)+1)
 	cs.config = s.config
 	cs.Set("CONFIG", s.config) // This needs to be copied across too :(
 	cs.Callback = s.Callback

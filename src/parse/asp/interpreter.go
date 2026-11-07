@@ -885,6 +885,7 @@ func (s *scope) interpretValueExpressionPart(expr *ValueExpression) pyObject {
 			Name:       "<lambda>",
 			Arguments:  expr.Lambda.Arguments,
 			Statements: []*Statement{stmt},
+			idents:     int32(len(expr.Lambda.Arguments)),
 		})
 	}
 	return None

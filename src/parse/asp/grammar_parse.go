@@ -262,6 +262,7 @@ func (p *parser) parseFuncDef() *FuncDef {
 	}
 
 	fd.Statements = p.parseStatements()
+	fd.idents = int32(countIdents(fd))
 
 	return fd
 }
@@ -755,4 +756,39 @@ func (p *parser) findBrace(s string) int {
 		last = c
 	}
 	return -1
+}
+
+// countIdents returns the number of unique identifier names assigned to in a function.
+func countIdents(def *FuncDef) int {
+	m := map[string]struct{}{}
+	for _, arg := range def.Arguments {
+		m[arg.Name] = struct{}{}
+	}
+	WalkAST(def.Statements, func(s *Statement) bool {
+		if s.Ident != nil {
+			stmt := s.Ident
+			if stmt.Unpack != nil {
+				m[stmt.Name] = struct{}{}
+				for _, name := range stmt.Unpack.Names {
+					m[name] = struct{}{}
+				}
+			}
+			if stmt.Action != nil {
+				if stmt.Action.Assign != nil || stmt.Action.AugAssign != nil {
+					m[stmt.Name] = struct{}{}
+				}
+			}
+			return false
+		} else if s.FuncDef != nil {
+			m[s.FuncDef.Name] = struct{}{}
+			return false
+		} else if s.For != nil {
+			for _, name := range s.For.Names {
+				m[name] = struct{}{}
+			}
+			return true
+		}
+		return true
+	})
+	return len(m)
 }

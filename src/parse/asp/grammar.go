@@ -51,6 +51,8 @@ type FuncDef struct {
 	EoDef      Position
 	// allowed return type of the FuncDef
 	Return string
+	// Used internally to count the number of identifiers created within a function.
+	idents int32
 	// Not part of the grammar. Used to indicate internal targets that can only
 	// be called using keyword arguments.
 	KeywordsOnly bool
