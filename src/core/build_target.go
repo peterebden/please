@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/thought-machine/please/src/fs"
 )
@@ -1293,7 +1294,7 @@ func (target *BuildTarget) ProvideFor(other *BuildTarget) []BuildLabel {
 	if p, ok := target.provideFor(other); ok {
 		return p
 	}
-	return []BuildLabel{target.Label}
+	return unsafe.Slice(&target.Label, 1)
 }
 
 func (target *BuildTarget) isDataFor(other *BuildTarget) bool {
