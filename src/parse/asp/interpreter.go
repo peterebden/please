@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"runtime/pprof"
 	"strings"
 	"sync"
 
@@ -246,10 +245,6 @@ func (i *interpreter) interpretAll(ctx context.Context, pkg *core.Package, forLa
 			label:     *forLabel,
 			dependent: *dependent,
 		}
-		old := s.ctx
-		s.ctx = pprof.WithLabels(s.ctx, pprof.Labels("parse", forLabel.String()))
-		pprof.SetGoroutineLabels(s.ctx)
-		defer pprof.SetGoroutineLabels(old)
 	}
 
 	// If we're being parsed on behalf of resolving preloads then we mustn't apply them; they aren't built
@@ -293,8 +288,6 @@ func (i *interpreter) interpretStatements(s *scope, statements []*Statement) (re
 func (i *interpreter) Subinclude(pkgScope *scope, path string, label core.BuildLabel, preload bool) pyDict {
 	key := filepath.Join(path, pkgScope.state.CurrentSubrepo)
 	globals, err := i.subincludes.GetOrSet(key, func() (pyDict, error) {
-		pprof.SetGoroutineLabels(pprof.WithLabels(pkgScope.ctx, pprof.Labels("subinclude", path)))
-		defer pprof.SetGoroutineLabels(pkgScope.ctx)
 		stmts, err := i.parseSubinclude(path)
 		if err != nil {
 			return nil, err

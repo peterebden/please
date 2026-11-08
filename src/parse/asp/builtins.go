@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"runtime/pprof"
 	"slices"
 	"sort"
 	"strconv"
@@ -422,17 +421,10 @@ func subincludeTarget(s *scope, l core.BuildLabel) *core.BuildTarget {
 			Subrepo:     subrepoLabel.Subrepo,
 			Name:        "all",
 		}
-		ctx := pprof.WithLabels(s.ctx, pprof.Labels("subinclude "+subrepoPackageLabel.String(), pkgLabel.String()))
-		pprof.SetGoroutineLabels(ctx)
-		defer pprof.SetGoroutineLabels(s.ctx)
-		if err := s.WaitForSubrepo(ctx, l.Subrepo, subrepoPackageLabel, pkgLabel); err != nil {
+		if err := s.WaitForSubrepo(s.ctx, l.Subrepo, subrepoPackageLabel, pkgLabel); err != nil {
 			s.Error("Failed to parse subrepo target: %w", err)
 		}
 	}
-
-	ctx := pprof.WithLabels(s.ctx, pprof.Labels("subinclude "+l.String(), pkgLabel.String()))
-	pprof.SetGoroutineLabels(ctx)
-	defer pprof.SetGoroutineLabels(s.ctx)
 
 	// isLocal is true when this subinclude target in the current package being parsed
 	isLocal := s.pkg != nil && l.Subrepo == s.pkg.Label().Subrepo && l.PackageName == s.pkg.Name
@@ -445,7 +437,7 @@ func subincludeTarget(s *scope, l core.BuildLabel) *core.BuildTarget {
 		s.Error("Target :%s is not defined in this package; it has to be defined before the subinclude() call", l.Name)
 	}
 	s.recordSubinclude(l)
-	t, err := s.WaitForSubincludedTarget(ctx, l, pkgLabel)
+	t, err := s.WaitForSubincludedTarget(s.ctx, l, pkgLabel)
 	if err != nil {
 		s.Error("Failed to build subincluded target: %w", err)
 	}
