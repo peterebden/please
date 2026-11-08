@@ -54,22 +54,17 @@ func newInterpreter(state *core.BuildState, p *Parser, callbacks Callbacks) *int
 	}
 	s.metadata = &noopScopeMetadata{}
 
+	limiter := make(semaphore, state.Config.Parse.NumThreads)
 	i := &interpreter{
 		scope:         s,
 		parser:        p,
 		configs:       map[*core.BuildState]*pyConfig{},
-		limiter:       make(semaphore, state.Config.Parse.NumThreads),
+		limiter:       limiter,
 		regexCache:    cmap.New[string, *regexp.Regexp](cmap.SmallShardCount, cmap.XXHash),
 		pluginConfigs: map[pluginConfigKey]pyFrozenDict{},
 		callbacks:     callbacks,
-	}
-	// If we're creating an interpreter for a subrepo, we should share the subinclude cache.
-	if p.interpreter != nil {
-		i.subincludes = p.interpreter.subincludes
-		i.asts = p.interpreter.asts
-	} else {
-		i.subincludes = cmap.NewErrMap[string, pyDict](cmap.SmallShardCount, cmap.XXHash, i.limiter)
-		i.asts = cmap.NewErrMap[string, []*Statement](cmap.SmallShardCount, cmap.XXHash, i.limiter)
+		subincludes:   cmap.NewErrMap[string, pyDict](cmap.SmallShardCount, cmap.XXHash, limiter),
+		asts:          cmap.NewErrMap[string, []*Statement](cmap.SmallShardCount, cmap.XXHash, limiter),
 	}
 
 	if state.ParseMetadata {
