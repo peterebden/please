@@ -113,7 +113,7 @@ func (p *Parser) PreloadSubinclude(ctx context.Context, label core.BuildLabel) e
 	s := p.interpreter.scope.newScope(ctx, nil, "", 0)
 	s.config = p.interpreter.scope.config.Copy()
 	s.Set("CONFIG", s.config)
-	return p.interpreter.preloadSubinclude(s, label)
+	return p.interpreter.preloadSubinclude(s, label, true)
 }
 
 // ParseReader parses the contents of the given ReadSeeker as a BUILD file.

@@ -24,6 +24,9 @@ type interpreter struct {
 	parser      *Parser
 	subincludes *cmap.ErrMap[string, pyDict]
 	asts        *cmap.ErrMap[string, []*Statement]
+	// preloads holds a read-only scope of the preloaded symbols for each subrepo.
+	// It is shared as the parent of the scope of every package in that subrepo.
+	preloads *cmap.ErrMap[string, *scope]
 
 	configs      map[*core.BuildState]*pyConfig
 	configsMutex sync.RWMutex
@@ -65,6 +68,7 @@ func newInterpreter(state *core.BuildState, p *Parser, callbacks Callbacks) *int
 		callbacks:     callbacks,
 		subincludes:   cmap.NewErrMap[string, pyDict](cmap.SmallShardCount, cmap.XXHash, limiter),
 		asts:          cmap.NewErrMap[string, []*Statement](cmap.SmallShardCount, cmap.XXHash, limiter),
+		preloads:      cmap.NewErrMap[string, *scope](cmap.SmallShardCount, cmap.XXHash, limiter),
 	}
 
 	if state.ParseMetadata {
@@ -145,14 +149,63 @@ func (i *interpreter) preloadSubincludes(s *scope) error {
 	//      subrepo's config asks for, which isn't the same set as the host repo's.
 	//      The driver has ensured these are built before letting us start on this package.
 	for _, label := range s.state.GetPreloadedSubincludes() {
-		if err := i.preloadSubinclude(s, label); err != nil {
+		if err := i.preloadSubinclude(s, label, true); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (i *interpreter) preloadSubinclude(s *scope, label core.BuildLabel) (err error) {
+// preloadPackage makes the preloaded subincludes available to the scope of a package.
+// Rather than copying every symbol into each package, they are found via a parent scope shared by the
+// whole subrepo.
+func (i *interpreter) preloadPackage(s *scope) error {
+	// N.B. Metadata tracking records a symbol's origin on the scope it is found in, so when that's
+	//      enabled the symbols need to be in the package's own scope.
+	if s.state.ParseMetadata {
+		return i.preloadSubincludes(s)
+	}
+	labels := s.state.GetPreloadedSubincludes()
+	if len(labels) == 0 {
+		return nil
+	}
+	shared, err := i.preloads.GetOrSet(s.state.CurrentSubrepo, func() (*scope, error) {
+		return i.newPreloadScope(s, labels), nil
+	})
+	if err != nil {
+		return err
+	}
+	s.parent = shared
+	for _, label := range labels {
+		if err := i.preloadSubinclude(s, label, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// newPreloadScope creates the scope that holds a subrepo's preloaded symbols.
+// The given scope is only used to load the subincludes; nothing else of it is retained.
+func (i *interpreter) newPreloadScope(s *scope, labels []core.BuildLabel) *scope {
+	shared := i.scope.newScope(s.ctx, nil, "<preloads>", 0)
+	shared.state = s.state
+	for _, label := range labels {
+		t := s.state.Graph.TargetOrDie(label)
+		for _, out := range t.FullOutputs(s.state.Graph) {
+			for k, v := range i.Subinclude(s, out, t.Label, true) {
+				if k != "CONFIG" { // This is merged into each package's own config.
+					shared.locals[k] = v
+				}
+			}
+		}
+	}
+	return shared
+}
+
+// preloadSubinclude applies a single preloaded subinclude to the given scope.
+// If copySymbols is false then only the parts specific to this scope are applied, and it's up to the
+// caller to make the symbols visible to it.
+func (i *interpreter) preloadSubinclude(s *scope, label core.BuildLabel, copySymbols bool) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = handleErrors(r)
@@ -170,7 +223,11 @@ func (i *interpreter) preloadSubinclude(s *scope, label core.BuildLabel) (err er
 	s.interpreter.loadPluginConfig(s, includeState)
 	for _, out := range t.FullOutputs(s.state.Graph) {
 		globals := s.interpreter.Subinclude(s, out, t.Label, true)
-		s.SetAllWithOrigin(globals, false, &t.Label)
+		if copySymbols {
+			s.SetAllWithOrigin(globals, false, &t.Label)
+		} else if config, present := globals["CONFIG"]; present {
+			s.mergeConfig(config)
+		}
 	}
 	return nil
 }
@@ -200,7 +257,7 @@ func (i *interpreter) interpretAll(ctx context.Context, pkg *core.Package, forLa
 	// N.B. We check the argument rather than s.ctx; scopes get captured by things that outlive the chain
 	//      they were created on, so only the context we were handed describes what we're actually doing.
 	if !core.IsPreloading(ctx) {
-		if err := i.preloadSubincludes(s); err != nil {
+		if err := i.preloadPackage(s); err != nil {
 			return nil, err
 		}
 	}
@@ -531,10 +588,7 @@ func (s *scope) SetAll(d pyDict, publicOnly bool) {
 func (s *scope) SetAllWithOrigin(d pyDict, publicOnly bool, origin *core.BuildLabel) {
 	for k, v := range d {
 		if k == "CONFIG" {
-			// Special case; need to merge config entries rather than overwriting the entire object.
-			c, ok := v.(*pyFrozenConfig)
-			s.Assert(ok, "incoming CONFIG isn't a config object")
-			s.config.Merge(c)
+			s.mergeConfig(v)
 		} else if !publicOnly || k[0] != '_' {
 			s.locals[k] = v
 			if origin != nil {
@@ -542,6 +596,14 @@ func (s *scope) SetAllWithOrigin(d pyDict, publicOnly bool, origin *core.BuildLa
 			}
 		}
 	}
+}
+
+// mergeConfig merges an incoming CONFIG object into this scope's config.
+// We need to merge the entries rather than overwriting the entire object.
+func (s *scope) mergeConfig(v pyObject) {
+	c, ok := v.(*pyFrozenConfig)
+	s.Assert(ok, "incoming CONFIG isn't a config object")
+	s.config.Merge(c)
 }
 
 // Freeze freezes the contents of this scope, preventing mutable objects from being changed.
