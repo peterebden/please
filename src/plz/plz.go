@@ -398,8 +398,13 @@ func (r *runner) recursiveParseTarget(ctx context.Context, label, dependent core
 	if err != nil {
 		return err
 	}
-	g, gctx := r.group(ctx)
+	// Created lazily; many targets have no dependencies, and a group with a context isn't especially cheap.
+	var g *errgroup.Group
+	var gctx context.Context
 	for dep := range target.DeclaredDependencies() {
+		if g == nil {
+			g, gctx = r.group(ctx)
+		}
 		g.Go(func() error {
 			if dep.IsAllTargets() {
 				return r.RecursiveParse(gctx, dep, target.Label)
@@ -415,6 +420,9 @@ func (r *runner) recursiveParseTarget(ctx context.Context, label, dependent core
 			}
 			return nil
 		})
+	}
+	if g == nil {
+		return nil
 	}
 	return g.Wait()
 }
