@@ -1291,10 +1291,29 @@ func (target *BuildTarget) AddProvide(language string, labels []BuildLabel) {
 
 // ProvideFor returns the build label that we'd provide for the given target.
 func (target *BuildTarget) ProvideFor(other *BuildTarget) []BuildLabel {
-	if p, ok := target.provideFor(other); ok {
-		return p
+	self := unsafe.Slice(&target.Label, 1)
+	target.mutex.RLock()
+	defer target.mutex.RUnlock()
+	if target.Provides == nil || len(other.Requires) == 0 {
+		return self
 	}
-	return unsafe.Slice(&target.Label, 1)
+	// Never do this if the other target has a data or tool dependency on us.
+	if target.isDataFor(other) || other.IsTool(target.Label) {
+		return self
+	}
+	var ret []BuildLabel
+	for _, require := range other.Requires {
+		if label, present := target.Provides[require]; present {
+			if ret == nil {
+				ret = make([]BuildLabel, 0, len(other.Requires))
+			}
+			ret = append(ret, label...)
+		}
+	}
+	if ret != nil {
+		return ret
+	}
+	return self
 }
 
 func (target *BuildTarget) isDataFor(other *BuildTarget) bool {
@@ -1304,35 +1323,6 @@ func (target *BuildTarget) isDataFor(other *BuildTarget) bool {
 		}
 	}
 	return false
-}
-
-// provideFor is like ProvideFor but returns an empty slice if there is a direct dependency.
-// It's a small optimisation to save allocating extra slices.
-func (target *BuildTarget) provideFor(other *BuildTarget) ([]BuildLabel, bool) {
-	target.mutex.RLock()
-	defer target.mutex.RUnlock()
-	if target.Provides == nil || len(other.Requires) == 0 {
-		return nil, false
-	}
-	// Never do this if the other target has a data or tool dependency on us.
-	if target.isDataFor(other) {
-		return nil, false
-	}
-	if other.IsTool(target.Label) {
-		return nil, false
-	}
-	var ret []BuildLabel
-	found := false
-	for _, require := range other.Requires {
-		if label, present := target.Provides[require]; present {
-			if ret == nil {
-				ret = make([]BuildLabel, 0, len(other.Requires))
-			}
-			ret = append(ret, label...)
-			found = true
-		}
-	}
-	return ret, found
 }
 
 // UnprefixedHashes returns the hashes for the target without any prefixes;
